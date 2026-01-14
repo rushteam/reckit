@@ -11,11 +11,20 @@ import (
 
 // EnrichNode 是特征注入节点，将用户特征、物品特征、交叉特征组合。
 // 支持千人千面的个性化推荐。
+// 支持两种模式：
+// 1. 传统模式：使用自定义提取器（UserFeatureExtractor、ItemFeatureExtractor）
+// 2. 特征服务模式：使用 FeatureService 统一获取特征（推荐）
 type EnrichNode struct {
-	// UserFeatureExtractor 从 RecommendContext 提取用户特征
+	// FeatureService 特征服务（推荐使用，统一特征获取接口）
+	// 如果设置了 FeatureService，将优先使用它获取特征
+	FeatureService FeatureService
+
+	// UserFeatureExtractor 从 RecommendContext 提取用户特征（传统模式）
+	// 如果设置了 FeatureService，此选项将被忽略
 	UserFeatureExtractor func(rctx *core.RecommendContext) map[string]float64
 
-	// ItemFeatureExtractor 从 Item 提取物品特征（可选，默认使用 item.Features）
+	// ItemFeatureExtractor 从 Item 提取物品特征（传统模式，可选，默认使用 item.Features）
+	// 如果设置了 FeatureService，此选项将被忽略
 	ItemFeatureExtractor func(item *core.Item) map[string]float64
 
 	// CrossFeatureExtractor 生成交叉特征（用户-物品交叉特征）
@@ -47,9 +56,20 @@ func (n *EnrichNode) Process(
 
 	// 提取用户特征
 	var userFeatures map[string]float64
-	if n.UserFeatureExtractor != nil {
+	var err error
+
+	// 优先使用 FeatureService
+	if n.FeatureService != nil {
+		userFeatures, err = n.FeatureService.GetUserFeatures(ctx, rctx.UserID)
+		if err != nil {
+			// 特征服务获取失败，回退到传统模式
+			userFeatures = n.defaultUserFeatureExtractor(rctx)
+		}
+	} else if n.UserFeatureExtractor != nil {
+		// 传统模式：使用自定义提取器
 		userFeatures = n.UserFeatureExtractor(rctx)
 	} else {
+		// 默认提取器
 		userFeatures = n.defaultUserFeatureExtractor(rctx)
 	}
 
@@ -71,6 +91,20 @@ func (n *EnrichNode) Process(
 		crossPrefix = "cross_"
 	}
 
+	// 批量获取物品特征（如果使用 FeatureService）
+	var itemFeaturesMap map[int64]map[string]float64
+	if n.FeatureService != nil {
+		itemIDs := make([]int64, 0, len(items))
+		for _, item := range items {
+			if item != nil {
+				itemIDs = append(itemIDs, item.ID)
+			}
+		}
+		if len(itemIDs) > 0 {
+			itemFeaturesMap, _ = n.FeatureService.BatchGetItemFeatures(ctx, itemIDs)
+		}
+	}
+
 	// 为每个物品注入特征
 	for _, item := range items {
 		if item == nil {
@@ -79,9 +113,20 @@ func (n *EnrichNode) Process(
 
 		// 提取物品特征
 		var itemFeatures map[string]float64
-		if n.ItemFeatureExtractor != nil {
+
+		// 优先使用 FeatureService
+		if n.FeatureService != nil && itemFeaturesMap != nil {
+			if features, ok := itemFeaturesMap[item.ID]; ok {
+				itemFeatures = features
+			} else {
+				// 特征服务未返回该物品的特征，使用默认值
+				itemFeatures = make(map[string]float64)
+			}
+		} else if n.ItemFeatureExtractor != nil {
+			// 传统模式：使用自定义提取器
 			itemFeatures = n.ItemFeatureExtractor(item)
 		} else {
+			// 默认：使用 item.Features
 			itemFeatures = item.Features
 			if itemFeatures == nil {
 				itemFeatures = make(map[string]float64)
