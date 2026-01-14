@@ -1,0 +1,57 @@
+pipeline:
+  name: "demo_recommendation"
+  nodes:
+    # 多路召回（并行）
+    - type: "recall.fanout"
+      config:
+        dedup: true
+        timeout: 2  # 秒
+        max_concurrent: 5
+        merge_strategy: "priority"
+        sources:
+          - type: "hot"
+            ids: [1, 2, 3, 4, 5]
+          # - type: "ann"
+          #   config:
+          #     top_k: 20
+
+    # 过滤（黑名单、用户拉黑、已曝光）
+    - type: "filter"
+      config:
+        filters:
+          - type: "blacklist"
+            item_ids: [100, 200, 300]
+            # key: "blacklist:items"  # 可选：从 Store 读取
+          - type: "user_block"
+            key_prefix: "user:block"
+          - type: "exposed"
+            key_prefix: "user:exposed"
+            time_window: 604800  # 7天（秒）
+
+    # 特征注入（千人千面：将用户特征注入到物品特征中）
+    - type: "feature.enrich"
+      config:
+        user_feature_prefix: "user_"
+        item_feature_prefix: "item_"
+        cross_feature_prefix: "cross_"
+
+    # 排序（LR 模型，可以使用用户特征、物品特征、交叉特征）
+    - type: "rank.lr"
+      config:
+        bias: 0.0
+        weights:
+          ctr: 1.2
+          cvr: 0.8
+
+    # 重排（多样性）
+    - type: "rerank.diversity"
+      config:
+        label_key: "category"
+
+    # 或者使用 RPC 模型（Python XGBoost 服务）
+    # 注意：需要先启动 Python 服务 (cd python && uvicorn service.server:app --host 0.0.0.0 --port 8080)
+    # - type: "rank.rpc"
+    #   config:
+    #     endpoint: "http://localhost:8080/predict"
+    #     timeout: 5
+    #     model_type: "xgboost"
