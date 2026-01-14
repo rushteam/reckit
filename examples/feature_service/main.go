@@ -21,29 +21,32 @@ func main() {
 	defer cancel()
 
 	// 1. 初始化 Store
+	var s store.Store
 	redisStore, err := store.NewRedisStore("localhost:6379", 0)
 	if err != nil {
 		log.Printf("Redis 连接失败，使用内存 Store: %v", err)
-		redisStore = store.NewMemoryStore()
+		s = store.NewMemoryStore()
+	} else {
+		s = redisStore
 	}
-	defer redisStore.Close()
+	defer s.Close()
 
 	// 2. 准备特征数据（示例：实际场景中由离线任务或实时任务更新）
-	prepareFeatureData(ctx, redisStore)
+	prepareFeatureData(ctx, s)
 
 	// 3. 创建特征服务（使用工厂模式）
 	factory := feature.NewFeatureServiceFactory()
 	featureService := factory.CreateFull(
-		redisStore,
-		10000,              // 缓存大小
-		5*time.Minute,      // 缓存 TTL
-		1000,               // 监控样本数
+		s,
+		10000,         // 缓存大小
+		5*time.Minute, // 缓存 TTL
+		1000,          // 监控样本数
 	)
 	defer featureService.Close()
 
 	// 4. 创建特征注入节点（使用特征服务）
 	enrichNode := &feature.EnrichNode{
-		FeatureService: featureService, // 使用特征服务
+		FeatureService:     featureService, // 使用特征服务
 		UserFeaturePrefix:  "user_",
 		ItemFeaturePrefix:  "item_",
 		CrossFeaturePrefix: "cross_",
@@ -127,7 +130,7 @@ func main() {
 
 	// 10. 演示特征服务直接使用
 	fmt.Println("\n=== 直接使用特征服务 ===")
-	
+
 	// 获取用户特征
 	userFeatures, err := featureService.GetUserFeatures(ctx, 42)
 	if err != nil {
