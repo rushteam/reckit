@@ -85,7 +85,7 @@ func buildFanoutNode(config map[string]interface{}) (pipeline.Node, error) {
 		fanout.MaxConcurrent = maxConcurrent
 	}
 	if mergeStrategy, ok := config["merge_strategy"].(string); ok {
-		fanout.MergeStrategy = mergeStrategy
+		fanout.MergeStrategyName = mergeStrategy
 	}
 
 	return fanout, nil

@@ -165,8 +165,8 @@ func testPipeline(ctx context.Context, sources map[string]recall.Source) {
 					sources["mf"],
 					sources["content"],
 				},
-				Dedup:         true,
-				MergeStrategy: "priority",
+				Dedup:             true,
+				MergeStrategyName: "priority",
 			},
 		},
 	}

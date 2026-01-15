@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sync"
 
 	"gopkg.in/yaml.v3"
 )
@@ -68,27 +69,64 @@ func (c *Config) BuildPipeline(factory *NodeFactory) (*Pipeline, error) {
 	return &Pipeline{Nodes: nodes}, nil
 }
 
+// NodeBuilder 是 Node 构建器函数类型。
+type NodeBuilder func(map[string]interface{}) (Node, error)
+
 // NodeFactory 用于根据配置构建 Node 实例。
+// 支持线程安全的动态注册，用户可以在运行时注册自定义 Node 类型。
 type NodeFactory struct {
-	builders map[string]func(map[string]interface{}) (Node, error)
+	builders map[string]NodeBuilder
+	mutex    sync.RWMutex
 }
 
 func NewNodeFactory() *NodeFactory {
 	return &NodeFactory{
-		builders: make(map[string]func(map[string]interface{}) (Node, error)),
+		builders: make(map[string]NodeBuilder),
 	}
 }
 
-// Register 注册 Node 构建器。
-func (f *NodeFactory) Register(nodeType string, builder func(map[string]interface{}) (Node, error)) {
+// Register 注册 Node 构建器（线程安全）。
+// 用户可以在运行时注册自定义 Node 类型，无需修改库代码。
+//
+// 示例：
+//   factory := pipeline.NewNodeFactory()
+//   factory.Register("my.custom.node", func(config map[string]interface{}) (pipeline.Node, error) {
+//       // 构建自定义 Node
+//       return &MyCustomNode{}, nil
+//   })
+func (f *NodeFactory) Register(nodeType string, builder NodeBuilder) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
 	f.builders[nodeType] = builder
 }
 
-// Build 根据类型和配置构建 Node。
+// Unregister 取消注册 Node 构建器（线程安全）。
+func (f *NodeFactory) Unregister(nodeType string) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	delete(f.builders, nodeType)
+}
+
+// Build 根据类型和配置构建 Node（线程安全）。
 func (f *NodeFactory) Build(nodeType string, config map[string]interface{}) (Node, error) {
+	f.mutex.RLock()
 	builder, ok := f.builders[nodeType]
+	f.mutex.RUnlock()
+	
 	if !ok {
 		return nil, fmt.Errorf("unknown node type: %s", nodeType)
 	}
 	return builder(config)
+}
+
+// ListRegisteredTypes 返回所有已注册的 Node 类型（线程安全）。
+func (f *NodeFactory) ListRegisteredTypes() []string {
+	f.mutex.RLock()
+	defer f.mutex.RUnlock()
+	
+	types := make([]string, 0, len(f.builders))
+	for t := range f.builders {
+		types = append(types, t)
+	}
+	return types
 }

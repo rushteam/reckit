@@ -118,8 +118,8 @@ func testPipeline(ctx context.Context, userCF *recall.UserBasedCF, i2i *recall.I
 					userCF,
 					i2i,
 				},
-				Dedup:         true,
-				MergeStrategy: "priority",
+				Dedup:             true,
+				MergeStrategyName: "priority",
 			},
 		},
 	}
