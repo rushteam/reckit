@@ -161,6 +161,163 @@ pipeline := &pipeline.Pipeline{
 }
 ```
 
+## 多路并发召回与融合去重
+
+Reckit 通过 `Fanout` 节点实现多路召回源的并发执行和结果融合，这是工业级推荐系统的核心能力。
+
+### 并发召回机制
+
+#### 核心特性
+
+- ✅ **多路并发执行**：使用 `golang.org/x/sync/errgroup` 实现多个召回源的并发执行
+- ✅ **并发限流控制**：通过 `MaxConcurrent` 参数控制最大并发数，防止资源耗尽
+- ✅ **独立超时控制**：每个召回源可设置独立的超时时间，超时不影响其他召回源
+- ✅ **容错机制**：单个召回源失败不会中断整个召回流程
+- ✅ **线程安全**：使用 `sync.Mutex` 保护共享数据结构
+
+#### 配置参数
+
+```go
+fanout := &recall.Fanout{
+    Sources: []recall.Source{
+        &recall.U2IRecall{...},
+        &recall.I2IRecall{...},
+        &recall.MFRecall{...},
+    },
+    Dedup:         true,              // 是否启用去重
+    Timeout:       2 * time.Second,   // 每个召回源的超时时间
+    MaxConcurrent: 5,                 // 最大并发数（0 表示无限制）
+    MergeStrategy: "priority",        // 合并策略
+}
+```
+
+#### 并发执行流程
+
+1. **启动阶段**：遍历所有召回源，为每个召回源创建独立的 goroutine
+2. **限流控制**：如果设置了 `MaxConcurrent`，通过 semaphore（channel）控制并发数
+3. **超时控制**：为每个召回源创建带超时的 context，超时后自动取消
+4. **结果收集**：使用互斥锁保护共享结果集合，安全地收集各召回源的结果
+5. **错误处理**：单个召回源失败或超时返回空结果，不影响其他召回源继续执行
+
+### 融合去重策略
+
+#### 三种合并策略
+
+##### 1. `first`（默认策略）
+
+- **去重规则**：按物品 ID 去重，保留第一个出现的物品
+- **Label 处理**：重复物品的 labels 会合并到第一个物品上
+- **适用场景**：简单的去重需求，不关心召回源优先级
+
+```go
+fanout := &recall.Fanout{
+    Sources: []recall.Source{...},
+    Dedup:         true,
+    MergeStrategy: "first",  // 或默认不设置
+}
+```
+
+##### 2. `union`（并集策略）
+
+- **去重规则**：不去重，保留所有召回源的结果
+- **Label 处理**：每个物品保留各自的 labels
+- **适用场景**：需要保留所有来源信息，用于分析召回效果或调试
+
+```go
+fanout := &recall.Fanout{
+    Sources: []recall.Source{...},
+    Dedup:         false,  // 或设置为 true 但使用 union 策略
+    MergeStrategy: "union",
+}
+```
+
+##### 3. `priority`（优先级策略）
+
+- **去重规则**：按优先级去重，优先级由 `Sources` 数组的索引决定（索引越小优先级越高）
+- **Label 处理**：相同 ID 的物品出现时，保留优先级更高的物品，优先级低的物品的 labels 会合并到优先级高的物品上
+- **适用场景**：需要控制召回源优先级，确保重要召回源的结果优先保留
+
+```go
+fanout := &recall.Fanout{
+    Sources: []recall.Source{
+        &recall.Hot{...},        // 优先级 0（最高）
+        &recall.I2IRecall{...},  // 优先级 1
+        &recall.U2IRecall{...},  // 优先级 2
+    },
+    Dedup:         true,
+    MergeStrategy: "priority",
+}
+```
+
+#### 去重实现细节
+
+- **去重算法**：使用 `map[string]*core.Item` 实现 O(1) 时间复杂度的去重
+- **Label 记录**：每个物品自动记录召回来源信息：
+  - `recall_source`: 召回源名称（如 "recall.u2i"、"recall.i2i"）
+  - `recall_priority`: 优先级（0-9，对应 Sources 数组索引）
+- **Label 合并**：去重时自动合并重复物品的 labels，保留完整的召回轨迹
+
+#### 使用示例
+
+```go
+// 多路并发召回示例
+fanout := &recall.Fanout{
+    Sources: []recall.Source{
+        &recall.Hot{
+            IDs: []string{"1", "2", "3", "4", "5"},
+        },
+        &recall.U2IRecall{
+            Store:            cfStore,
+            TopKSimilarUsers: 10,
+            TopKItems:        20,
+            SimilarityMetric: "cosine",
+        },
+        &recall.I2IRecall{
+            Store:            cfStore,
+            TopKSimilarItems: 10,
+            TopKItems:        20,
+            SimilarityMetric: "cosine",
+        },
+        &recall.MFRecall{
+            Store: mfStore,
+            TopK:  20,
+        },
+    },
+    Dedup:         true,
+    Timeout:       2 * time.Second,
+    MaxConcurrent: 5,
+    MergeStrategy: "priority",
+}
+
+// 在 Pipeline 中使用
+p := &pipeline.Pipeline{
+    Nodes: []pipeline.Node{
+        fanout,
+        // 其他节点...
+    },
+}
+
+items, err := p.Run(ctx, rctx, nil)
+```
+
+### 性能与最佳实践
+
+#### 性能优化建议
+
+1. **并发数设置**：根据召回源的响应时间和系统资源合理设置 `MaxConcurrent`，避免过多并发导致资源竞争
+2. **超时设置**：为每个召回源设置合理的超时时间，避免慢召回源影响整体响应时间
+3. **优先级设计**：将响应快、质量高的召回源放在 `Sources` 数组前面，提高优先级策略的效果
+4. **去重策略选择**：
+   - 生产环境推荐使用 `priority` 策略，保证重要召回源的结果优先
+   - 调试分析时使用 `union` 策略，查看所有召回源的结果
+   - 简单场景使用 `first` 策略
+
+#### 监控与调试
+
+- 通过 `recall_source` label 追踪每个物品来自哪个召回源
+- 通过 `recall_priority` label 了解物品的优先级信息
+- 使用 `union` 策略可以同时看到所有召回源的结果，便于分析召回效果
+
 ## 工程特征对比
 
 | 算法 | 实时性 | 计算复杂度 | 可解释性 | 冷启动 | 工业使用 |
