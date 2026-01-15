@@ -84,8 +84,19 @@ func buildFanoutNode(config map[string]interface{}) (pipeline.Node, error) {
 	if maxConcurrent, ok := config["max_concurrent"].(int); ok {
 		fanout.MaxConcurrent = maxConcurrent
 	}
+	// 设置合并策略
 	if mergeStrategy, ok := config["merge_strategy"].(string); ok {
-		fanout.MergeStrategyName = mergeStrategy
+		switch mergeStrategy {
+		case "priority":
+			fanout.MergeStrategy = &recall.PriorityMergeStrategy{}
+		case "union":
+			fanout.MergeStrategy = &recall.UnionMergeStrategy{}
+		default:
+			fanout.MergeStrategy = &recall.FirstMergeStrategy{}
+		}
+	} else {
+		// 默认策略
+		fanout.MergeStrategy = &recall.FirstMergeStrategy{}
 	}
 
 	return fanout, nil

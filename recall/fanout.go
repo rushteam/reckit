@@ -115,6 +115,47 @@ func (s *PriorityMergeStrategy) getPriority(item *core.Item) int {
 	return 999 // 默认最低优先级
 }
 
+// ErrorHandler 是错误处理策略接口，用于自定义召回源失败时的处理逻辑。
+type ErrorHandler interface {
+	// HandleError 处理召回源错误
+	// source: 失败的召回源
+	// err: 错误信息
+	// rctx: 推荐上下文
+	// 返回: 处理后的物品列表和错误（如果返回错误，将中断 Pipeline）
+	HandleError(source Source, err error, rctx *core.RecommendContext) ([]*core.Item, error)
+}
+
+// IgnoreErrorHandler 是忽略错误的策略：返回空结果，不中断其他召回源。
+type IgnoreErrorHandler struct{}
+
+func (h *IgnoreErrorHandler) HandleError(source Source, err error, rctx *core.RecommendContext) ([]*core.Item, error) {
+	return nil, nil // 返回空结果，不中断
+}
+
+// RetryErrorHandler 是重试策略（示例实现，实际使用时需要更完整的实现）。
+type RetryErrorHandler struct {
+	MaxRetries int
+	RetryDelay time.Duration
+}
+
+func (h *RetryErrorHandler) HandleError(source Source, err error, rctx *core.RecommendContext) ([]*core.Item, error) {
+	// 简化实现：实际使用时需要实现真正的重试逻辑
+	return nil, nil
+}
+
+// FallbackErrorHandler 是降级策略：使用备用召回源。
+type FallbackErrorHandler struct {
+	FallbackSource Source
+}
+
+func (h *FallbackErrorHandler) HandleError(source Source, err error, rctx *core.RecommendContext) ([]*core.Item, error) {
+	if h.FallbackSource != nil {
+		// 使用备用召回源
+		return h.FallbackSource.Recall(context.Background(), rctx)
+	}
+	return nil, nil
+}
+
 // Fanout 是一个 Recall Node：并发执行多个召回源，并合并结果。
 // 支持超时、限流、优先级合并策略。
 type Fanout struct {
@@ -123,14 +164,19 @@ type Fanout struct {
 	Timeout       time.Duration // 每个召回源的超时时间
 	MaxConcurrent int           // 最大并发数（0 表示无限制）
 	
-	// MergeStrategy 自定义合并策略（推荐使用）
-	// 如果为 nil，则使用 MergeStrategyName 指定的内置策略
+	// MergeStrategy 合并策略（必需）
+	// 使用内置策略：FirstMergeStrategy、UnionMergeStrategy、PriorityMergeStrategy
+	// 或实现自定义策略
 	MergeStrategy MergeStrategy
 	
-	// MergeStrategyName 合并策略名称（向后兼容）
-	// 可选值：first / union / priority
-	// 如果 MergeStrategy 不为 nil，此字段将被忽略
-	MergeStrategyName string
+	// ErrorHandler 错误处理策略（可选）
+	// 如果为 nil，则使用默认策略（IgnoreErrorHandler）
+	ErrorHandler ErrorHandler
+	
+	// SourcePriorities 自定义优先级权重（可选）
+	// key: Source 名称，value: 优先级（值越小优先级越高）
+	// 如果未设置，则使用 Source 在数组中的索引作为优先级
+	SourcePriorities map[string]int
 }
 
 func (n *Fanout) Name() string        { return "recall.fanout" }
@@ -159,7 +205,13 @@ func (n *Fanout) Process(
 
 	for i, src := range n.Sources {
 		s := src
-		priority := i // 优先级（索引越小优先级越高）
+		// 计算优先级：优先使用自定义权重，否则使用索引
+		priority := i
+		if n.SourcePriorities != nil {
+			if customPriority, ok := n.SourcePriorities[s.Name()]; ok {
+				priority = customPriority
+			}
+		}
 
 		eg.Go(func() error {
 			// 限流
@@ -178,8 +230,17 @@ func (n *Fanout) Process(
 
 			items, err := s.Recall(recallCtx, rctx)
 			if err != nil {
-				// 超时或错误时返回空结果，不中断其他召回源
-				return nil
+				// 使用错误处理策略
+				handler := n.ErrorHandler
+				if handler == nil {
+					handler = &IgnoreErrorHandler{} // 默认策略
+				}
+				
+				handledItems, handleErr := handler.HandleError(s, err, rctx)
+				if handleErr != nil {
+					return handleErr
+				}
+				items = handledItems
 			}
 
 			// 记录召回来源 label，方便 explain / 观测
@@ -199,23 +260,12 @@ func (n *Fanout) Process(
 		return nil, err
 	}
 
-	// 合并策略
-	var strategy MergeStrategy
-	if n.MergeStrategy != nil {
-		// 使用自定义策略
-		strategy = n.MergeStrategy
-	} else {
-		// 使用内置策略（向后兼容）
-		switch n.MergeStrategyName {
-		case "priority":
-			strategy = &PriorityMergeStrategy{}
-		case "union":
-			strategy = &UnionMergeStrategy{}
-		default: // "first" 或默认
-			strategy = &FirstMergeStrategy{}
-		}
+	// 合并策略（必需）
+	if n.MergeStrategy == nil {
+		// 如果没有设置，使用默认策略
+		n.MergeStrategy = &FirstMergeStrategy{}
 	}
 	
-	return strategy.Merge(all, n.Dedup), nil
+	return n.MergeStrategy.Merge(all, n.Dedup), nil
 }
 

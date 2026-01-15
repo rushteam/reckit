@@ -2,12 +2,35 @@ package recall
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"sort"
 
 	"reckit/core"
 	"reckit/pkg/utils"
 )
+
+// SimilarityCalculator 是相似度计算接口，用于自定义相似度计算方法。
+type SimilarityCalculator interface {
+	// Calculate 计算两个向量的相似度
+	// x, y: 两个向量（必须长度相同）
+	// 返回: 相似度值（通常在 -1 到 1 之间）
+	Calculate(x, y []float64) float64
+}
+
+// CosineSimilarity 是余弦相似度计算器。
+type CosineSimilarity struct{}
+
+func (c *CosineSimilarity) Calculate(x, y []float64) float64 {
+	return cosineSimilarityVector(x, y)
+}
+
+// PearsonCorrelation 是皮尔逊相关系数计算器。
+type PearsonCorrelation struct{}
+
+func (p *PearsonCorrelation) Calculate(x, y []float64) float64 {
+	return pearsonCorrelation(x, y)
+}
 
 // CFStore 是协同过滤的存储接口，用于获取用户-物品交互数据。
 type CFStore interface {
@@ -53,16 +76,25 @@ type UserBasedCF struct {
 	Store CFStore
 
 	// TopKSimilarUsers 计算相似度时考虑的 TopK 个相似用户
+	// 如果 <= 0，则使用 Config 中的默认值
 	TopKSimilarUsers int
 
 	// TopKItems 最终返回的 TopK 个物品
+	// 如果 <= 0，则使用 Config 中的默认值
 	TopKItems int
 
-	// SimilarityMetric 相似度度量方式：cosine / pearson
-	SimilarityMetric string
+	// SimilarityCalculator 相似度计算器（必需）
+	// 使用内置计算器：CosineSimilarity、PearsonCorrelation
+	// 或实现自定义计算器
+	SimilarityCalculator SimilarityCalculator
 
 	// MinCommonItems 两个用户至少需要有多少个共同交互物品才计算相似度
+	// 如果 <= 0，则使用 Config 中的默认值
 	MinCommonItems int
+	
+	// Config 召回配置（必需）
+	// 提供默认值，不能为 nil
+	Config core.RecallConfig
 }
 
 func (r *UserBasedCF) Name() string {
@@ -101,17 +133,20 @@ func (r *UserBasedCF) Recall(
 
 	topKSimilar := r.TopKSimilarUsers
 	if topKSimilar <= 0 {
-		topKSimilar = 50 // 默认考虑 Top 50 相似用户
+		topKSimilar = r.Config.DefaultTopKSimilarUsers()
 	}
 
 	minCommon := r.MinCommonItems
 	if minCommon <= 0 {
-		minCommon = 2 // 默认至少 2 个共同物品
+		minCommon = r.Config.DefaultMinCommonItems()
 	}
 
-	metric := r.SimilarityMetric
-	if metric == "" {
-		metric = "cosine"
+	// 验证必需字段
+	if r.SimilarityCalculator == nil {
+		return nil, fmt.Errorf("SimilarityCalculator is required")
+	}
+	if r.Config == nil {
+		return nil, fmt.Errorf("Config is required")
 	}
 
 	// 计算每个用户与目标用户的相似度
@@ -144,15 +179,7 @@ func (r *UserBasedCF) Recall(
 		}
 
 		// 计算相似度
-		var sim float64
-		switch metric {
-		case "pearson":
-			sim = pearsonCorrelation(targetScores, userScores)
-		case "cosine":
-			fallthrough
-		default:
-			sim = cosineSimilarityVector(targetScores, userScores)
-		}
+		sim := r.SimilarityCalculator.Calculate(targetScores, userScores)
 
 		if sim > 0 { // 只保留正相似度
 			similarities = append(similarities, userSimilarity{
@@ -224,7 +251,6 @@ func (r *UserBasedCF) Recall(
 		it := core.NewItem(s.itemID)
 		it.Score = s.score
 		it.PutLabel("recall_source", utils.Label{Value: "u2i", Source: "recall"}) // u2u → u2i
-		it.PutLabel("cf_metric", utils.Label{Value: metric, Source: "recall"})
 		out = append(out, it)
 	}
 
@@ -263,20 +289,29 @@ type ItemBasedCF struct {
 	Store CFStore
 
 	// TopKSimilarItems 计算相似度时考虑的 TopK 个相似物品
+	// 如果 <= 0，则使用 Config 中的默认值
 	TopKSimilarItems int
 
 	// TopKItems 最终返回的 TopK 个物品
+	// 如果 <= 0，则使用 Config 中的默认值
 	TopKItems int
 
-	// SimilarityMetric 相似度度量方式：cosine / pearson
-	SimilarityMetric string
+	// SimilarityCalculator 相似度计算器（必需）
+	// 使用内置计算器：CosineSimilarity、PearsonCorrelation
+	// 或实现自定义计算器
+	SimilarityCalculator SimilarityCalculator
 
 	// MinCommonUsers 两个物品至少需要有多少个共同交互用户才计算相似度
+	// 如果 <= 0，则使用 Config 中的默认值
 	MinCommonUsers int
 
 	// UserHistoryKey 从 RecommendContext 获取用户历史物品的 key
 	// 如果为空，则从 Store 获取用户的所有交互物品
 	UserHistoryKey string
+	
+	// Config 召回配置（必需）
+	// 提供默认值，不能为 nil
+	Config core.RecallConfig
 }
 
 func (r *ItemBasedCF) Name() string {
@@ -337,17 +372,20 @@ func (r *ItemBasedCF) Recall(
 
 	topKSimilar := r.TopKSimilarItems
 	if topKSimilar <= 0 {
-		topKSimilar = 100 // 默认考虑 Top 100 相似物品
+		topKSimilar = r.Config.DefaultTopKItems() // 使用 TopKItems 作为默认值
 	}
 
 	minCommon := r.MinCommonUsers
 	if minCommon <= 0 {
-		minCommon = 2 // 默认至少 2 个共同用户
+		minCommon = r.Config.DefaultMinCommonUsers()
 	}
 
-	metric := r.SimilarityMetric
-	if metric == "" {
-		metric = "cosine"
+	// 验证必需字段
+	if r.SimilarityCalculator == nil {
+		return nil, fmt.Errorf("SimilarityCalculator is required")
+	}
+	if r.Config == nil {
+		return nil, fmt.Errorf("Config is required")
 	}
 
 	// 为每个用户历史物品，找到相似物品
@@ -394,15 +432,7 @@ func (r *ItemBasedCF) Recall(
 			}
 
 			// 计算相似度
-			var sim float64
-			switch metric {
-			case "pearson":
-				sim = pearsonCorrelation(historyScores, candidateScores)
-			case "cosine":
-				fallthrough
-			default:
-				sim = cosineSimilarityVector(historyScores, candidateScores)
-			}
+			sim := r.SimilarityCalculator.Calculate(historyScores, candidateScores)
 
 			if sim > 0 { // 只保留正相似度
 				similarities = append(similarities, itemSimilarity{
@@ -442,7 +472,7 @@ func (r *ItemBasedCF) Recall(
 	// 排序取 TopK
 	topK := r.TopKItems
 	if topK <= 0 {
-		topK = 20
+		topK = r.Config.DefaultTopKItems()
 	}
 	sort.Slice(scoredItems, func(i, j int) bool {
 		return scoredItems[i].score > scoredItems[j].score
@@ -457,7 +487,6 @@ func (r *ItemBasedCF) Recall(
 		it := core.NewItem(s.itemID)
 		it.Score = s.score
 		it.PutLabel("recall_source", utils.Label{Value: "i2i", Source: "recall"}) // 工业标准：i2i
-		it.PutLabel("cf_metric", utils.Label{Value: metric, Source: "recall"})
 		out = append(out, it)
 	}
 

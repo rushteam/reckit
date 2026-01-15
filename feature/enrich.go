@@ -33,9 +33,43 @@ type EnrichNode struct {
 
 	// FeaturePrefix 特征前缀，用于区分不同类型的特征
 	// 例如：user_*, item_*, cross_*
+	// 如果为空，使用默认值（user_, item_, cross_）
 	UserFeaturePrefix  string
 	ItemFeaturePrefix  string
 	CrossFeaturePrefix string
+	
+	// KeyUserFeatures 关键用户特征列表（用于交叉特征生成）
+	// 如果未设置，使用默认列表：["age", "gender", "user_id"]
+	KeyUserFeatures []string
+	
+	// KeyItemFeatures 关键物品特征列表（用于交叉特征生成）
+	// 如果未设置，使用默认列表：["ctr", "cvr", "price", "score"]
+	KeyItemFeatures []string
+	
+	// GlobalFeatureConfig 全局特征配置（可选）
+	// 如果设置，可以从全局配置读取默认前缀
+	GlobalFeatureConfig *FeatureConfig
+}
+
+// FeatureConfig 是特征相关的全局配置。
+type FeatureConfig struct {
+	// DefaultUserPrefix 默认用户特征前缀
+	DefaultUserPrefix string
+	
+	// DefaultItemPrefix 默认物品特征前缀
+	DefaultItemPrefix string
+	
+	// DefaultCrossPrefix 默认交叉特征前缀
+	DefaultCrossPrefix string
+}
+
+// DefaultFeatureConfig 返回默认的特征配置。
+func DefaultFeatureConfig() *FeatureConfig {
+	return &FeatureConfig{
+		DefaultUserPrefix:  "user_",
+		DefaultItemPrefix:  "item_",
+		DefaultCrossPrefix: "cross_",
+	}
 }
 
 func (n *EnrichNode) Name() string {
@@ -77,19 +111,34 @@ func (n *EnrichNode) Process(
 	// 用户特征前缀
 	userPrefix := n.UserFeaturePrefix
 	if userPrefix == "" {
-		userPrefix = "user_"
+		if n.GlobalFeatureConfig != nil {
+			userPrefix = n.GlobalFeatureConfig.DefaultUserPrefix
+		}
+		if userPrefix == "" {
+			userPrefix = "user_" // 最终默认值
+		}
 	}
 
 	// 物品特征前缀
 	itemPrefix := n.ItemFeaturePrefix
 	if itemPrefix == "" {
-		itemPrefix = "item_"
+		if n.GlobalFeatureConfig != nil {
+			itemPrefix = n.GlobalFeatureConfig.DefaultItemPrefix
+		}
+		if itemPrefix == "" {
+			itemPrefix = "item_" // 最终默认值
+		}
 	}
 
 	// 交叉特征前缀
 	crossPrefix := n.CrossFeaturePrefix
 	if crossPrefix == "" {
-		crossPrefix = "cross_"
+		if n.GlobalFeatureConfig != nil {
+			crossPrefix = n.GlobalFeatureConfig.DefaultCrossPrefix
+		}
+		if crossPrefix == "" {
+			crossPrefix = "cross_" // 最终默认值
+		}
 	}
 
 	// 批量获取物品特征（如果使用 FeatureService）
@@ -214,8 +263,14 @@ func (n *EnrichNode) defaultCrossFeatures(userFeatures, itemFeatures map[string]
 
 	// 简单的交叉特征：用户特征 × 物品特征
 	// 只对关键特征做交叉，避免生成过多无意义特征
-	keyUserFeatures := []string{"age", "gender", "user_id"}
-	keyItemFeatures := []string{"ctr", "cvr", "price", "score"}
+	keyUserFeatures := n.KeyUserFeatures
+	if len(keyUserFeatures) == 0 {
+		keyUserFeatures = []string{"age", "gender", "user_id"} // 默认值
+	}
+	keyItemFeatures := n.KeyItemFeatures
+	if len(keyItemFeatures) == 0 {
+		keyItemFeatures = []string{"ctr", "cvr", "price", "score"} // 默认值
+	}
 
 	for _, uk := range keyUserFeatures {
 		uv, uok := userFeatures[uk]

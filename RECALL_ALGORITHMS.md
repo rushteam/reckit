@@ -22,11 +22,13 @@
 
 **使用示例**:
 ```go
+config := &core.DefaultRecallConfig{}
 u2i := &recall.U2IRecall{
-    Store:            cfStore,
-    TopKSimilarUsers: 10,
-    TopKItems:        5,
-    SimilarityMetric: "cosine",
+    Store:                cfStore,
+    TopKSimilarUsers:     10,
+    TopKItems:            5,
+    SimilarityCalculator: &recall.CosineSimilarity{},
+    Config:                config,
 }
 ```
 
@@ -40,11 +42,13 @@ u2i := &recall.U2IRecall{
 
 **使用示例**:
 ```go
+config := &core.DefaultRecallConfig{}
 i2i := &recall.I2IRecall{
-    Store:            cfStore,
-    TopKSimilarItems: 10,
-    TopKItems:        5,
-    SimilarityMetric: "cosine",
+    Store:                cfStore,
+    TopKSimilarItems:     10,
+    TopKItems:            5,
+    SimilarityCalculator: &recall.CosineSimilarity{},
+    Config:                config,
 }
 ```
 
@@ -154,7 +158,7 @@ pipeline := &pipeline.Pipeline{
                 &recall.EmbRecall{...},      // Embedding
                 &recall.ContentRecall{...},   // Content
             },
-            MergeStrategy: "priority",
+            MergeStrategy: &recall.PriorityMergeStrategy{},
         },
         // 其他节点...
     },

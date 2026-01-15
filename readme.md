@@ -268,7 +268,7 @@ fanout := &recall.Fanout{
     Dedup:         true,
     Timeout:       2 * time.Second,  // 每个召回源超时
     MaxConcurrent: 5,                // 最大并发数
-    MergeStrategy: "priority",        // first / union / priority
+    MergeStrategy: &recall.PriorityMergeStrategy{}, // 使用接口方式
 }
 ```
 
@@ -282,20 +282,39 @@ fanout := &recall.Fanout{
 
 #### 合并策略
 
-- **`first`（默认策略）**：
+通过 `MergeStrategy` 接口实现，支持自定义合并逻辑：
+
+- **`FirstMergeStrategy`（默认策略）**：
   - 按物品 ID 去重，保留第一个出现的物品
   - 重复物品的 labels 会合并到第一个物品上
   - 适用于简单的去重场景
 
-- **`union`**：
+- **`UnionMergeStrategy`**：
   - 不去重，保留所有召回源的结果
   - 适用于需要保留所有来源信息的场景（如分析召回效果）
 
-- **`priority`（优先级策略）**：
+- **`PriorityMergeStrategy`（优先级策略）**：
   - 按优先级去重，优先级由 `Sources` 数组的索引决定（索引越小优先级越高）
   - 相同 ID 的物品出现时，保留优先级更高的物品
   - 优先级低的物品的 labels 会合并到优先级高的物品上
   - 适用于需要控制召回源优先级的场景
+
+**使用示例**：
+```go
+// 使用内置策略
+fanout := &recall.Fanout{
+    MergeStrategy: &recall.PriorityMergeStrategy{},
+}
+
+// 自定义合并策略
+type CustomMergeStrategy struct{}
+func (s *CustomMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.Item {
+    // 自定义逻辑
+}
+fanout := &recall.Fanout{
+    MergeStrategy: &CustomMergeStrategy{},
+}
+```
 
 #### 去重机制
 

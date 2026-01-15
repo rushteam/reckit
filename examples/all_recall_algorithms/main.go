@@ -105,18 +105,22 @@ func createRecallSources(ctx context.Context, memStore store.Store) map[string]r
 	mfStore := recall.NewStoreMFAdapter(memStore, "mf")
 	contentStore := recall.NewStoreContentAdapter(memStore, "content")
 
+	config := &core.DefaultRecallConfig{}
+
 	return map[string]recall.Source{
 		"u2i": &recall.U2IRecall{
-			Store:            cfStore,
-			TopKSimilarUsers: 5,
-			TopKItems:        3,
-			SimilarityMetric: "cosine",
+			Store:                cfStore,
+			TopKSimilarUsers:     5,
+			TopKItems:            3,
+			SimilarityCalculator: &recall.CosineSimilarity{},
+			Config:               config,
 		},
 		"i2i": &recall.I2IRecall{
-			Store:            cfStore,
-			TopKSimilarItems: 5,
-			TopKItems:        3,
-			SimilarityMetric: "cosine",
+			Store:                cfStore,
+			TopKSimilarItems:     5,
+			TopKItems:            3,
+			SimilarityCalculator: &recall.CosineSimilarity{},
+			Config:               config,
 		},
 		"mf": &recall.MFRecall{
 			Store: mfStore,
@@ -128,8 +132,9 @@ func createRecallSources(ctx context.Context, memStore store.Store) map[string]r
 			Metric:     "cosine",
 		},
 		"content": &recall.ContentRecall{
-			Store:            contentStore,
-			TopK:             3,
+			Store: contentStore,
+			TopK:  3,
+			// ContentRecall 使用不同的相似度计算方式，暂时保留 SimilarityMetric
 			SimilarityMetric: "cosine",
 		},
 	}
@@ -165,8 +170,8 @@ func testPipeline(ctx context.Context, sources map[string]recall.Source) {
 					sources["mf"],
 					sources["content"],
 				},
-				Dedup:             true,
-				MergeStrategyName: "priority",
+				Dedup:         true,
+				MergeStrategy: &recall.PriorityMergeStrategy{},
 			},
 		},
 	}

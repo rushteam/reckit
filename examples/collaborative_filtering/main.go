@@ -24,21 +24,24 @@ func main() {
 	setupTestData(ctx, cfStore)
 
 	// 3. 创建用户协同过滤召回源
+	config := &core.DefaultRecallConfig{}
 	userCF := &recall.UserBasedCF{
-		Store:            cfStore,
-		TopKSimilarUsers: 10,
-		TopKItems:        5,
-		SimilarityMetric: "cosine",
-		MinCommonItems:   2,
+		Store:                cfStore,
+		TopKSimilarUsers:     10,
+		TopKItems:            5,
+		SimilarityCalculator: &recall.CosineSimilarity{},
+		MinCommonItems:       2,
+		Config:               config,
 	}
 
 	// 4. 创建物品协同过滤召回源（i2i）
 	i2i := &recall.I2IRecall{
-		Store:            cfStore,
-		TopKSimilarItems: 10,
-		TopKItems:        5,
-		SimilarityMetric: "cosine",
-		MinCommonUsers:   2,
+		Store:                cfStore,
+		TopKSimilarItems:     10,
+		TopKItems:            5,
+		SimilarityCalculator: &recall.CosineSimilarity{},
+		MinCommonUsers:       2,
+		Config:               config,
 	}
 
 	// 5. 测试用户协同过滤
@@ -118,8 +121,8 @@ func testPipeline(ctx context.Context, userCF *recall.UserBasedCF, i2i *recall.I
 					userCF,
 					i2i,
 				},
-				Dedup:             true,
-				MergeStrategyName: "priority",
+				Dedup:         true,
+				MergeStrategy: &recall.PriorityMergeStrategy{},
 			},
 		},
 	}
