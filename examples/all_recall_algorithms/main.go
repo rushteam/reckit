@@ -100,6 +100,7 @@ func setupTestData(ctx context.Context, memStore store.Store) {
 }
 
 func createRecallSources(ctx context.Context, memStore store.Store) map[string]recall.Source {
+	_ = ctx
 	cfStore := recall.NewStoreCFAdapter(memStore, "cf")
 	mfStore := recall.NewStoreMFAdapter(memStore, "mf")
 	contentStore := recall.NewStoreContentAdapter(memStore, "content")
