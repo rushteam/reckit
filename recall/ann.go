@@ -83,11 +83,11 @@ func (r *ANN) Recall(
 		var sim float64
 		switch r.Metric {
 		case "cosine":
-			sim = cosineSimilarity(r.UserVector, itemVec)
+			sim = cosineSimilarity(userVector, itemVec)
 		case "euclidean":
-			sim = 1.0 / (1.0 + euclideanDistance(r.UserVector, itemVec))
+			sim = 1.0 / (1.0 + euclideanDistance(userVector, itemVec))
 		default:
-			sim = cosineSimilarity(r.UserVector, itemVec)
+			sim = cosineSimilarity(userVector, itemVec)
 		}
 		scores = append(scores, scoredItem{itemID: itemID, score: sim})
 	}
