@@ -13,6 +13,10 @@ type Item struct {
 	Features map[string]float64
 	Meta     map[string]any
 	Labels   map[string]utils.Label
+	
+	// LabelMergeStrategy 自定义 Label 合并策略（可选）
+	// 如果为 nil，则使用默认策略
+	LabelMergeStrategy utils.LabelMergeStrategy
 }
 
 // NewItem 创建一个新的 Item
@@ -26,13 +30,20 @@ func NewItem(id string) *Item {
 	}
 }
 
-// PutLabel 写入 Label；若已存在同名 key，则按默认 Merge 规则累积。
+// PutLabel 写入 Label；若已存在同名 key，则按合并策略合并。
+// 如果 Item 设置了 LabelMergeStrategy，则使用自定义策略；否则使用默认策略。
 func (it *Item) PutLabel(key string, lbl utils.Label) {
 	if it.Labels == nil {
 		it.Labels = make(map[string]utils.Label)
 	}
 	if old, ok := it.Labels[key]; ok {
-		it.Labels[key] = utils.MergeLabel(old, lbl)
+		var merged utils.Label
+		if it.LabelMergeStrategy != nil {
+			merged = it.LabelMergeStrategy.Merge(old, lbl)
+		} else {
+			merged = utils.MergeLabel(old, lbl)
+		}
+		it.Labels[key] = merged
 		return
 	}
 	it.Labels[key] = lbl
