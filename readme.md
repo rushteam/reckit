@@ -1,8 +1,31 @@
-# Reckit（推荐系统工具包）
+# Reckit
 
-目标：用 **Pipeline + Node** 的方式快速拼装推荐系统（内容流 / 电商 / 广告），并让 **Labels** 成为一等公民（全链路透传、可解释、可观测）。
+<div align="center">
 
-## 架构图
+**工业级推荐系统工具包 | Production-Ready Recommender System Toolkit**
+
+[![Go Version](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat-square&logo=go)](https://golang.org)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square)](https://opensource.org/licenses/Apache-2.0)
+[![Go Report Card](https://goreportcard.com/badge/github.com/rushteam/reckit?style=flat-square)](https://goreportcard.com/report/github.com/rushteam/reckit)
+
+</div>
+
+---
+
+## 📖 简介
+
+Reckit 是一个**工业级推荐系统工具包**，采用 **Pipeline + Node** 架构设计，通过接口抽象实现高度可扩展性。支持内容流、电商、广告等多种推荐场景。
+
+### 核心特性
+
+- 🎯 **Pipeline-first 架构**：所有推荐逻辑通过 Node 串联，灵活组合
+- 🏷️ **Labels-first 设计**：Labels 全链路透传，支持可解释性和策略驱动
+- 🔌 **高度可扩展**：通过接口实现，无需修改库代码即可扩展所有功能
+- ⚡ **高性能并发**：多路召回并发执行，支持超时控制和限流
+- 🎨 **策略模式丰富**：合并策略、排序策略、错误处理策略等均可自定义
+- 🔧 **配置化支持**：支持 YAML/JSON 配置，Pipeline 可配置化加载
+
+## 🏗️ 架构设计
 
 ```
                 ┌──────────┐
@@ -32,435 +55,241 @@ Request ──────▶ │  Context │  用户画像 / 实时特征
         └──────────────────────────┘
 ```
 
-## 核心思想
+### 设计模式
 
-| 模块       | 设计模式                                   |
-| -------- | -------------------------------------- |
-| Pipeline | **Pipeline / Chain of Responsibility** |
-| Recall   | **Strategy + Fan-out 并发模式**            |
-| Rank     | **Strategy / Template Method**         |
-| 特征注入     | **Context Object**                     |
-| 可扩展      | **Plugin-like 接口设计**                   |
-| 并发       | **errgroup / goroutine pool**          |
-| 存储抽象     | **Store 接口（Redis / MySQL / ES）**      |
-| 配置化      | **YAML/JSON 配置 + Factory 模式**         |
-| 策略驱动     | **Label DSL 表达式引擎**                   |
+| 模块 | 设计模式 | 说明 |
+|------|---------|------|
+| **Pipeline** | Pipeline / Chain of Responsibility | 链式处理，Node 串联 |
+| **Recall** | Strategy + Fan-out 并发模式 | 多路召回并发执行 |
+| **Rank** | Strategy / Template Method | 多种排序模型策略 |
+| **特征注入** | Context Object | 上下文对象传递 |
+| **可扩展** | Plugin-like 接口设计 | 接口抽象，插件化扩展 |
+| **并发** | errgroup / goroutine pool | 高效并发控制 |
+| **存储抽象** | Store 接口 | Redis / MySQL / ES 等 |
+| **配置化** | YAML/JSON + Factory 模式 | 配置驱动 |
+| **策略驱动** | Label DSL 表达式引擎 | 基于 CEL 的表达式 |
 
-## 目录结构
+## 🚀 快速开始
 
+### 安装
+
+```bash
+go get github.com/rushteam/reckit
 ```
-github.com/rushteam/reckit/
-├── core/          # Item + RecommendContext（核心数据结构）
-├── pipeline/      # Node 接口 + Pipeline 执行器 + 配置加载
-├── recall/        # Recall Source + Fanout Node + ANN 召回
-├── filter/        # Filter Node（黑名单、用户拉黑、已曝光等）
-├── rank/          # Rank Node（LR / RPC）
-├── rerank/        # ReRank Node（多样性等）
-├── model/         # RankModel 抽象 + LR / RPC 实现
-├── store/         # Store 抽象（Redis / Memory）
-├── config/        # Pipeline 配置工厂
-├── pkg/
-│   ├── utils/     # Label + Merge 规则
-│   └── dsl/       # Label DSL 表达式引擎
-├── python/            # Python ML 训练与服务
-│   ├── data/          # 训练数据
-│   ├── train/         # 训练脚本
-│   ├── service/       # HTTP 推理服务
-│   └── model/         # 训练好的模型
-└── examples/
-    ├── basic/          # 基础示例
-    ├── config/         # 配置化 Pipeline 示例（含配置文件）
-    ├── dsl/            # DSL 表达式示例
-    ├── personalization/ # 千人千面个性化推荐示例
-    └── rpc_xgb/        # Python XGBoost 模型调用示例
-```
-
-## 快速开始
 
 ### 基础示例
 
+```go
+package main
+
+import (
+    "context"
+    "time"
+    
+    "github.com/rushteam/reckit/core"
+    "github.com/rushteam/reckit/pipeline"
+    "github.com/rushteam/reckit/recall"
+    "github.com/rushteam/reckit/rank"
+    "github.com/rushteam/reckit/store"
+)
+
+func main() {
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
+    // 初始化存储
+    memStore := store.NewMemoryStore()
+    defer memStore.Close()
+
+    // 创建召回源
+    config := &core.DefaultRecallConfig{}
+    u2i := &recall.U2IRecall{
+        Store:                cfStore,
+        TopKSimilarUsers:     10,
+        TopKItems:            20,
+        SimilarityCalculator: &recall.CosineSimilarity{},
+        Config:                config,
+    }
+
+    // 构建 Pipeline
+    p := &pipeline.Pipeline{
+        Nodes: []pipeline.Node{
+            &recall.Fanout{
+                Sources: []recall.Source{
+                    &recall.Hot{IDs: []string{"1", "2", "3"}},
+                    u2i,
+                },
+                Dedup:         true,
+                MergeStrategy: &recall.PriorityMergeStrategy{},
+            },
+            &rank.LRNode{
+                Model:        lrModel,
+                SortStrategy: &rank.ScoreDescSortStrategy{},
+            },
+        },
+    }
+
+    // 创建用户上下文
+    rctx := &core.RecommendContext{
+        UserID: "user_123",
+        Scene:  "feed",
+        User: &core.UserProfile{
+            UserID:    "user_123",
+            Age:       25,
+            Interests: map[string]float64{"tech": 0.8},
+        },
+    }
+
+    // 执行 Pipeline
+    items, err := p.Run(ctx, rctx, nil)
+    if err != nil {
+        panic(err)
+    }
+
+    // 输出结果
+    for _, item := range items {
+        fmt.Printf("Item: %s, Score: %.4f\n", item.ID, item.Score)
+    }
+}
+```
+
+### 运行示例
+
 ```bash
+# 基础示例
 go run ./examples/basic
-```
 
-### 配置化 Pipeline
-
-```bash
+# 配置化 Pipeline
 go run ./examples/config
+
+# 所有召回算法示例
+go run ./examples/all_recall_algorithms
+
+# 个性化推荐示例
+go run ./examples/personalization
 ```
 
-### DSL 表达式测试
+## 📦 核心模块
 
-```bash
-go run ./examples/dsl
-```
-
-### Python XGBoost 模型调用
-
-```bash
-# 1. 训练模型（Python）
-cd python
-pip install -r requirements.txt
-python train/train_xgb.py
-
-# 2. 启动服务（Python）
-uvicorn service.server:app --host 0.0.0.0 --port 8080
-
-# 3. 运行 Go 示例（新终端）
-go run ./examples/rpc_xgb
-```
-
-## 功能特性概览
-
-### 核心模块
-
-- **Pipeline + Node 架构** (`pipeline/`): Pipeline 执行器，支持链式 Node 处理，Node 接口统一所有处理单元，支持配置化加载（YAML/JSON）
-- **Labels-first 设计** (`core/item.go`, `pkg/utils/label.go`): Labels 全链路透传，自动 Merge 规则，支持策略驱动和可解释性
-- **Store 抽象层** (`store/`): 统一的存储接口，支持 Redis、Memory 实现，扩展接口 KeyValueStore（支持有序集合、Hash）
-
-### 召回模块（Recall）
-
-- **多路 Recall 并行 + 合并** (`recall/fanout.go`): 并发执行多个召回源（errgroup），超时控制、限流，合并策略：first / union / priority，自动写入 `recall_source` 和 `recall_priority` labels
-- **热门召回** (`recall/hot.go`): 支持从 Store 读取（ZRange 或 JSON），支持内存 fallback，同时实现 Source 和 Node 接口
-- **Embedding ANN Recall** (`recall/ann.go`): 向量检索召回，支持余弦相似度和欧氏距离，可配置 TopK，支持从 RecommendContext 获取用户向量实现个性化召回，需要实现 VectorStore 接口
-- **用户历史召回** (`recall/user_history.go`): 基于用户历史行为的个性化召回，支持浏览、点击、购买等行为类型，支持时间窗口过滤
-
-### 过滤模块（Filter）
-
-- **过滤模块** (`filter/`): 支持多种过滤策略（黑名单、用户拉黑、已曝光），可组合多个过滤器，支持内存列表和 Store 两种数据源，自动记录过滤原因到 Label
-  - `BlacklistFilter`: 黑名单过滤
-  - `UserBlockFilter`: 用户拉黑过滤
-  - `ExposedFilter`: 已曝光过滤（支持时间窗口）
-
-### 排序模块（Rank）
-
-- **LR 模型排序** (`model/lr.go`, `rank/lr_node.go`): 线性回归模型，可配置权重和偏置，自动写入 `rank_model` label
-- **RPC 模型排序** (`model/rpc.go`, `rank/rpc_node.go`): 通过 HTTP/RPC 调用外部模型服务，支持 GBDT、XGBoost、TensorFlow Serving、TorchServe 等，统一使用 RPCModel（通过 name 参数区分），支持超时配置，自动写入 `rank_model` 和 `rank_type` labels
-  - 请求格式：`{"features": {"ctr": 0.15, "cvr": 0.08}}`
-  - 响应格式：`{"score": 0.85}` 或 `{"prediction": 0.85}`
-
-### 重排模块（ReRank）
-
-- **多样性重排** (`rerank/diversity.go`): 按类别去重（保留首个出现的类别），支持从 Label 或 Meta 读取类别，可配置 label_key
-
-### 特征工程模块（Feature）
-
-- **特征注入** (`feature/enrich.go`): 将用户特征、物品特征、交叉特征组合，支持千人千面个性化推荐，自动添加特征前缀（user_*, item_*, cross_*）
-
-### 配置化
-
-- **配置化 Pipeline** (`pipeline/config.go`, `config/factory.go`): 支持从 YAML/JSON 文件加载配置，NodeFactory 模式构建 Node，支持所有内置 Node 类型的配置化
-
-### 工具模块
-
-- **Label DSL 解释器** (`pkg/dsl/eval.go`): 基于 [CEL (Common Expression Language)](https://github.com/google/cel-go) 实现，支持类型安全、高性能的表达式求值，支持比较、逻辑、字符串、存在性检查等标准 CEL 语法
-
-## 千人千面支持
-
-Reckit 支持千人千面的个性化推荐，通过以下机制实现：
-
-### 1. 用户上下文（RecommendContext）
-
-`RecommendContext` 承载用户信息，贯穿整个 Pipeline：
-
-```go
-rctx := &core.RecommendContext{
-    UserID: 42,
-    Scene:  "feed",
-    UserProfile: map[string]any{
-        "age": 25,
-        "gender": "male",
-        "user_vector": []float64{0.1, 0.2, 0.3}, // 用户 embedding
-    },
-    Realtime: map[string]any{
-        "hour": time.Now().Hour(),
-        "device": "mobile",
-    },
-}
-```
-
-### 2. 特征注入（Feature Enrichment）
-
-特征注入节点将用户特征、物品特征、交叉特征组合：
-
-```go
-enrichNode := &feature.EnrichNode{
-    UserFeaturePrefix:  "user_",
-    ItemFeaturePrefix:  "item_",
-    CrossFeaturePrefix: "cross_",
-}
-```
-
-**特征组合规则**：
-- 用户特征：从 `rctx.UserProfile` 提取，添加 `user_` 前缀
-- 物品特征：从 `item.Features` 提取，添加 `item_` 前缀
-- 交叉特征：自动生成用户-物品交叉特征（如 `user_age * item_price`），添加 `cross_` 前缀
-
-### 3. 个性化召回
-
-- **ANN 召回**：支持从 `rctx.UserProfile["user_vector"]` 获取用户向量
-- **用户历史召回**：基于用户历史行为（浏览、点击、购买）进行个性化召回
-
-### 4. 个性化过滤
-
-- **用户拉黑过滤**：过滤用户拉黑的物品
-- **已曝光过滤**：过滤用户已看过的物品
-
-### 5. 个性化排序
-
-排序模型可以使用注入后的特征（包含用户特征、物品特征、交叉特征）进行个性化排序。
-
-## 功能详解
-
-### 1. Pipeline + Node 架构
+### Pipeline + Node 架构
 
 所有推荐逻辑通过 Pipeline Node 串联，每个 Node 处理 Items、Score、Labels：
 
 ```go
 p := &pipeline.Pipeline{
     Nodes: []pipeline.Node{
-        &recall.Fanout{...},
-        &rank.LRNode{...},
-        &rerank.Diversity{...},
+        &recall.Fanout{...},      // 召回
+        &filter.FilterNode{...},  // 过滤
+        &feature.EnrichNode{...}, // 特征注入
+        &rank.LRNode{...},        // 排序
+        &rerank.Diversity{...},   // 重排
+    },
+    Hooks: []pipeline.PipelineHook{
+        &LoggingHook{},  // 日志 Hook
     },
 }
-
-items, err := p.Run(ctx, rctx, nil)
 ```
 
-### 2. Labels-first 设计
+### 召回模块（Recall）
 
-Labels 自动透传，节点之间不丢失，支持 Merge 和策略驱动：
-
-```go
-item.PutLabel("recall_source", utils.Label{Value: "hot", Source: "recall"})
-item.PutLabel("rank_model", utils.Label{Value: "lr", Source: "rank"})
-```
-
-### 3. Store 抽象层
-
-统一的存储接口，支持 Redis、MySQL、ES、内存等：
-
-```go
-// 内存 Store（测试用）
-memStore := store.NewMemoryStore()
-
-// Redis Store（生产用）
-redisStore, _ := store.NewRedisStore("localhost:6379", 0)
-
-// 使用 KeyValueStore 扩展功能
-if kvStore, ok := redisStore.(store.KeyValueStore); ok {
-    kvStore.ZAdd(ctx, "hot:feed", 100.0, "1")
-    members, _ := kvStore.ZRange(ctx, "hot:feed", 0, 9) // Top 10
-}
-```
-
-### 1. 多路 Recall 并行 + 合并
-
-并发执行多个召回源，支持超时、限流、多种合并策略：
+#### 多路并发召回
 
 ```go
 fanout := &recall.Fanout{
     Sources: []recall.Source{
         &recall.Hot{IDs: []string{"1", "2", "3"}},
-        &recall.ANN{...},
+        &recall.U2IRecall{...},
+        &recall.I2IRecall{...},
     },
     Dedup:         true,
-    Timeout:       2 * time.Second,  // 每个召回源超时
-    MaxConcurrent: 5,                // 最大并发数
-    MergeStrategy: &recall.PriorityMergeStrategy{}, // 使用接口方式
-}
-```
-
-#### 并发机制
-
-- **并发执行**：使用 `golang.org/x/sync/errgroup` 实现多路召回源的并发执行，每个召回源在独立的 goroutine 中运行
-- **并发限流**：通过 `MaxConcurrent` 参数控制最大并发数，使用 semaphore（channel）实现限流，0 表示无限制
-- **超时控制**：每个召回源可设置独立的超时时间（`Timeout`），超时后该召回源返回空结果，不影响其他召回源
-- **容错机制**：单个召回源失败或超时不会中断其他召回源的执行，保证系统稳定性
-- **线程安全**：使用 `sync.Mutex` 保护共享结果集合，确保并发安全
-
-#### 合并策略
-
-通过 `MergeStrategy` 接口实现，支持自定义合并逻辑：
-
-- **`FirstMergeStrategy`（默认策略）**：
-  - 按物品 ID 去重，保留第一个出现的物品
-  - 重复物品的 labels 会合并到第一个物品上
-  - 适用于简单的去重场景
-
-- **`UnionMergeStrategy`**：
-  - 不去重，保留所有召回源的结果
-  - 适用于需要保留所有来源信息的场景（如分析召回效果）
-
-- **`PriorityMergeStrategy`（优先级策略）**：
-  - 按优先级去重，优先级由 `Sources` 数组的索引决定（索引越小优先级越高）
-  - 相同 ID 的物品出现时，保留优先级更高的物品
-  - 优先级低的物品的 labels 会合并到优先级高的物品上
-  - 适用于需要控制召回源优先级的场景
-
-**使用示例**：
-```go
-// 使用内置策略
-fanout := &recall.Fanout{
+    Timeout:       2 * time.Second,
+    MaxConcurrent: 5,
     MergeStrategy: &recall.PriorityMergeStrategy{},
-}
-
-// 自定义合并策略
-type CustomMergeStrategy struct{}
-func (s *CustomMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.Item {
-    // 自定义逻辑
-}
-fanout := &recall.Fanout{
-    MergeStrategy: &CustomMergeStrategy{},
+    ErrorHandler:  &recall.IgnoreErrorHandler{},
 }
 ```
 
-#### 去重机制
+**特性**：
+- ✅ 并发执行多个召回源（errgroup）
+- ✅ 超时控制和限流
+- ✅ 自定义合并策略（First / Union / Priority）
+- ✅ 自定义错误处理策略
+- ✅ 自动记录召回来源 Label
 
-- **去重控制**：通过 `Dedup` 字段控制是否启用去重（`true` 启用，`false` 禁用）
-- **去重实现**：使用 `map[string]*core.Item` 进行 O(1) 时间复杂度的去重
-- **Label 记录**：每个物品会自动记录召回来源信息：
-  - `recall_source`: 召回源名称（如 "recall.hot"、"recall.i2i"）
-  - `recall_priority`: 优先级（0-9，对应 Sources 数组索引）
-- **Label 合并**：去重时会自动合并重复物品的 labels，保留完整的召回轨迹信息，便于后续分析和调试
+#### 支持的召回算法
 
-### 2. Embedding ANN Recall
+| 算法 | 实现 | 说明 |
+|------|------|------|
+| **User-CF** | `U2IRecall` | 用户协同过滤 |
+| **Item-CF** | `I2IRecall` | 物品协同过滤（工业常青树） |
+| **MF/ALS** | `MFRecall` | 矩阵分解 |
+| **Embedding** | `EmbRecall` | 向量检索召回 |
+| **Content** | `ContentRecall` | 内容推荐 |
+| **热门** | `Hot` | 热门物品召回 |
+| **用户历史** | `UserHistory` | 基于用户历史行为 |
 
-向量检索召回，支持余弦相似度和欧氏距离：
+### 排序模块（Rank）
+
+#### 支持的排序模型
+
+| 模型 | 实现 | 说明 |
+|------|------|------|
+| **LR** | `LRNode` | 线性回归 |
+| **DNN** | `DNNNode` | 深度神经网络 |
+| **Wide&Deep** | `WideDeepNode` | Wide&Deep 模型 |
+| **DIN** | `DINNode` | Deep Interest Network |
+| **Two Tower** | `TwoTowerNode` | 双塔模型 |
+| **RPC** | `RPCNode` | 外部模型服务（XGBoost、TF Serving 等） |
+
+#### 使用示例
 
 ```go
-ann := &recall.ANN{
-    Store:      vectorStore,              // 实现 VectorStore 接口
-    UserVector: []float64{0.1, 0.2, 0.3}, // 用户向量
-    TopK:       20,                       // 返回 TopK
-    Metric:     "cosine",                 // cosine / euclidean
+// LR 模型
+lrNode := &rank.LRNode{
+    Model: &model.LRModel{
+        Bias: 0,
+        Weights: map[string]float64{
+            "ctr": 1.2,
+            "cvr": 0.8,
+        },
+    },
+    SortStrategy: &rank.ScoreDescSortStrategy{},
 }
-```
 
-**VectorStore 接口**：
-```go
-type VectorStore interface {
-    GetVector(ctx context.Context, itemID int64) ([]float64, error)
-    ListVectors(ctx context.Context) (map[int64][]float64, error)
-}
-```
-
-### 3. RPC Rank（支持 GBDT / XGBoost / TensorFlow Serving 等）
-
-通过 HTTP/RPC 调用外部模型服务，统一使用 RPCModel。支持 Python 训练的 XGBoost 模型：
-
-```go
-// XGBoost 模型（Python 服务）
+// RPC 模型（XGBoost）
 xgbModel := model.NewRPCModel("xgboost", "http://localhost:8080/predict", 5*time.Second)
 rpcNode := &rank.RPCNode{Model: xgbModel}
-
-// GBDT 模型
-gbdtModel := model.NewRPCModel("gbdt", "http://localhost:8080/predict", 5*time.Second)
-rpcNode := &rank.RPCNode{Model: gbdtModel}
-
-// 通用 RPC 模型（TensorFlow Serving、TorchServe 等）
-rpcModel := model.NewRPCModel("custom", "http://localhost:8080/predict", 5*time.Second)
 ```
 
-**Python 模型服务**：
-- 使用 `python/train/train_xgb.py` 训练 XGBoost 模型
-- 使用 `python/service/server.py` 启动 HTTP 推理服务
-- Go 端通过 `RPCModel` 自动调用，特征名自动对齐（去掉前缀）
-
-**请求格式**：
-```json
-{
-  "features": {
-    "ctr": 0.15,
-    "cvr": 0.08
-  }
-}
-```
-
-**响应格式**：
-```json
-{
-  "score": 0.85
-}
-```
-或
-```json
-{
-  "prediction": 0.85
-}
-```
-
-### 4. 特征注入（Feature Enrichment）
-
-特征注入节点将用户特征、物品特征、交叉特征组合，支持千人千面：
-
-```go
-enrichNode := &feature.EnrichNode{
-    UserFeaturePrefix:  "user_",
-    ItemFeaturePrefix:  "item_",
-    CrossFeaturePrefix: "cross_",
-}
-```
-
-**使用场景**：
-- 在排序前注入特征，让模型使用用户特征进行个性化排序
-- 自动生成交叉特征（用户特征 × 物品特征）
-- 支持自定义特征提取器
-
-**特征示例**：
-```go
-// 注入后的 item.Features 包含：
-// - user_age: 25.0
-// - user_gender: 1.0
-// - item_price: 99.0
-// - item_category: 3.0
-// - cross_age_x_price: 2475.0  // 自动生成的交叉特征
-```
-
-### 5. 过滤模块（Filter）
-
-支持多种过滤策略，包括黑名单、用户拉黑、已曝光等：
+### 过滤模块（Filter）
 
 ```go
 filterNode := &filter.FilterNode{
     Filters: []filter.Filter{
-        // 黑名单过滤
-        filter.NewBlacklistFilter(
-            []int64{100, 200, 300}, // 内存中的黑名单
-            nil,                    // Store 适配器（可选）
-            "blacklist:items",      // Store key（可选）
-        ),
-        // 用户拉黑过滤
-        filter.NewUserBlockFilter(
-            storeAdapter,           // Store 适配器
-            "user:block",          // key 前缀
-        ),
-        // 已曝光过滤
-        filter.NewExposedFilter(
-            storeAdapter,          // Store 适配器
-            "user:exposed",        // key 前缀
-            7*24*3600,             // 时间窗口（7天，秒）
-        ),
+        filter.NewBlacklistFilter([]string{"100", "200"}, nil, ""),
+        filter.NewUserBlockFilter(storeAdapter, "user:block"),
+        filter.NewExposedFilter(storeAdapter, "user:exposed", 7*24*3600),
     },
 }
 ```
 
-**过滤器特性**：
-- **BlacklistFilter**：过滤黑名单中的物品，支持内存列表和 Store
-- **UserBlockFilter**：过滤用户拉黑的物品，从 Store 读取用户拉黑列表
-- **ExposedFilter**：过滤已曝光的物品，支持时间窗口过滤
+### 特征工程模块（Feature）
 
-**Store 适配器**：
 ```go
-storeAdapter := filter.NewStoreAdapter(memStore)
+enrichNode := &feature.EnrichNode{
+    FeatureService:     featureService,
+    UserFeaturePrefix:  "user_",
+    ItemFeaturePrefix:  "item_",
+    CrossFeaturePrefix: "cross_",
+    KeyUserFeatures:    []string{"age", "gender"},
+    KeyItemFeatures:    []string{"ctr", "cvr", "price"},
+}
 ```
 
-### 6. 配置化 Pipeline（YAML / JSON）
+### 配置化 Pipeline
 
-从配置文件加载 Pipeline，无需修改代码：
+支持从 YAML/JSON 配置文件加载 Pipeline：
 
-**配置文件** (`examples/config/pipeline.example.yaml`):
 ```yaml
 pipeline:
   name: "demo_recommendation"
@@ -473,7 +302,7 @@ pipeline:
         merge_strategy: "priority"
         sources:
           - type: "hot"
-            ids: [1, 2, 3, 4, 5]
+            ids: ["1", "2", "3", "4", "5"]
     
     - type: "rank.lr"
       config:
@@ -481,215 +310,110 @@ pipeline:
         weights:
           ctr: 1.2
           cvr: 0.8
-    
-    - type: "rerank.diversity"
-      config:
-        label_key: "category"
 ```
 
-**使用**：
 ```go
-// 从 YAML 加载
-cfg, err := pipeline.LoadFromYAML("examples/config/pipeline.example.yaml")
-
-// 从 JSON 加载
-cfg, err := pipeline.LoadFromJSON("examples/config/pipeline.json")
-
-// 构建 Pipeline
-factory := config.DefaultFactory()
-p, err := cfg.BuildPipeline(factory)
-
-// 运行
-items, err := p.Run(ctx, rctx, nil)
-```
-
-### 7. Label DSL 解释器（基于 CEL）
-
-使用 [CEL (Common Expression Language)](https://github.com/google/cel-go) 实现的表达式引擎，具有类型安全、高性能、线程安全等特性。
-
-```go
-eval := dsl.NewEval(item, rctx)
-
-// 字符串比较
-result, _ := eval.Evaluate(`label.recall_source == "hot"`)
-
-// 数值比较
-result, _ := eval.Evaluate(`item.score > 0.7`)
-
-// 字符串包含
-result, _ := eval.Evaluate(`label.recall_source.contains("hot")`)
-
-// 逻辑组合
-result, _ := eval.Evaluate(`label.category == "A" && item.score > 0.8`)
-
-// 存在性检查
-result, _ := eval.Evaluate(`label.recall_source != null`)
-result, _ := eval.Evaluate(`"nonexist" in label`)
-
-// 复杂表达式
-result, _ := eval.Evaluate(`label.recall_source.contains("ann") || label.recall_source.contains("cf")`)
-```
-
-**支持的语法（CEL 标准语法）**：
-- 比较：`==`, `!=`, `>`, `<`, `>=`, `<=`
-- 逻辑：`&&`, `||`, `!`
-- 字符串：`.contains()`, `in` 运算符
-- 存在性：`!= null`, `"key" in label`
-
-## 完整示例
-
-### 代码方式构建 Pipeline
-
-```go
-ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-defer cancel()
-
-// 初始化 Store
-memStore := store.NewMemoryStore()
-defer memStore.Close()
-
-// 构建 Pipeline
-p := &pipeline.Pipeline{
-    Nodes: []pipeline.Node{
-        &recall.Fanout{
-            Sources: []recall.Source{
-                &recall.Hot{
-                    Store: memStore,
-                    Key:   "hot:feed",
-                },
-            },
-            Dedup:         true,
-            Timeout:       2 * time.Second,
-            MaxConcurrent: 5,
-        },
-        &filter.FilterNode{
-            Filters: []filter.Filter{
-                filter.NewBlacklistFilter([]int64{100, 200}, nil, ""),
-            },
-        },
-        // 特征注入（千人千面）
-        &feature.EnrichNode{
-            UserFeaturePrefix:  "user_",
-            ItemFeaturePrefix:  "item_",
-            CrossFeaturePrefix: "cross_",
-        },
-        &rank.LRNode{
-            Model: &model.LRModel{
-                Bias: 0,
-                Weights: map[string]float64{
-                    "ctr": 1.2,
-                    "cvr": 0.8,
-                },
-            },
-        },
-        &rerank.Diversity{LabelKey: "category"},
-    },
-}
-
-rctx := &core.RecommendContext{
-    UserID: 42,
-    Scene:  "feed",
-}
-
-items, err := p.Run(ctx, rctx, nil)
-```
-
-### 配置方式构建 Pipeline
-
-```go
-// 加载配置
-cfg, _ := pipeline.LoadFromYAML("examples/config/pipeline.example.yaml")
-
-// 构建 Pipeline
+cfg, _ := pipeline.LoadFromYAML("pipeline.yaml")
 factory := config.DefaultFactory()
 p, _ := cfg.BuildPipeline(factory)
-
-// 运行
 items, _ := p.Run(ctx, rctx, nil)
 ```
 
-## 扩展指南
+## 🎯 核心特性详解
 
-### 添加新的 Recall Source
+### Labels-first 设计
 
-1. 实现 `recall.Source` 接口：
+Labels 自动透传，节点之间不丢失，支持 Merge 和策略驱动：
+
 ```go
-type MyRecall struct{}
+item.PutLabel("recall_source", utils.Label{Value: "hot", Source: "recall"})
+item.PutLabel("rank_model", utils.Label{Value: "lr", Source: "rank"})
 
-func (r *MyRecall) Name() string { return "my_recall" }
-func (r *MyRecall) Recall(ctx context.Context, rctx *core.RecommendContext) ([]*core.Item, error) {
-    // 实现召回逻辑
+// 自定义 Label 合并策略
+item.LabelMergeStrategy = &utils.PriorityLabelMergeStrategy{
+    SourcePriority: map[string]int{
+        "recall": 1,
+        "rank":   2,
+    },
 }
 ```
 
-2. 在 `config/factory.go` 中注册构建器：
+### 可扩展性设计
+
+所有策略都通过接口实现，支持自定义：
+
 ```go
-factory.Register("recall.my", buildMyRecallNode)
+// 自定义合并策略
+type CustomMergeStrategy struct{}
+func (s *CustomMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.Item {
+    // 自定义逻辑
+}
+
+// 自定义相似度计算器
+type JaccardSimilarity struct{}
+func (j *JaccardSimilarity) Calculate(x, y []float64) float64 {
+    // 实现 Jaccard 相似度
+}
+
+// 动态注册 Node
+factory := pipeline.NewNodeFactory()
+factory.Register("my.custom.node", buildMyCustomNode)
 ```
 
-### 添加新的过滤器
+### Pipeline Hook 机制
 
-1. 实现 `filter.Filter` 接口：
+支持在执行前后插入逻辑，用于日志、监控、缓存等：
+
 ```go
-type MyFilter struct{}
+type LoggingHook struct{}
 
-func (f *MyFilter) Name() string { return "filter.my" }
-func (f *MyFilter) ShouldFilter(ctx context.Context, rctx *core.RecommendContext, item *core.Item) (bool, error) {
-    // 返回 true 表示过滤，false 表示保留
+func (h *LoggingHook) BeforeNode(ctx context.Context, rctx *core.RecommendContext, 
+    node pipeline.Node, items []*core.Item) ([]*core.Item, error) {
+    fmt.Printf("[Hook] Before %s: %d items\n", node.Name(), len(items))
+    return items, nil
+}
+
+p := &pipeline.Pipeline{
+    Nodes: []pipeline.Node{...},
+    Hooks: []pipeline.PipelineHook{&LoggingHook{}},
 }
 ```
 
-2. 在 `config/factory.go` 中注册构建器：
-```go
-factory.Register("filter", buildFilterNode) // 在 buildFilterNode 中添加新类型
+## 📚 文档
+
+- [架构设计文档](ARCHITECTURE.md) - 详细架构设计说明
+- [召回算法文档](RECALL_ALGORITHMS.md) - 召回算法详解和使用指南
+- [排序模型文档](RANK_MODELS.md) - 排序模型详解
+- [协同过滤文档](COLLABORATIVE_FILTERING.md) - 协同过滤算法详解
+- [可扩展性分析](EXTENSIBILITY_ANALYSIS.md) - 扩展指南和最佳实践
+- [用户画像文档](USER_PROFILE.md) - 用户画像使用指南
+- [AI Coding 指南](CLAUDE.md) - AI 辅助开发指南
+
+## 🗂️ 目录结构
+
+```
+github.com/rushteam/reckit/
+├── core/              # 核心数据结构（Item, Context, UserProfile, Config）
+├── pipeline/          # Pipeline 和 Node 接口
+├── recall/            # 召回模块（Source, Fanout, CF, ANN, Content 等）
+├── filter/            # 过滤模块（Blacklist, UserBlock, Exposed）
+├── rank/              # 排序模块（LR, DNN, DIN, RPC 等）
+├── rerank/            # 重排模块（Diversity）
+├── model/             # 排序模型抽象和实现
+├── feature/           # 特征服务（Enrich, Service, Provider）
+├── store/             # 存储抽象（Memory, Redis）
+├── vector/            # 向量服务（Milvus）
+├── service/           # ML 服务（TF Serving, ANN Service）
+├── feast/             # Feast 集成
+├── config/            # Pipeline 配置工厂
+├── pkg/
+│   ├── utils/         # Label 工具
+│   └── dsl/           # Label DSL 表达式引擎
+├── python/            # Python ML 训练与服务
+└── examples/          # 示例代码
 ```
 
-### 添加新的 Rank Model
-
-1. 实现 `model.RankModel` 接口：
-```go
-type MyModel struct{}
-
-func (m *MyModel) Name() string { return "my_model" }
-func (m *MyModel) Predict(features map[string]float64) (float64, error) {
-    // 实现预测逻辑
-}
-```
-
-2. 创建对应的 Rank Node：
-```go
-type MyRankNode struct {
-    Model model.RankModel
-}
-
-func (n *MyRankNode) Name() string { return "rank.my" }
-func (n *MyRankNode) Kind() pipeline.Kind { return pipeline.KindRank }
-func (n *MyRankNode) Process(ctx context.Context, rctx *core.RecommendContext, items []*core.Item) ([]*core.Item, error) {
-    // 实现排序逻辑
-}
-```
-
-3. 在 `config/factory.go` 中注册构建器
-
-### 添加新的 Store 实现
-
-实现 `store.Store` 或 `store.KeyValueStore` 接口：
-
-```go
-type MyStore struct{}
-
-func (s *MyStore) Name() string { return "my_store" }
-func (s *MyStore) Get(ctx context.Context, key string) ([]byte, error) {
-    // 实现 Get
-}
-// ... 实现其他方法
-```
-
-### 扩展 DSL 表达式
-
-在 `pkg/dsl/eval.go` 中添加新的函数或运算符支持。
-
-## 依赖
+## 🔧 依赖
 
 ### Go 依赖
 
@@ -712,6 +436,20 @@ require (
 - numpy
 - scikit-learn
 
-## 许可证
+## 🤝 贡献
 
-MIT
+欢迎贡献代码！请阅读 [贡献指南](CONTRIBUTING.md) 了解详细信息。
+
+## 📄 许可证
+
+本项目采用 [Apache License 2.0](LICENSE) 许可证。
+
+---
+
+<div align="center">
+
+**Made with ❤️ by [Rush Team](https://github.com/rushteam)**
+
+[文档](readme.md) • [示例](examples/) • [问题反馈](https://github.com/rushteam/reckit/issues)
+
+</div>
