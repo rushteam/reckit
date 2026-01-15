@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"reckit/feature"
+	"github.com/rushteam/reckit/feature"
 )
 
 // FeatureServiceAdapter 将 Feast Client 适配为 feature.FeatureService 接口。

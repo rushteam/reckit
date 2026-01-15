@@ -50,7 +50,7 @@ type Client interface {
 ### 1. 创建 Feast 客户端
 
 ```go
-import "reckit/feast"
+import "github.com/rushteam/reckit/feast"
 
 // 创建 HTTP 客户端
 client, err := feast.NewHTTPClient(
@@ -147,8 +147,8 @@ if err != nil {
 
 ```go
 import (
-    "reckit/feast"
-    "reckit/feature"
+    "github.com/rushteam/reckit/feast"
+    "github.com/rushteam/reckit/feature"
 )
 
 // 创建 Feast 客户端
@@ -189,11 +189,11 @@ fmt.Printf("User features: %+v\n", features)
 
 ```go
 import (
-    "reckit/core"
-    "reckit/feature"
-    "reckit/feast"
-    "reckit/pipeline"
-    "reckit/recall"
+    "github.com/rushteam/reckit/core"
+    "github.com/rushteam/reckit/feature"
+    "github.com/rushteam/reckit/feast"
+    "github.com/rushteam/reckit/pipeline"
+    "github.com/rushteam/reckit/recall"
 )
 
 func main() {
@@ -261,7 +261,7 @@ auth := &feast.AuthConfig{
 ```
 ┌─────────────────────────────────────────┐
 │         FeatureService (接口)            │
-│  (reckit/feature 包)                    │
+│  (github.com/rushteam/reckit/feature 包)                    │
 └─────────────────┬───────────────────────┘
                   │
                   │ 适配

@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"time"
 
-	"reckit/core"
-	"reckit/feature"
-	"reckit/filter"
-	"reckit/model"
-	"reckit/pipeline"
-	"reckit/rank"
-	"reckit/recall"
-	"reckit/rerank"
-	"reckit/store"
+	"github.com/rushteam/reckit/core"
+	"github.com/rushteam/reckit/feature"
+	"github.com/rushteam/reckit/filter"
+	"github.com/rushteam/reckit/model"
+	"github.com/rushteam/reckit/pipeline"
+	"github.com/rushteam/reckit/rank"
+	"github.com/rushteam/reckit/recall"
+	"github.com/rushteam/reckit/rerank"
+	"github.com/rushteam/reckit/store"
 )
 
 // demoItemFeatures 为物品注入基础特征（示例）

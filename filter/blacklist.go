@@ -3,7 +3,7 @@ package filter
 import (
 	"context"
 
-	"reckit/core"
+	"github.com/rushteam/reckit/core"
 )
 
 // BlacklistFilter 是黑名单过滤器，过滤掉黑名单中的物品。

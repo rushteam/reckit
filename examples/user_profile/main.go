@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"time"
 
-	"reckit/core"
-	"reckit/model"
-	"reckit/pipeline"
-	"reckit/pkg/utils"
-	"reckit/rank"
-	"reckit/recall"
-	"reckit/rerank"
-	"reckit/store"
+	"github.com/rushteam/reckit/core"
+	"github.com/rushteam/reckit/model"
+	"github.com/rushteam/reckit/pipeline"
+	"github.com/rushteam/reckit/pkg/utils"
+	"github.com/rushteam/reckit/rank"
+	"github.com/rushteam/reckit/recall"
+	"github.com/rushteam/reckit/rerank"
+	"github.com/rushteam/reckit/store"
 )
 
 func main() {

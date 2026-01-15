@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"reckit/store"
+	"github.com/rushteam/reckit/store"
 )
 
 // StoreFeatureProvider 是基于 Store 的特征提供者实现，采用适配器模式。

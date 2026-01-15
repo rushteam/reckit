@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/cel-go/cel"
 
-	"reckit/core"
+	"github.com/rushteam/reckit/core"
 )
 
 var (

@@ -3,7 +3,7 @@ package filter
 import (
 	"context"
 
-	"reckit/core"
+	"github.com/rushteam/reckit/core"
 )
 
 // ExposedFilter 是已曝光过滤器，过滤掉用户已经看过的物品。

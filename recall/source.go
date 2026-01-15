@@ -3,7 +3,7 @@ package recall
 import (
 	"context"
 
-	"reckit/core"
+	"github.com/rushteam/reckit/core"
 )
 
 // Source 表示一个可复用的召回源（热门/CF/内容/ANN/...）。

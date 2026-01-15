@@ -1,6 +1,6 @@
 package core
 
-import "reckit/pkg/utils"
+import "github.com/rushteam/reckit/pkg/utils"
 
 // Item 是推荐链路中的统一承载结构：特征、分数、元信息、标签。
 // Labels 用于解释与策略驱动；Score 用于排序决策。

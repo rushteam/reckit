@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"reckit/store"
+	"github.com/rushteam/reckit/store"
 )
 
 // StoreCFAdapter 是基于 Store 接口的协同过滤存储适配器。

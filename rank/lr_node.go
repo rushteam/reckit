@@ -4,10 +4,10 @@ import (
 	"context"
 	"sort"
 
-	"reckit/core"
-	"reckit/model"
-	"reckit/pipeline"
-	"reckit/pkg/utils"
+	"github.com/rushteam/reckit/core"
+	"github.com/rushteam/reckit/model"
+	"github.com/rushteam/reckit/pipeline"
+	"github.com/rushteam/reckit/pkg/utils"
 )
 
 // SortStrategy 是排序策略接口，用于自定义物品排序逻辑。

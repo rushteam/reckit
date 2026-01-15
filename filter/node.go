@@ -3,9 +3,9 @@ package filter
 import (
 	"context"
 
-	"reckit/core"
-	"reckit/pipeline"
-	"reckit/pkg/utils"
+	"github.com/rushteam/reckit/core"
+	"github.com/rushteam/reckit/pipeline"
+	"github.com/rushteam/reckit/pkg/utils"
 )
 
 // FilterNode 是过滤 Node，可以组合多个过滤器进行过滤。

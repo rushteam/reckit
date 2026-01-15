@@ -6,8 +6,8 @@ import (
 	"math"
 	"sort"
 
-	"reckit/core"
-	"reckit/pkg/utils"
+	"github.com/rushteam/reckit/core"
+	"github.com/rushteam/reckit/pkg/utils"
 )
 
 // SimilarityCalculator 是相似度计算接口，用于自定义相似度计算方法。

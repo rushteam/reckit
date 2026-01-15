@@ -3,7 +3,7 @@ package filter
 import (
 	"context"
 
-	"reckit/core"
+	"github.com/rushteam/reckit/core"
 )
 
 // UserBlockFilter 是用户拉黑过滤器，过滤掉用户拉黑的物品。

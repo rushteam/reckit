@@ -6,13 +6,13 @@ import (
 	"log"
 	"time"
 
-	"reckit/core"
-	"reckit/feast"
-	"reckit/feature"
-	"reckit/model"
-	"reckit/pipeline"
-	"reckit/rank"
-	"reckit/recall"
+	"github.com/rushteam/reckit/core"
+	"github.com/rushteam/reckit/feast"
+	"github.com/rushteam/reckit/feature"
+	"github.com/rushteam/reckit/model"
+	"github.com/rushteam/reckit/pipeline"
+	"github.com/rushteam/reckit/rank"
+	"github.com/rushteam/reckit/recall"
 )
 
 func main() {

@@ -3,9 +3,9 @@ package recall
 import (
 	"context"
 
-	"reckit/core"
-	"reckit/pipeline"
-	"reckit/pkg/utils"
+	"github.com/rushteam/reckit/core"
+	"github.com/rushteam/reckit/pipeline"
+	"github.com/rushteam/reckit/pkg/utils"
 )
 
 // UserHistory 是基于用户 historical 行为的个性化召回源。

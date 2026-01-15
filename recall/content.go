@@ -5,8 +5,8 @@ import (
 	"math"
 	"sort"
 
-	"reckit/core"
-	"reckit/pkg/utils"
+	"github.com/rushteam/reckit/core"
+	"github.com/rushteam/reckit/pkg/utils"
 )
 
 // ContentStore 是基于内容的推荐的存储接口。

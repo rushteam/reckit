@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"reckit/service"
+	"github.com/rushteam/reckit/service"
 )
 
 func main() {

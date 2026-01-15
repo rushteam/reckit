@@ -3,7 +3,7 @@ package pipeline
 import (
 	"context"
 
-	"reckit/core"
+	"github.com/rushteam/reckit/core"
 )
 
 // PipelineHook 是 Pipeline 执行过程中的 Hook 接口，用于实现中间件功能。

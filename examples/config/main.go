@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"reckit/config"
-	"reckit/core"
-	"reckit/pipeline"
+	"github.com/rushteam/reckit/config"
+	"github.com/rushteam/reckit/core"
+	"github.com/rushteam/reckit/pipeline"
 )
 
 func main() {

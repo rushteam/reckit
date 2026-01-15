@@ -3,7 +3,7 @@ package feature
 import (
 	"context"
 
-	"reckit/core"
+	"github.com/rushteam/reckit/core"
 )
 
 // DefaultFallbackStrategy 是默认降级策略，当特征服务不可用时，

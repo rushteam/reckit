@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"reckit/store"
+	"github.com/rushteam/reckit/store"
 )
 
 // StoreContentAdapter 是基于 Store 接口的内容推荐存储适配器。

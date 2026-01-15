@@ -4,8 +4,8 @@ import (
 	"context"
 	"sort"
 
-	"reckit/core"
-	"reckit/pkg/utils"
+	"github.com/rushteam/reckit/core"
+	"github.com/rushteam/reckit/pkg/utils"
 )
 
 // MFStore 是矩阵分解的存储接口，用于获取用户和物品的隐向量。

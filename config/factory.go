@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"time"
 
-	"reckit/feature"
-	"reckit/filter"
-	"reckit/model"
-	"reckit/pipeline"
-	"reckit/rank"
-	"reckit/recall"
-	"reckit/rerank"
+	"github.com/rushteam/reckit/feature"
+	"github.com/rushteam/reckit/filter"
+	"github.com/rushteam/reckit/model"
+	"github.com/rushteam/reckit/pipeline"
+	"github.com/rushteam/reckit/rank"
+	"github.com/rushteam/reckit/recall"
+	"github.com/rushteam/reckit/rerank"
 )
 
 // DefaultFactory 返回一个包含所有内置 Node 的默认工厂。

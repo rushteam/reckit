@@ -1,4 +1,4 @@
-module reckit
+module github.com/rushteam/reckit
 
 go 1.25.5
 

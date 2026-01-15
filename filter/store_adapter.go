@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"reckit/store"
+	"github.com/rushteam/reckit/store"
 )
 
 // StoreAdapter 将 store.Store 适配为过滤器所需的存储接口。

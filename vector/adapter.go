@@ -3,7 +3,7 @@ package vector
 import (
 	"context"
 
-	"reckit/recall"
+	"github.com/rushteam/reckit/recall"
 )
 
 // VectorStoreAdapter 将 ANNService 适配为 recall.VectorStore 接口。

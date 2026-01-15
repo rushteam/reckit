@@ -1,6 +1,6 @@
 package core
 
-import "reckit/pkg/utils"
+import "github.com/rushteam/reckit/pkg/utils"
 
 // RecommendContext 承载用户/场景/实时信息，贯穿整个 Pipeline 透传。
 //

@@ -49,7 +49,7 @@ Request ──────▶ │  Context │  用户画像 / 实时特征
 ## 目录结构
 
 ```
-reckit/
+github.com/rushteam/reckit/
 ├── core/          # Item + RecommendContext（核心数据结构）
 ├── pipeline/      # Node 接口 + Pipeline 执行器 + 配置加载
 ├── recall/        # Recall Source + Fanout Node + ANN 召回

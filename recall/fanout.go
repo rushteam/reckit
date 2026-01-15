@@ -7,9 +7,9 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"reckit/core"
-	"reckit/pipeline"
-	"reckit/pkg/utils"
+	"github.com/rushteam/reckit/core"
+	"github.com/rushteam/reckit/pipeline"
+	"github.com/rushteam/reckit/pkg/utils"
 )
 
 // MergeStrategy 是合并策略接口，用于自定义多路召回结果的合并逻辑。

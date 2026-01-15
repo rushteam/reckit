@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"reckit/core"
-	"reckit/pipeline"
+	"github.com/rushteam/reckit/core"
+	"github.com/rushteam/reckit/pipeline"
 )
 
 // EnrichNode 是特征注入节点，将用户特征、物品特征、交叉特征组合。

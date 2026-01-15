@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"reckit/store"
+	"github.com/rushteam/reckit/store"
 )
 
 // StoreMFAdapter 是基于 Store 接口的矩阵分解存储适配器。

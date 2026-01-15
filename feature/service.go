@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"reckit/core"
+	"github.com/rushteam/reckit/core"
 )
 
 var (

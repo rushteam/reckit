@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 
-	"reckit/core"
-	"reckit/pipeline"
-	"reckit/store"
+	"github.com/rushteam/reckit/core"
+	"github.com/rushteam/reckit/pipeline"
+	"github.com/rushteam/reckit/store"
 )
 
 // Hot 是热门召回源，支持从 Store 读取热门物品列表。

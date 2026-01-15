@@ -6,10 +6,10 @@ import (
 	"sort"
 	"strconv"
 
-	"reckit/core"
-	"reckit/model"
-	"reckit/pipeline"
-	"reckit/pkg/utils"
+	"github.com/rushteam/reckit/core"
+	"github.com/rushteam/reckit/model"
+	"github.com/rushteam/reckit/pipeline"
+	"github.com/rushteam/reckit/pkg/utils"
 )
 
 // DINNode 是使用 DIN 模型的排序 Node。

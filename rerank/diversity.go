@@ -3,8 +3,8 @@ package rerank
 import (
 	"context"
 
-	"reckit/core"
-	"reckit/pipeline"
+	"github.com/rushteam/reckit/core"
+	"github.com/rushteam/reckit/pipeline"
 )
 
 // Diversity 是一个简单的多样性 ReRank 示例：按类别去重（保留首个出现的类别）。

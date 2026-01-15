@@ -6,14 +6,14 @@ import (
 	"strconv"
 	"time"
 
-	"reckit/core"
-	"reckit/feature"
-	"reckit/model"
-	"reckit/pipeline"
-	"reckit/rank"
-	"reckit/recall"
-	"reckit/rerank"
-	"reckit/store"
+	"github.com/rushteam/reckit/core"
+	"github.com/rushteam/reckit/feature"
+	"github.com/rushteam/reckit/model"
+	"github.com/rushteam/reckit/pipeline"
+	"github.com/rushteam/reckit/rank"
+	"github.com/rushteam/reckit/recall"
+	"github.com/rushteam/reckit/rerank"
+	"github.com/rushteam/reckit/store"
 )
 
 type enrichDemoFeatures struct{}

@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 
-	"reckit/core"
-	"reckit/pkg/dsl"
-	"reckit/pkg/utils"
+	"github.com/rushteam/reckit/core"
+	"github.com/rushteam/reckit/pkg/dsl"
+	"github.com/rushteam/reckit/pkg/utils"
 )
 
 func main() {

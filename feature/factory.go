@@ -3,7 +3,7 @@ package feature
 import (
 	"time"
 
-	"reckit/store"
+	"github.com/rushteam/reckit/store"
 )
 
 // FeatureServiceFactory 是特征服务工厂，采用工厂模式创建不同类型的特征服务。

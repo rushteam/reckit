@@ -3,7 +3,7 @@ package pipeline
 import (
 	"context"
 
-	"reckit/core"
+	"github.com/rushteam/reckit/core"
 )
 
 // Kind 用于标记 Node 类型，方便观测/治理/编排（例如按阶段打点）。

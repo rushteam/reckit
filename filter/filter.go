@@ -3,7 +3,7 @@ package filter
 import (
 	"context"
 
-	"reckit/core"
+	"github.com/rushteam/reckit/core"
 )
 
 // Filter 是过滤器的抽象接口，用于判断一个 Item 是否应该被过滤掉。

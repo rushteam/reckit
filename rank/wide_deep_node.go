@@ -4,10 +4,10 @@ import (
 	"context"
 	"sort"
 
-	"reckit/core"
-	"reckit/model"
-	"reckit/pipeline"
-	"reckit/pkg/utils"
+	"github.com/rushteam/reckit/core"
+	"github.com/rushteam/reckit/model"
+	"github.com/rushteam/reckit/pipeline"
+	"github.com/rushteam/reckit/pkg/utils"
 )
 
 // WideDeepNode 是使用 Wide&Deep 模型的排序 Node。

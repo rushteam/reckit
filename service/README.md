@@ -33,7 +33,7 @@ type MLService interface {
 **使用示例**：
 
 ```go
-import "reckit/service"
+import "github.com/rushteam/reckit/service"
 
 // 使用 REST API
 tfService := service.NewTFServingClient(
@@ -70,7 +70,7 @@ err := tfService.Health(ctx)
 **使用示例**：
 
 ```go
-import "reckit/service"
+import "github.com/rushteam/reckit/service"
 
 // 创建 ANN 服务客户端
 annService := service.NewANNServiceClient(
@@ -97,7 +97,7 @@ resp, err := annService.Predict(ctx, &service.PredictRequest{
 使用工厂方法根据配置创建服务实例：
 
 ```go
-import "reckit/service"
+import "github.com/rushteam/reckit/service"
 
 // TF Serving 配置
 config := &service.ServiceConfig{
@@ -152,8 +152,8 @@ type PredictResponse struct {
 
 ```go
 import (
-    "reckit/model"
-    "reckit/service"
+    "github.com/rushteam/reckit/model"
+    "github.com/rushteam/reckit/service"
 )
 
 // 创建 TF Serving 服务
@@ -172,8 +172,8 @@ rankNode := &rank.RPCNode{
 
 ```go
 import (
-    "reckit/vector"
-    "reckit/service"
+    "github.com/rushteam/reckit/vector"
+    "github.com/rushteam/reckit/service"
 )
 
 // 创建 ANN 服务客户端

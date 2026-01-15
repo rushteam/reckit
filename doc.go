@@ -6,7 +6,7 @@
 // - Node 可扩展: 自定义 Node 即可插拔扩展（本地或 RPC 模型均可）
 package reckit
 
-import "reckit/pipeline"
+import "github.com/rushteam/reckit/pipeline"
 
 // 轻量 facade：便于用户直接 import "reckit" 使用核心抽象。
 type Pipeline = pipeline.Pipeline

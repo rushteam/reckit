@@ -5,8 +5,8 @@ import (
 	"math"
 	"sort"
 
-	"reckit/core"
-	"reckit/pkg/utils"
+	"github.com/rushteam/reckit/core"
+	"github.com/rushteam/reckit/pkg/utils"
 )
 
 // ANN 是 Embedding 向量检索召回源（Approximate Nearest Neighbor）。

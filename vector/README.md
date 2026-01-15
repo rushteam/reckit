@@ -53,7 +53,7 @@ type ANNService interface {
 ### 1. 创建 Milvus 服务
 
 ```go
-import "reckit/vector"
+import "github.com/rushteam/reckit/vector"
 
 // 创建 Milvus 服务
 milvusService := vector.NewMilvusService(
@@ -151,8 +151,8 @@ err := milvusService.DropCollection(ctx, "items")
 
 ```go
 import (
-    "reckit/recall"
-    "reckit/vector"
+    "github.com/rushteam/reckit/recall"
+    "github.com/rushteam/reckit/vector"
 )
 
 // 创建适配器
@@ -178,10 +178,10 @@ items, err := ann.Recall(ctx, rctx)
 
 ```go
 import (
-    "reckit/core"
-    "reckit/pipeline"
-    "reckit/recall"
-    "reckit/vector"
+    "github.com/rushteam/reckit/core"
+    "github.com/rushteam/reckit/pipeline"
+    "github.com/rushteam/reckit/recall"
+    "github.com/rushteam/reckit/vector"
 )
 
 // 创建 Milvus 服务
