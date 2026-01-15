@@ -228,6 +228,254 @@ func (n *userProfileDrivenRerank) Process(
 }
 ```
 
+## SetBucket 实验桶使用指南
+
+### 基本用法
+
+`SetBucket` 用于设置实验桶（A/B 测试和策略切换），是用户画像中用于控制策略切换的核心机制。
+
+#### 1. 设置实验桶
+
+```go
+// 创建用户画像
+userProfile := core.NewUserProfile(userID)
+
+// 设置实验桶
+// 参数：key（实验名称），value（实验组/策略版本）
+userProfile.SetBucket("diversity", "strong")    // 多样性策略：强多样性
+userProfile.SetBucket("recall", "v2")            // 召回策略：版本2
+userProfile.SetBucket("rank", "deep_model")     // 排序策略：深度模型
+userProfile.SetBucket("rerank", "diversity_v1") // 重排策略：多样性版本1
+```
+
+#### 2. 获取实验桶值
+
+```go
+// 在 Node 中获取实验桶值
+diversityStrategy := rctx.User.GetBucket("diversity")
+recallVersion := rctx.User.GetBucket("recall")
+rankStrategy := rctx.User.GetBucket("rank")
+```
+
+### 在 Node 中使用
+
+#### Recall Node：根据实验桶选择召回策略
+
+```go
+type recallWithBucket struct{}
+
+func (r *recallWithBucket) Recall(
+    ctx context.Context,
+    rctx *core.RecommendContext,
+) ([]*core.Item, error) {
+    // 根据实验桶选择召回策略
+    recallVersion := rctx.User.GetBucket("recall")
+    
+    var items []*core.Item
+    switch recallVersion {
+    case "v2":
+        // 使用新版本召回：更多个性化
+        items = personalizedRecall()
+    case "v1":
+        // 使用旧版本召回：热门召回
+        items = hotRecall()
+    default:
+        // 默认策略
+        items = defaultRecall()
+    }
+    
+    return items, nil
+}
+```
+
+#### Rank Node：根据实验桶选择排序策略
+
+```go
+type rankWithBucket struct{}
+
+func (r *rankWithBucket) Process(
+    ctx context.Context,
+    rctx *core.RecommendContext,
+    items []*core.Item,
+) ([]*core.Item, error) {
+    // 根据实验桶选择排序策略
+    rankStrategy := rctx.User.GetBucket("rank")
+    
+    for _, item := range items {
+        switch rankStrategy {
+        case "deep_model":
+            // 使用深度模型排序
+            item.Score = deepModelPredict(item)
+        case "lr_model":
+            // 使用 LR 模型排序
+            item.Score = lrModelPredict(item)
+        default:
+            // 默认排序
+            item.Score = defaultScore(item)
+        }
+    }
+    
+    return items, nil
+}
+```
+
+#### ReRank Node：根据实验桶调整多样性
+
+```go
+type rerankWithBucket struct{}
+
+func (r *rerankWithBucket) Process(
+    ctx context.Context,
+    rctx *core.RecommendContext,
+    items []*core.Item,
+) ([]*core.Item, error) {
+    // 根据实验桶调整多样性
+    diversityStrategy := rctx.User.GetBucket("diversity")
+    
+    switch diversityStrategy {
+    case "strong":
+        // 强多样性：降低相似物品的分数
+        for _, item := range items {
+            item.Score *= 0.7
+        }
+    case "weak":
+        // 弱多样性：保持原分数
+        // 不做调整
+    default:
+        // 默认策略
+    }
+    
+    return items, nil
+}
+```
+
+### 使用场景
+
+#### 1. A/B 测试：不同用户使用不同策略版本
+
+```go
+// 根据用户 ID 分桶进行 A/B 测试
+if userID % 2 == 0 {
+    userProfile.SetBucket("recall", "v2")  // 实验组：50% 用户
+} else {
+    userProfile.SetBucket("recall", "v1")  // 对照组：50% 用户
+}
+
+// 在 Recall Node 中根据实验桶选择策略
+recallVersion := rctx.User.GetBucket("recall")
+if recallVersion == "v2" {
+    // 使用新策略
+} else {
+    // 使用旧策略
+}
+```
+
+#### 2. 策略切换：根据用户特征选择策略
+
+```go
+// 根据用户年龄选择多样性策略
+if userProfile.Age > 30 {
+    userProfile.SetBucket("diversity", "strong")  // 年龄大的用户使用强多样性
+} else {
+    userProfile.SetBucket("diversity", "weak")   // 年轻用户使用弱多样性
+}
+
+// 根据用户活跃度选择排序策略
+if userProfile.GetInterestWeight("active") > 0.8 {
+    userProfile.SetBucket("rank", "deep_model")   // 活跃用户使用深度模型
+} else {
+    userProfile.SetBucket("rank", "lr_model")    // 普通用户使用 LR 模型
+}
+```
+
+#### 3. 灰度发布：逐步切换策略
+
+```go
+// 灰度发布：10% 用户使用新模型
+if userID % 100 < 10 {
+    userProfile.SetBucket("rank", "new_model")   // 10% 用户使用新模型
+} else {
+    userProfile.SetBucket("rank", "old_model")   // 90% 用户使用旧模型
+}
+
+// 逐步扩大灰度范围
+// 第一阶段：1% 用户
+// 第二阶段：10% 用户
+// 第三阶段：50% 用户
+// 第四阶段：100% 用户
+```
+
+#### 4. 多实验并行：同时进行多个 A/B 测试
+
+```go
+// 同时进行多个实验
+userProfile.SetBucket("recall", "v2")        // 召回实验
+userProfile.SetBucket("rank", "deep_model")  // 排序实验
+userProfile.SetBucket("diversity", "strong") // 多样性实验
+
+// 在各自的 Node 中独立判断
+// Recall Node: 根据 "recall" 实验桶选择策略
+// Rank Node: 根据 "rank" 实验桶选择策略
+// ReRank Node: 根据 "diversity" 实验桶选择策略
+```
+
+### 完整示例
+
+完整示例请参考：`examples/bucket_usage/main.go`
+
+运行示例：
+```bash
+go run ./examples/bucket_usage
+```
+
+输出示例：
+```
+=== 实验桶使用示例 ===
+多样性策略: strong
+召回策略: v2
+排序策略: deep_model
+重排策略: diversity_v1
+使用召回策略 v2：个性化召回
+使用强多样性策略
+
+=== 推荐结果 ===
+1. 物品 1 (分数: 0.6300)
+   - 策略: recall_v2|rank_deep_model|rerank_diversity_strong
+2. 物品 2 (分数: 0.6300)
+   - 策略: recall_v2|rank_deep_model|rerank_diversity_strong
+3. 物品 3 (分数: 0.6300)
+   - 策略: recall_v2|rank_deep_model|rerank_diversity_strong
+```
+
+### 最佳实践
+
+1. **实验桶命名规范**
+   - 使用有意义的 key：`recall`、`rank`、`diversity` 等
+   - value 使用版本号或策略名称：`v1`、`v2`、`strong`、`weak` 等
+
+2. **实验桶设置时机**
+   - 在用户画像构建时设置（离线/实时）
+   - 在请求入口处根据用户特征设置
+   - 支持从外部实验平台获取并设置
+
+3. **实验桶使用原则**
+   - 每个 Node 独立判断自己的实验桶
+   - 避免实验桶之间的相互影响
+   - 记录实验桶信息到 Label 中，便于分析
+
+4. **实验桶持久化**
+   - 可以将实验桶信息存储到用户画像存储中
+   - 支持实验桶的版本管理和回滚
+   - 记录实验桶变更历史
+
+### 总结
+
+- **SetBucket(key, value)**：设置实验桶，key 为实验名称，value 为实验组/策略版本
+- **GetBucket(key)**：获取实验桶值，返回对应的策略版本
+- **主要用途**：A/B 测试、策略切换、灰度发布、多实验并行
+- **使用位置**：在 Recall、Rank、ReRank 等 Node 中使用
+- **优势**：灵活控制不同用户使用不同策略，便于进行实验和迭代
+
 ## Label 回写和 Online Learning
 
 ### 用户点击回写
