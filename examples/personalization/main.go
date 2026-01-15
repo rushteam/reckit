@@ -77,7 +77,7 @@ func main() {
 			// 召回
 			&recall.Fanout{
 				Sources: []recall.Source{
-					&recall.Hot{IDs: []int64{1, 2, 3, 4, 5}},
+					&recall.Hot{IDs: []string{"1", "2", "3", "4", "5"}},
 				},
 				Dedup: true,
 			},
@@ -101,7 +101,7 @@ func main() {
 
 	// 创建用户上下文（包含用户画像）
 	rctx := &core.RecommendContext{
-		UserID: 42,
+		UserID: "42",
 		Scene:  "feed",
 		UserProfile: map[string]any{
 			"age":    25.0,
@@ -123,9 +123,9 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Printf("千人千面推荐结果（用户 ID: %d）:\n", rctx.UserID)
+	fmt.Printf("千人千面推荐结果（用户 ID: %s）:\n", rctx.UserID)
 	for i, it := range items {
-		fmt.Printf("#%d id=%d score=%.4f\n", i, it.ID, it.Score)
+		fmt.Printf("#%d id=%s score=%.4f\n", i, it.ID, it.Score)
 		fmt.Printf("  特征: %v\n", it.Features)
 		fmt.Printf("  Labels: %v\n", it.Labels)
 		fmt.Println()

@@ -7,7 +7,6 @@ import (
 )
 
 // UserBlockFilter 是用户拉黑过滤器，过滤掉用户拉黑的物品。
-// 支持从内存列表或 Store 读取用户的拉黑列表。
 type UserBlockFilter struct {
 	// Store 用于从存储中读取用户拉黑列表
 	Store UserBlockStore
@@ -16,10 +15,10 @@ type UserBlockFilter struct {
 	KeyPrefix string
 }
 
-// UserBlockStore 是用户拉黑存储接口，用于从外部存储读取用户拉黑列表。
+// UserBlockStore 是用户拉黑存储接口。
 type UserBlockStore interface {
 	// GetUserBlocks 获取用户拉黑的物品 ID 列表
-	GetUserBlocks(ctx context.Context, userID int64, keyPrefix string) ([]int64, error)
+	GetUserBlocks(ctx context.Context, userID string, keyPrefix string) ([]string, error)
 }
 
 // NewUserBlockFilter 创建一个用户拉黑过滤器。
@@ -43,7 +42,7 @@ func (f *UserBlockFilter) ShouldFilter(
 	rctx *core.RecommendContext,
 	item *core.Item,
 ) (bool, error) {
-	if item == nil || rctx == nil || rctx.UserID == 0 {
+	if item == nil || rctx == nil || rctx.UserID == "" {
 		return false, nil
 	}
 
@@ -58,7 +57,6 @@ func (f *UserBlockFilter) ShouldFilter(
 
 	blockedIDs, err := f.Store.GetUserBlocks(ctx, rctx.UserID, keyPrefix)
 	if err != nil {
-		// 读取失败时不过滤，避免误杀
 		return false, nil
 	}
 

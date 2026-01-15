@@ -68,7 +68,7 @@ func (s *BaseFeatureService) Name() string {
 	return s.provider.Name()
 }
 
-func (s *BaseFeatureService) GetUserFeatures(ctx context.Context, userID int64) (map[string]float64, error) {
+func (s *BaseFeatureService) GetUserFeatures(ctx context.Context, userID string) (map[string]float64, error) {
 	// 1. 尝试从缓存获取
 	if s.enableCache && s.cache != nil {
 		if features, ok := s.cache.GetUserFeatures(ctx, userID); ok {
@@ -108,13 +108,13 @@ func (s *BaseFeatureService) GetUserFeatures(ctx context.Context, userID int64) 
 	return features, nil
 }
 
-func (s *BaseFeatureService) BatchGetUserFeatures(ctx context.Context, userIDs []int64) (map[int64]map[string]float64, error) {
+func (s *BaseFeatureService) BatchGetUserFeatures(ctx context.Context, userIDs []string) (map[string]map[string]float64, error) {
 	if len(userIDs) == 0 {
-		return make(map[int64]map[string]float64), nil
+		return make(map[string]map[string]float64), nil
 	}
 
-	result := make(map[int64]map[string]float64)
-	missedIDs := make([]int64, 0)
+	result := make(map[string]map[string]float64)
+	missedIDs := make([]string, 0)
 
 	// 1. 尝试从缓存获取
 	if s.enableCache && s.cache != nil {
@@ -169,7 +169,7 @@ func (s *BaseFeatureService) BatchGetUserFeatures(ctx context.Context, userIDs [
 	return result, nil
 }
 
-func (s *BaseFeatureService) GetItemFeatures(ctx context.Context, itemID int64) (map[string]float64, error) {
+func (s *BaseFeatureService) GetItemFeatures(ctx context.Context, itemID string) (map[string]float64, error) {
 	// 1. 尝试从缓存获取
 	if s.enableCache && s.cache != nil {
 		if features, ok := s.cache.GetItemFeatures(ctx, itemID); ok {
@@ -208,13 +208,13 @@ func (s *BaseFeatureService) GetItemFeatures(ctx context.Context, itemID int64) 
 	return features, nil
 }
 
-func (s *BaseFeatureService) BatchGetItemFeatures(ctx context.Context, itemIDs []int64) (map[int64]map[string]float64, error) {
+func (s *BaseFeatureService) BatchGetItemFeatures(ctx context.Context, itemIDs []string) (map[string]map[string]float64, error) {
 	if len(itemIDs) == 0 {
-		return make(map[int64]map[string]float64), nil
+		return make(map[string]map[string]float64), nil
 	}
 
-	result := make(map[int64]map[string]float64)
-	missedIDs := make([]int64, 0)
+	result := make(map[string]map[string]float64)
+	missedIDs := make([]string, 0)
 
 	// 1. 尝试从缓存获取
 	if s.enableCache && s.cache != nil {
@@ -269,7 +269,7 @@ func (s *BaseFeatureService) BatchGetItemFeatures(ctx context.Context, itemIDs [
 	return result, nil
 }
 
-func (s *BaseFeatureService) GetRealtimeFeatures(ctx context.Context, userID, itemID int64) (map[string]float64, error) {
+func (s *BaseFeatureService) GetRealtimeFeatures(ctx context.Context, userID, itemID string) (map[string]float64, error) {
 	features, err := s.provider.GetRealtimeFeatures(ctx, userID, itemID)
 	if err != nil {
 		// 记录错误

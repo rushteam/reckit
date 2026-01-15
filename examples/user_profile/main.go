@@ -20,7 +20,7 @@ func main() {
 	defer cancel()
 
 	// 1. 创建用户画像
-	userProfile := core.NewUserProfile(1)
+	userProfile := core.NewUserProfile("1")
 	userProfile.Age = 25
 	userProfile.Gender = "male"
 	userProfile.Location = "beijing"
@@ -36,7 +36,7 @@ func main() {
 
 	// 2. 创建 RecommendContext（包含用户画像）
 	rctx := &core.RecommendContext{
-		UserID:  1,
+		UserID:  "1",
 		Scene:   "feed",
 		User:    userProfile,
 		Labels:  make(map[string]utils.Label),
@@ -95,7 +95,7 @@ func main() {
 	// 5. 输出结果
 	fmt.Println("=== 用户画像驱动的推荐结果 ===")
 	for i, item := range items {
-		fmt.Printf("%d. 物品 %d (分数: %.4f)\n", i+1, item.ID, item.Score)
+		fmt.Printf("%d. 物品 %s (分数: %.4f)\n", i+1, item.ID, item.Score)
 		// 输出相关标签
 		if item.Labels != nil {
 			for k, v := range item.Labels {
@@ -109,12 +109,12 @@ func main() {
 	// 6. 模拟用户点击，回写 Label
 	fmt.Println("\n=== 用户点击回写 ===")
 	clickedItemID := items[0].ID
-	rctx.PutLabel(fmt.Sprintf("user.click.%d", clickedItemID), utils.Label{
+	rctx.PutLabel(fmt.Sprintf("user.click.%s", clickedItemID), utils.Label{
 		Value:  "1",
 		Source: "feedback",
 	})
 	userProfile.AddRecentClick(clickedItemID, 100)
-	fmt.Printf("用户点击物品 %d，已回写到 UserProfile\n", clickedItemID)
+	fmt.Printf("用户点击物品 %s，已回写到 UserProfile\n", clickedItemID)
 
 	// 7. Online Learning：根据点击更新兴趣
 	if category, ok := items[0].Labels["category"]; ok {
@@ -139,7 +139,7 @@ func (r *recallWithCategory) Recall(
 	ctx context.Context,
 	rctx *core.RecommendContext,
 ) ([]*core.Item, error) {
-	ids := []int64{1, 2, 3, 4, 5}
+	ids := []string{"1", "2", "3", "4", "5"}
 	out := make([]*core.Item, 0, len(ids))
 	categories := []string{"tech", "game", "news", "music", "sports"}
 	for i, id := range ids {

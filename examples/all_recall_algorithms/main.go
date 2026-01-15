@@ -27,27 +27,13 @@ func main() {
 	recallSources := createRecallSources(ctx, memStore)
 
 	// 4. 测试各个召回算法
-	fmt.Println("=== 召回算法测试 ===\n")
+	fmt.Println("=== 召回算法测试 ===")
 
-	// User-CF (U2IRecall)
-	fmt.Println("1. User-CF (U2IRecall)")
-	testRecall(ctx, recallSources["u2i"], 1)
-
-	// Item-CF (I2IRecall)
-	fmt.Println("\n2. Item-CF (I2IRecall)")
-	testRecall(ctx, recallSources["i2i"], 1)
-
-	// MF/ALS (MFRecall)
-	fmt.Println("\n3. MF/ALS (MFRecall)")
-	testRecall(ctx, recallSources["mf"], 1)
-
-	// Embedding (EmbRecall)
-	fmt.Println("\n4. Embedding (EmbRecall)")
-	testRecall(ctx, recallSources["emb"], 1)
-
-	// Content (ContentRecall)
-	fmt.Println("\n5. Content (ContentRecall)")
-	testRecall(ctx, recallSources["content"], 1)
+	testRecall(ctx, recallSources["u2i"], "1")
+	testRecall(ctx, recallSources["i2i"], "1")
+	testRecall(ctx, recallSources["mf"], "1")
+	testRecall(ctx, recallSources["emb"], "1")
+	testRecall(ctx, recallSources["content"], "1")
 
 	// 5. 集成到 Pipeline
 	fmt.Println("\n=== 集成到 Pipeline ===")
@@ -58,77 +44,64 @@ func setupTestData(ctx context.Context, memStore store.Store) {
 	// 设置协同过滤数据
 	cfStore := recall.NewStoreCFAdapter(memStore, "cf")
 	cfInteractions := []struct {
-		UserID int64
-		ItemID int64
+		UserID string
+		ItemID string
 		Score  float64
 	}{
-		{1, 1, 5.0}, {1, 2, 4.0}, {1, 3, 5.0},
-		{2, 2, 5.0}, {2, 3, 4.0}, {2, 4, 5.0},
-		{3, 4, 4.0}, {3, 5, 5.0}, {3, 6, 4.0},
+		{"1", "1", 5.0}, {"1", "2", 4.0}, {"1", "3", 5.0},
+		{"2", "2", 5.0}, {"2", "3", 4.0}, {"2", "4", 5.0},
+		{"3", "4", 4.0}, {"3", "5", 5.0}, {"3", "6", 4.0},
 	}
 	recall.SetupCFTestData(ctx, cfStore, cfInteractions)
 
-	// 设置矩阵分解数据（用户和物品隐向量）
-	// 用户1的隐向量 [0.5, 0.3, 0.2]
+	// 设置矩阵分解数据
 	user1Vec, _ := json.Marshal([]float64{0.5, 0.3, 0.2})
 	memStore.Set(ctx, "mf:user:1", user1Vec)
 
-	// 物品隐向量
-	itemVectors := map[int64][]float64{
-		1: {0.4, 0.3, 0.3},
-		2: {0.5, 0.2, 0.3},
-		3: {0.3, 0.4, 0.3},
-		4: {0.2, 0.3, 0.5},
-		5: {0.4, 0.4, 0.2},
+	itemVectors := map[string][]float64{
+		"1": {0.4, 0.3, 0.3},
+		"2": {0.5, 0.2, 0.3},
+		"3": {0.3, 0.4, 0.3},
+		"4": {0.2, 0.3, 0.5},
+		"5": {0.4, 0.4, 0.2},
 	}
-	itemIDs := make([]int64, 0, len(itemVectors))
+	itemIDs := make([]string, 0, len(itemVectors))
 	for itemID, vec := range itemVectors {
 		itemIDs = append(itemIDs, itemID)
 		vecData, _ := json.Marshal(vec)
-		memStore.Set(ctx, fmt.Sprintf("mf:item:%d", itemID), vecData)
+		memStore.Set(ctx, fmt.Sprintf("mf:item:%s", itemID), vecData)
 	}
 	itemsData, _ := json.Marshal(itemIDs)
 	memStore.Set(ctx, "mf:items", itemsData)
 
-	// 设置 Embedding 数据（使用 VectorStore 接口）
-	// 这里简化处理，实际应该实现 VectorStore
-	// 为了演示，我们使用 ANN 的 UserVector 直接指定
-
 	// 设置内容推荐数据
-	// 用户1的偏好：喜欢科技、游戏类别
 	user1Prefs, _ := json.Marshal(map[string]float64{
-		"tech":   0.8,
-		"game":   0.6,
-		"music":  0.2,
+		"tech":  0.8,
+		"game":  0.6,
+		"music": 0.2,
 	})
 	memStore.Set(ctx, "content:user:1", user1Prefs)
 
-	// 物品特征
-	itemFeatures := map[int64]map[string]float64{
-		1: {"tech": 0.9, "game": 0.1, "music": 0.0},
-		2: {"tech": 0.7, "game": 0.3, "music": 0.0},
-		3: {"tech": 0.1, "game": 0.9, "music": 0.0},
-		4: {"tech": 0.0, "game": 0.2, "music": 0.8},
-		5: {"tech": 0.5, "game": 0.5, "music": 0.0},
+	itemFeatures := map[string]map[string]float64{
+		"1": {"tech": 0.9, "game": 0.1, "music": 0.0},
+		"2": {"tech": 0.7, "game": 0.3, "music": 0.0},
+		"3": {"tech": 0.1, "game": 0.9, "music": 0.0},
+		"4": {"tech": 0.0, "game": 0.2, "music": 0.8},
+		"5": {"tech": 0.5, "game": 0.5, "music": 0.0},
 	}
-	contentItemIDs := make([]int64, 0, len(itemFeatures))
+	contentItemIDs := make([]string, 0, len(itemFeatures))
 	for itemID, features := range itemFeatures {
 		contentItemIDs = append(contentItemIDs, itemID)
 		featData, _ := json.Marshal(features)
-		memStore.Set(ctx, fmt.Sprintf("content:item:%d", itemID), featData)
+		memStore.Set(ctx, fmt.Sprintf("content:item:%s", itemID), featData)
 	}
 	contentItemsData, _ := json.Marshal(contentItemIDs)
 	memStore.Set(ctx, "content:items", contentItemsData)
 }
 
 func createRecallSources(ctx context.Context, memStore store.Store) map[string]recall.Source {
-	// 协同过滤存储
 	cfStore := recall.NewStoreCFAdapter(memStore, "cf")
-
-	// 矩阵分解存储
 	mfStore := recall.NewStoreMFAdapter(memStore, "mf")
-
-	// 内容推荐存储
 	contentStore := recall.NewStoreContentAdapter(memStore, "content")
 
 	return map[string]recall.Source{
@@ -149,11 +122,9 @@ func createRecallSources(ctx context.Context, memStore store.Store) map[string]r
 			TopK:  3,
 		},
 		"emb": &recall.EmbRecall{
-			UserVector: []float64{0.5, 0.3, 0.2}, // 直接指定用户向量
+			UserVector: []float64{0.5, 0.3, 0.2},
 			TopK:       3,
 			Metric:     "cosine",
-			// 注意：这里简化了，实际需要 VectorStore
-			// 为了演示，使用空的 Store（会返回空结果）
 		},
 		"content": &recall.ContentRecall{
 			Store:            contentStore,
@@ -163,7 +134,7 @@ func createRecallSources(ctx context.Context, memStore store.Store) map[string]r
 	}
 }
 
-func testRecall(ctx context.Context, source recall.Source, userID int64) {
+func testRecall(ctx context.Context, source recall.Source, userID string) {
 	rctx := &core.RecommendContext{
 		UserID: userID,
 		Scene:  "feed",
@@ -175,15 +146,10 @@ func testRecall(ctx context.Context, source recall.Source, userID int64) {
 		return
 	}
 
-	if len(items) == 0 {
-		fmt.Printf("  无推荐结果\n")
-		return
-	}
-
 	fmt.Printf("  算法: %s\n", source.Name())
 	for i, item := range items {
 		sourceLabel := getLabelValue(item, "recall_source")
-		fmt.Printf("  %d. 物品 %d (分数: %.4f, 来源: %s)\n",
+		fmt.Printf("  %d. 物品 %s (分数: %.4f, 来源: %s)\n",
 			i+1, item.ID, item.Score, sourceLabel)
 	}
 }
@@ -205,7 +171,7 @@ func testPipeline(ctx context.Context, sources map[string]recall.Source) {
 	}
 
 	rctx := &core.RecommendContext{
-		UserID: 1,
+		UserID: "1",
 		Scene:  "feed",
 	}
 
@@ -215,10 +181,10 @@ func testPipeline(ctx context.Context, sources map[string]recall.Source) {
 		return
 	}
 
-	fmt.Printf("Pipeline 推荐结果 (用户 %d):\n", rctx.UserID)
+	fmt.Printf("Pipeline 推荐结果 (用户 %s):\n", rctx.UserID)
 	for i, item := range items {
 		sourceLabel := getLabelValue(item, "recall_source")
-		fmt.Printf("  %d. 物品 %d (分数: %.4f, 来源: %s)\n",
+		fmt.Printf("  %d. 物品 %s (分数: %.4f, 来源: %s)\n",
 			i+1, item.ID, item.Score, sourceLabel)
 	}
 }

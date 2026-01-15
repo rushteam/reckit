@@ -73,8 +73,8 @@ func (p *StoreFeatureProvider) Name() string {
 	return fmt.Sprintf("store.%s", p.store.Name())
 }
 
-func (p *StoreFeatureProvider) GetUserFeatures(ctx context.Context, userID int64) (map[string]float64, error) {
-	key := fmt.Sprintf("%s%d", p.keyPrefix.User, userID)
+func (p *StoreFeatureProvider) GetUserFeatures(ctx context.Context, userID string) (map[string]float64, error) {
+	key := fmt.Sprintf("%s%s", p.keyPrefix.User, userID)
 	data, err := p.store.Get(ctx, key)
 	if err != nil {
 		if err == store.ErrNotFound {
@@ -86,16 +86,16 @@ func (p *StoreFeatureProvider) GetUserFeatures(ctx context.Context, userID int64
 	return p.serializer.Deserialize(data)
 }
 
-func (p *StoreFeatureProvider) BatchGetUserFeatures(ctx context.Context, userIDs []int64) (map[int64]map[string]float64, error) {
+func (p *StoreFeatureProvider) BatchGetUserFeatures(ctx context.Context, userIDs []string) (map[string]map[string]float64, error) {
 	if len(userIDs) == 0 {
-		return make(map[int64]map[string]float64), nil
+		return make(map[string]map[string]float64), nil
 	}
 
 	// 构建 keys
 	keys := make([]string, len(userIDs))
-	keyToUserID := make(map[string]int64, len(userIDs))
+	keyToUserID := make(map[string]string, len(userIDs))
 	for i, userID := range userIDs {
-		key := fmt.Sprintf("%s%d", p.keyPrefix.User, userID)
+		key := fmt.Sprintf("%s%s", p.keyPrefix.User, userID)
 		keys[i] = key
 		keyToUserID[key] = userID
 	}
@@ -107,7 +107,7 @@ func (p *StoreFeatureProvider) BatchGetUserFeatures(ctx context.Context, userIDs
 	}
 
 	// 反序列化
-	result := make(map[int64]map[string]float64)
+	result := make(map[string]map[string]float64)
 	for key, data := range dataMap {
 		userID := keyToUserID[key]
 		features, err := p.serializer.Deserialize(data)
@@ -120,8 +120,8 @@ func (p *StoreFeatureProvider) BatchGetUserFeatures(ctx context.Context, userIDs
 	return result, nil
 }
 
-func (p *StoreFeatureProvider) GetItemFeatures(ctx context.Context, itemID int64) (map[string]float64, error) {
-	key := fmt.Sprintf("%s%d", p.keyPrefix.Item, itemID)
+func (p *StoreFeatureProvider) GetItemFeatures(ctx context.Context, itemID string) (map[string]float64, error) {
+	key := fmt.Sprintf("%s%s", p.keyPrefix.Item, itemID)
 	data, err := p.store.Get(ctx, key)
 	if err != nil {
 		if err == store.ErrNotFound {
@@ -133,16 +133,16 @@ func (p *StoreFeatureProvider) GetItemFeatures(ctx context.Context, itemID int64
 	return p.serializer.Deserialize(data)
 }
 
-func (p *StoreFeatureProvider) BatchGetItemFeatures(ctx context.Context, itemIDs []int64) (map[int64]map[string]float64, error) {
+func (p *StoreFeatureProvider) BatchGetItemFeatures(ctx context.Context, itemIDs []string) (map[string]map[string]float64, error) {
 	if len(itemIDs) == 0 {
-		return make(map[int64]map[string]float64), nil
+		return make(map[string]map[string]float64), nil
 	}
 
 	// 构建 keys
 	keys := make([]string, len(itemIDs))
-	keyToItemID := make(map[string]int64, len(itemIDs))
+	keyToItemID := make(map[string]string, len(itemIDs))
 	for i, itemID := range itemIDs {
-		key := fmt.Sprintf("%s%d", p.keyPrefix.Item, itemID)
+		key := fmt.Sprintf("%s%s", p.keyPrefix.Item, itemID)
 		keys[i] = key
 		keyToItemID[key] = itemID
 	}
@@ -154,7 +154,7 @@ func (p *StoreFeatureProvider) BatchGetItemFeatures(ctx context.Context, itemIDs
 	}
 
 	// 反序列化
-	result := make(map[int64]map[string]float64)
+	result := make(map[string]map[string]float64)
 	for key, data := range dataMap {
 		itemID := keyToItemID[key]
 		features, err := p.serializer.Deserialize(data)
@@ -167,8 +167,8 @@ func (p *StoreFeatureProvider) BatchGetItemFeatures(ctx context.Context, itemIDs
 	return result, nil
 }
 
-func (p *StoreFeatureProvider) GetRealtimeFeatures(ctx context.Context, userID, itemID int64) (map[string]float64, error) {
-	key := fmt.Sprintf("%s%d:%d", p.keyPrefix.Realtime, userID, itemID)
+func (p *StoreFeatureProvider) GetRealtimeFeatures(ctx context.Context, userID, itemID string) (map[string]float64, error) {
+	key := fmt.Sprintf("%s%s:%s", p.keyPrefix.Realtime, userID, itemID)
 	data, err := p.store.Get(ctx, key)
 	if err != nil {
 		if err == store.ErrNotFound {
@@ -189,7 +189,7 @@ func (p *StoreFeatureProvider) BatchGetRealtimeFeatures(ctx context.Context, pai
 	keys := make([]string, len(pairs))
 	pairToKey := make(map[string]UserItemPair, len(pairs))
 	for i, pair := range pairs {
-		key := fmt.Sprintf("%s%d:%d", p.keyPrefix.Realtime, pair.UserID, pair.ItemID)
+		key := fmt.Sprintf("%s%s:%s", p.keyPrefix.Realtime, pair.UserID, pair.ItemID)
 		keys[i] = key
 		pairToKey[key] = pair
 	}

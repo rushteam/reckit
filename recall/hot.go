@@ -3,7 +3,6 @@ package recall
 import (
 	"context"
 	"encoding/json"
-	"strconv"
 
 	"reckit/core"
 	"reckit/pipeline"
@@ -17,8 +16,8 @@ import (
 // Hot 同时实现了 Source 和 Node 接口，可以直接在 Pipeline 中使用
 type Hot struct {
 	Store store.Store
-	Key   string  // 存储 key，例如 "hot:items" 或 "hot:feed"
-	IDs   []int64 // fallback 内存列表
+	Key   string   // 存储 key，例如 "hot:items" 或 "hot:feed"
+	IDs   []string // fallback 内存列表
 }
 
 func (r *Hot) Name() string        { return "recall.hot" }
@@ -38,7 +37,7 @@ func (r *Hot) Recall(
 	ctx context.Context,
 	_ *core.RecommendContext,
 ) ([]*core.Item, error) {
-	var ids []int64
+	var ids []string
 
 	// 优先从 Store 读取（支持 ZRange 或普通 Get）
 	if r.Store != nil && r.Key != "" {
@@ -46,18 +45,13 @@ func (r *Hot) Recall(
 			// 使用有序集合：ZRange 获取 TopN（例如 Top 100）
 			members, err := kvStore.ZRange(ctx, r.Key, 0, 99)
 			if err == nil && len(members) > 0 {
-				ids = make([]int64, 0, len(members))
-				for _, m := range members {
-					if id, err := strconv.ParseInt(m, 10, 64); err == nil {
-						ids = append(ids, id)
-					}
-				}
+				ids = members
 			}
 		} else {
 			// 普通 key：读取 JSON 数组
 			data, err := r.Store.Get(ctx, r.Key)
 			if err == nil {
-				var parsed []int64
+				var parsed []string
 				if json.Unmarshal(data, &parsed) == nil {
 					ids = parsed
 				}
@@ -69,7 +63,7 @@ func (r *Hot) Recall(
 	if len(ids) == 0 {
 		ids = r.IDs
 		if len(ids) == 0 {
-			ids = []int64{1, 2, 3, 4, 5} // 默认 demo 数据
+			ids = []string{"1", "2", "3", "4", "5"} // 默认 demo 数据
 		}
 	}
 

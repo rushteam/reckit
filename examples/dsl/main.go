@@ -10,7 +10,7 @@ import (
 
 func main() {
 	// 创建一个测试 Item
-	item := core.NewItem(123)
+	item := core.NewItem("123")
 	item.Score = 0.85
 	item.Features["ctr"] = 0.15
 	item.Features["cvr"] = 0.08
@@ -19,7 +19,7 @@ func main() {
 	item.PutLabel("category", utils.Label{Value: "A", Source: "rule"})
 
 	rctx := &core.RecommendContext{
-		UserID: 42,
+		UserID: "42",
 		Scene:  "feed",
 	}
 

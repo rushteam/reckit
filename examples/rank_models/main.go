@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"reckit/core"
@@ -20,20 +21,20 @@ func main() {
 	defer cancel()
 
 	// 创建用户画像
-	userProfile := core.NewUserProfile(1)
+	userProfile := core.NewUserProfile("1")
 	userProfile.Age = 25
 	userProfile.Gender = "male"
 	userProfile.UpdateInterest("tech", 0.8)
 	userProfile.UpdateInterest("game", 0.6)
 
 	// 添加用户行为序列（用于 DIN 模型）
-	userProfile.AddRecentClick(1, 10)
-	userProfile.AddRecentClick(2, 10)
-	userProfile.AddRecentClick(3, 10)
+	userProfile.AddRecentClick("1", 10)
+	userProfile.AddRecentClick("2", 10)
+	userProfile.AddRecentClick("3", 10)
 
 	// 创建 RecommendContext
 	rctx := &core.RecommendContext{
-		UserID:  1,
+		UserID:  "1",
 		Scene:   "feed",
 		User:    userProfile,
 		Labels:  make(map[string]utils.Label),
@@ -59,7 +60,7 @@ func main() {
 		Nodes: []pipeline.Node{
 			&recall.Fanout{
 				Sources: []recall.Source{
-					&recall.Hot{IDs: []int64{1, 2, 3, 4, 5}},
+					&recall.Hot{IDs: []string{"1", "2", "3", "4", "5"}},
 				},
 				Dedup: true,
 			},
@@ -87,7 +88,7 @@ func main() {
 		Nodes: []pipeline.Node{
 			&recall.Fanout{
 				Sources: []recall.Source{
-					&recall.Hot{IDs: []int64{1, 2, 3, 4, 5}},
+					&recall.Hot{IDs: []string{"1", "2", "3", "4", "5"}},
 				},
 				Dedup: true,
 			},
@@ -103,15 +104,15 @@ func main() {
 	fmt.Println("\n=== 3. DIN 模型（行为序列） ===")
 	dinModel := model.NewDINModel(32, []int{64, 32}, []int{128, 64, 32, 1})
 	// 初始化物品嵌入（简化示例）
-	dinModel.ItemEmbeddings[1] = make([]float64, 32)
-	dinModel.ItemEmbeddings[2] = make([]float64, 32)
-	dinModel.ItemEmbeddings[3] = make([]float64, 32)
+	dinModel.ItemEmbeddings["1"] = make([]float64, 32)
+	dinModel.ItemEmbeddings["2"] = make([]float64, 32)
+	dinModel.ItemEmbeddings["3"] = make([]float64, 32)
 
 	p3 := &pipeline.Pipeline{
 		Nodes: []pipeline.Node{
 			&recall.Fanout{
 				Sources: []recall.Source{
-					&recall.Hot{IDs: []int64{1, 2, 3, 4, 5}},
+					&recall.Hot{IDs: []string{"1", "2", "3", "4", "5"}},
 				},
 				Dedup: true,
 			},
@@ -136,7 +137,7 @@ func main() {
 		Nodes: []pipeline.Node{
 			&recall.Fanout{
 				Sources: []recall.Source{
-					&recall.Hot{IDs: []int64{1, 2, 3, 4, 5}},
+					&recall.Hot{IDs: []string{"1", "2", "3", "4", "5"}},
 				},
 				Dedup: true,
 			},
@@ -170,9 +171,21 @@ func (n *demoItemFeatures) Process(
 			continue
 		}
 		// 添加物品特征
-		item.Features["item_ctr"] = 0.15 + float64(item.ID)*0.01
-		item.Features["item_cvr"] = 0.08 + float64(item.ID)*0.005
-		item.Features["item_price"] = float64(item.ID) * 10.0
+		// 将 string ID 转换为 float64（如果 ID 是数字字符串）
+		var itemIDFloat float64
+		if id, err := strconv.ParseFloat(item.ID, 64); err == nil {
+			itemIDFloat = id
+		} else {
+			// 对于非数字 ID，使用哈希值
+			hash := 0.0
+			for _, c := range item.ID {
+				hash = hash*31.0 + float64(c)
+			}
+			itemIDFloat = hash
+		}
+		item.Features["item_ctr"] = 0.15 + itemIDFloat*0.01
+		item.Features["item_cvr"] = 0.08 + itemIDFloat*0.005
+		item.Features["item_price"] = itemIDFloat * 10.0
 		item.PutLabel("category", utils.Label{Value: "tech", Source: "demo"})
 	}
 	return items, nil
@@ -184,7 +197,7 @@ func printResults(modelName string, items []*core.Item) {
 		if item == nil {
 			continue
 		}
-		fmt.Printf("  %d. 物品 %d (分数: %.4f)", i+1, item.ID, item.Score)
+		fmt.Printf("  %d. 物品 %s (分数: %.4f)", i+1, item.ID, item.Score)
 		if item.Labels != nil {
 			if rankType, ok := item.Labels["rank_type"]; ok {
 				fmt.Printf(" [%s]", rankType.Value)

@@ -3,6 +3,7 @@ package feature
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"reckit/core"
@@ -92,9 +93,9 @@ func (n *EnrichNode) Process(
 	}
 
 	// 批量获取物品特征（如果使用 FeatureService）
-	var itemFeaturesMap map[int64]map[string]float64
+	var itemFeaturesMap map[string]map[string]float64
 	if n.FeatureService != nil {
-		itemIDs := make([]int64, 0, len(items))
+		itemIDs := make([]string, 0, len(items))
 		for _, item := range items {
 			if item != nil {
 				itemIDs = append(itemIDs, item.ID)
@@ -179,7 +180,11 @@ func (n *EnrichNode) defaultUserFeatureExtractor(rctx *core.RecommendContext) ma
 
 	// 基础用户特征
 	if rctx != nil {
-		features["user_id"] = float64(rctx.UserID)
+		features["user_id_str"] = 0 // 注意：这里原先是 float64(rctx.UserID)，改为 string 后不能直接转 float64，根据业务处理
+		// 建议如果是数值 ID 仍可转换，否则作为分类特征
+		if id, err := strconv.ParseFloat(rctx.UserID, 64); err == nil {
+			features["user_id"] = id
+		}
 
 		// 从 UserProfile 提取特征
 		if rctx.UserProfile != nil {

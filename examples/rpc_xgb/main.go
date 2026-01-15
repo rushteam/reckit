@@ -66,7 +66,7 @@ func main() {
 			// 召回
 			&recall.Fanout{
 				Sources: []recall.Source{
-					&recall.Hot{IDs: []int64{1, 2, 3, 4, 5}},
+					&recall.Hot{IDs: []string{"1", "2", "3", "4", "5"}},
 				},
 				Dedup: true,
 			},
@@ -90,7 +90,7 @@ func main() {
 
 	// 创建用户上下文（包含用户画像）
 	rctx := &core.RecommendContext{
-		UserID: 42,
+		UserID: "42",
 		Scene:  "feed",
 		UserProfile: map[string]any{
 			"age":    25.0,
@@ -120,9 +120,9 @@ func main() {
 		return
 	}
 
-	fmt.Printf("千人千面推荐结果（用户 ID: %d，使用 Python XGBoost 模型）:\n", rctx.UserID)
+	fmt.Printf("千人千面推荐结果（用户 ID: %s，使用 Python XGBoost 模型）:\n", rctx.UserID)
 	for i, it := range items {
-		fmt.Printf("#%d id=%d score=%.4f\n", i, it.ID, it.Score)
+		fmt.Printf("#%d id=%s score=%.4f\n", i, it.ID, it.Score)
 		// 显示部分特征（与 Python 训练时的特征对齐）
 		fmt.Printf("  特征示例: ctr=%.2f, cvr=%.2f, price=%.0f\n",
 			it.Features["item_ctr"],

@@ -14,7 +14,7 @@ func NewDefaultFallbackStrategy() *DefaultFallbackStrategy {
 	return &DefaultFallbackStrategy{}
 }
 
-func (f *DefaultFallbackStrategy) GetUserFeatures(ctx context.Context, userID int64, rctx *core.RecommendContext) (map[string]float64, error) {
+func (f *DefaultFallbackStrategy) GetUserFeatures(ctx context.Context, userID string, rctx *core.RecommendContext) (map[string]float64, error) {
 	features := make(map[string]float64)
 
 	if rctx == nil {
@@ -22,7 +22,8 @@ func (f *DefaultFallbackStrategy) GetUserFeatures(ctx context.Context, userID in
 	}
 
 	// 基础用户特征
-	features["user_id"] = float64(userID)
+	// 注意：userID 是 string 类型，不能直接作为 float64 特征
+	// 如果需要用户 ID 特征，可以通过 hash 或其他方式转换为数值
 
 	// 从 UserProfile 提取
 	if rctx.UserProfile != nil {
@@ -45,7 +46,7 @@ func (f *DefaultFallbackStrategy) GetUserFeatures(ctx context.Context, userID in
 	return features, nil
 }
 
-func (f *DefaultFallbackStrategy) GetItemFeatures(ctx context.Context, itemID int64, item *core.Item) (map[string]float64, error) {
+func (f *DefaultFallbackStrategy) GetItemFeatures(ctx context.Context, itemID string, item *core.Item) (map[string]float64, error) {
 	features := make(map[string]float64)
 
 	if item == nil {
@@ -53,7 +54,8 @@ func (f *DefaultFallbackStrategy) GetItemFeatures(ctx context.Context, itemID in
 	}
 
 	// 基础物品特征
-	features["item_id"] = float64(itemID)
+	// 注意：itemID 是 string 类型，不能直接作为 float64 特征
+	// 如果需要物品 ID 特征，可以通过 hash 或其他方式转换为数值
 
 	// 从 Item.Features 提取
 	if item.Features != nil {
@@ -74,7 +76,7 @@ func (f *DefaultFallbackStrategy) GetItemFeatures(ctx context.Context, itemID in
 	return features, nil
 }
 
-func (f *DefaultFallbackStrategy) GetRealtimeFeatures(ctx context.Context, userID, itemID int64, rctx *core.RecommendContext, item *core.Item) (map[string]float64, error) {
+func (f *DefaultFallbackStrategy) GetRealtimeFeatures(ctx context.Context, userID, itemID string, rctx *core.RecommendContext, item *core.Item) (map[string]float64, error) {
 	features := make(map[string]float64)
 
 	// 组合用户和物品的基础特征

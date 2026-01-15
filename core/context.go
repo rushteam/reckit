@@ -4,12 +4,13 @@ import "reckit/pkg/utils"
 
 // RecommendContext 承载用户/场景/实时信息，贯穿整个 Pipeline 透传。
 //
-// 关键升级：引入 UserProfile 和 Labels
+// 关键升级：
+//   - UserID: 使用 string 类型（通用，支持所有 ID 格式）
 //   - UserProfile: 强类型用户画像（推荐使用）
 //   - UserProfileMap: 向后兼容的 map 形式（保留）
 //   - Labels: 用户级标签，可驱动整个 Pipeline 行为
 type RecommendContext struct {
-	UserID   int64
+	UserID   string // 使用 string 类型（通用，支持所有 ID 格式）
 	DeviceID string
 	Scene    string
 

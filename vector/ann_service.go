@@ -5,22 +5,6 @@ import (
 )
 
 // ANNService 是抽象向量 ANN（Approximate Nearest Neighbor）服务接口。
-//
-// 设计目标：
-//   - 统一向量数据库接口（Milvus、Faiss、Pinecone、Weaviate 等）
-//   - 支持向量搜索、插入、更新、删除
-//   - 支持多种距离度量（余弦、欧氏、内积等）
-//   - 支持集合（Collection）管理
-//
-// 使用示例：
-//
-//	service := vector.NewMilvusService(...)
-//	results, err := service.Search(ctx, &vector.SearchRequest{
-//		Collection: "items",
-//		Vector:     userVector,
-//		TopK:       20,
-//		Metric:     "cosine",
-//	})
 type ANNService interface {
 	// Search 向量搜索（核心功能）
 	Search(ctx context.Context, req *SearchRequest) (*SearchResult, error)
@@ -61,22 +45,22 @@ type SearchRequest struct {
 	// Metric 距离度量方式：cosine / euclidean / inner_product
 	Metric string
 
-	// Filter 过滤条件（可选，格式由具体实现决定）
+	// Filter 过滤条件
 	Filter map[string]interface{}
 
-	// Params 额外参数（可选，用于调优）
+	// Params 额外参数
 	Params map[string]interface{}
 }
 
 // SearchResult 向量搜索结果
 type SearchResult struct {
 	// IDs 物品 ID 列表（按相似度排序）
-	IDs []int64
+	IDs []string
 
-	// Scores 相似度分数列表（与 IDs 一一对应）
+	// Scores 相似度分数列表
 	Scores []float64
 
-	// Distances 距离列表（与 IDs 一一对应，如果支持）
+	// Distances 距离列表
 	Distances []float64
 }
 
@@ -88,10 +72,10 @@ type InsertRequest struct {
 	// Vectors 向量列表
 	Vectors [][]float64
 
-	// IDs 对应的物品 ID 列表（与 Vectors 一一对应）
-	IDs []int64
+	// IDs 对应的物品 ID 列表
+	IDs []string
 
-	// Metadata 元数据（可选，格式由具体实现决定）
+	// Metadata 元数据
 	Metadata []map[string]interface{}
 }
 
@@ -104,9 +88,9 @@ type UpdateRequest struct {
 	Vector []float64
 
 	// ID 物品 ID
-	ID int64
+	ID string
 
-	// Metadata 元数据（可选）
+	// Metadata 元数据
 	Metadata map[string]interface{}
 }
 
@@ -116,7 +100,7 @@ type DeleteRequest struct {
 	Collection string
 
 	// IDs 要删除的物品 ID 列表
-	IDs []int64
+	IDs []string
 }
 
 // CreateCollectionRequest 创建集合请求
@@ -127,10 +111,10 @@ type CreateCollectionRequest struct {
 	// Dimension 向量维度
 	Dimension int
 
-	// Metric 距离度量方式：cosine / euclidean / inner_product
+	// Metric 距离度量方式
 	Metric string
 
-	// Params 额外参数（可选）
+	// Params 额外参数
 	Params map[string]interface{}
 }
 
@@ -138,9 +122,9 @@ type CreateCollectionRequest struct {
 type MetricType string
 
 const (
-	MetricCosine      MetricType = "cosine"       // 余弦相似度
-	MetricEuclidean   MetricType = "euclidean"    // 欧氏距离
-	MetricInnerProduct MetricType = "inner_product" // 内积
+	MetricCosine      MetricType = "cosine"
+	MetricEuclidean   MetricType = "euclidean"
+	MetricInnerProduct MetricType = "inner_product"
 )
 
 // ValidateMetric 验证距离度量类型

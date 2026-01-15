@@ -2,6 +2,7 @@ package recall
 
 import (
 	"context"
+	"sort"
 
 	"reckit/core"
 	"reckit/pkg/utils"
@@ -10,13 +11,13 @@ import (
 // MFStore 是矩阵分解的存储接口，用于获取用户和物品的隐向量。
 type MFStore interface {
 	// GetUserVector 获取用户的隐向量
-	GetUserVector(ctx context.Context, userID int64) ([]float64, error)
+	GetUserVector(ctx context.Context, userID string) ([]float64, error)
 
 	// GetItemVector 获取物品的隐向量
-	GetItemVector(ctx context.Context, itemID int64) ([]float64, error)
+	GetItemVector(ctx context.Context, itemID string) ([]float64, error)
 
 	// GetAllItemVectors 获取所有物品的隐向量（用于在线召回）
-	GetAllItemVectors(ctx context.Context) (map[int64][]float64, error)
+	GetAllItemVectors(ctx context.Context) (map[string][]float64, error)
 }
 
 // MFRecall 是基于矩阵分解（Matrix Factorization）的召回源。
@@ -64,7 +65,7 @@ func (r *MFRecall) Recall(
 	ctx context.Context,
 	rctx *core.RecommendContext,
 ) ([]*core.Item, error) {
-	if r.Store == nil || rctx == nil || rctx.UserID == 0 {
+	if r.Store == nil || rctx == nil || rctx.UserID == "" {
 		return nil, nil
 	}
 
@@ -112,7 +113,7 @@ func (r *MFRecall) Recall(
 
 	// 计算用户向量与所有物品向量的点积（预测分数）
 	type scoredItem struct {
-		itemID int64
+		itemID string
 		score  float64
 	}
 	scores := make([]scoredItem, 0, len(allItemVectors))
@@ -131,16 +132,10 @@ func (r *MFRecall) Recall(
 	if topK <= 0 {
 		topK = 20
 	}
+	sort.Slice(scores, func(i, j int) bool {
+		return scores[i].score > scores[j].score
+	})
 	if len(scores) > topK {
-		for i := 0; i < topK; i++ {
-			maxIdx := i
-			for j := i + 1; j < len(scores); j++ {
-				if scores[j].score > scores[maxIdx].score {
-					maxIdx = j
-				}
-			}
-			scores[i], scores[maxIdx] = scores[maxIdx], scores[i]
-		}
 		scores = scores[:topK]
 	}
 

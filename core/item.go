@@ -4,15 +4,19 @@ import "reckit/pkg/utils"
 
 // Item 是推荐链路中的统一承载结构：特征、分数、元信息、标签。
 // Labels 用于解释与策略驱动；Score 用于排序决策。
+//
+// ID 类型设计：
+//   - 使用 string 类型（通用，支持所有 ID 格式）
 type Item struct {
-	ID       int64
+	ID       string // 使用 string 类型（通用，支持所有 ID 格式）
 	Score    float64
 	Features map[string]float64
 	Meta     map[string]any
 	Labels   map[string]utils.Label
 }
 
-func NewItem(id int64) *Item {
+// NewItem 创建一个新的 Item
+func NewItem(id string) *Item {
 	return &Item{
 		ID:       id,
 		Score:    0,

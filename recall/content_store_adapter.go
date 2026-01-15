@@ -3,7 +3,6 @@ package recall
 import (
 	"context"
 	"encoding/json"
-	"strconv"
 
 	"reckit/store"
 )
@@ -31,8 +30,8 @@ func NewStoreContentAdapter(s store.Store, keyPrefix string) *StoreContentAdapte
 	}
 }
 
-func (a *StoreContentAdapter) GetItemFeatures(ctx context.Context, itemID int64) (map[string]float64, error) {
-	key := a.KeyPrefix + ":item:" + strconv.FormatInt(itemID, 10)
+func (a *StoreContentAdapter) GetItemFeatures(ctx context.Context, itemID string) (map[string]float64, error) {
+	key := a.KeyPrefix + ":item:" + itemID
 	data, err := a.store.Get(ctx, key)
 	if err != nil {
 		if err == store.ErrNotFound {
@@ -43,24 +42,14 @@ func (a *StoreContentAdapter) GetItemFeatures(ctx context.Context, itemID int64)
 
 	var result map[string]float64
 	if err := json.Unmarshal(data, &result); err != nil {
-		// 尝试解析为 map[string]interface{} 然后转换
-		var strMap map[string]interface{}
-		if err2 := json.Unmarshal(data, &strMap); err2 != nil {
-			return nil, err
-		}
-		result = make(map[string]float64, len(strMap))
-		for k, v := range strMap {
-			if fv, ok := v.(float64); ok {
-				result[k] = fv
-			}
-		}
+		return nil, err
 	}
 
 	return result, nil
 }
 
-func (a *StoreContentAdapter) GetUserPreferences(ctx context.Context, userID int64) (map[string]float64, error) {
-	key := a.KeyPrefix + ":user:" + strconv.FormatInt(userID, 10)
+func (a *StoreContentAdapter) GetUserPreferences(ctx context.Context, userID string) (map[string]float64, error) {
+	key := a.KeyPrefix + ":user:" + userID
 	data, err := a.store.Get(ctx, key)
 	if err != nil {
 		if err == store.ErrNotFound {
@@ -71,39 +60,27 @@ func (a *StoreContentAdapter) GetUserPreferences(ctx context.Context, userID int
 
 	var result map[string]float64
 	if err := json.Unmarshal(data, &result); err != nil {
-		// 尝试解析为 map[string]interface{} 然后转换
-		var strMap map[string]interface{}
-		if err2 := json.Unmarshal(data, &strMap); err2 != nil {
-			return nil, err
-		}
-		result = make(map[string]float64, len(strMap))
-		for k, v := range strMap {
-			if fv, ok := v.(float64); ok {
-				result[k] = fv
-			}
-		}
+		return nil, err
 	}
 
 	return result, nil
 }
 
-func (a *StoreContentAdapter) GetSimilarItems(ctx context.Context, itemFeatures map[string]float64, topK int) ([]int64, error) {
-	// 简化实现：返回空，表示不支持优化
-	// 生产环境可以实现基于特征索引的快速检索
-	return []int64{}, nil
+func (a *StoreContentAdapter) GetSimilarItems(ctx context.Context, itemFeatures map[string]float64, topK int) ([]string, error) {
+	return []string{}, nil
 }
 
-func (a *StoreContentAdapter) GetAllItems(ctx context.Context) ([]int64, error) {
+func (a *StoreContentAdapter) GetAllItems(ctx context.Context) ([]string, error) {
 	key := a.KeyPrefix + ":items"
 	data, err := a.store.Get(ctx, key)
 	if err != nil {
 		if err == store.ErrNotFound {
-			return []int64{}, nil
+			return []string{}, nil
 		}
 		return nil, err
 	}
 
-	var result []int64
+	var result []string
 	if err := json.Unmarshal(data, &result); err != nil {
 		return nil, err
 	}

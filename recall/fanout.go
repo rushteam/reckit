@@ -104,7 +104,7 @@ func (n *Fanout) mergeFirst(all []*core.Item) []*core.Item {
 	if !n.Dedup {
 		return all
 	}
-	seen := make(map[int64]*core.Item, len(all))
+	seen := make(map[string]*core.Item, len(all))
 	out := make([]*core.Item, 0, len(all))
 	for _, it := range all {
 		if it == nil {
@@ -132,7 +132,7 @@ func (n *Fanout) mergeByPriority(all []*core.Item) []*core.Item {
 	if !n.Dedup {
 		return all
 	}
-	seen := make(map[int64]*core.Item, len(all))
+	seen := make(map[string]*core.Item, len(all))
 	for _, it := range all {
 		if it == nil {
 			continue

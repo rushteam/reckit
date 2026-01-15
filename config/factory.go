@@ -53,11 +53,14 @@ func buildFanoutNode(config map[string]interface{}) (pipeline.Node, error) {
 		sourceType, _ := sourceMap["type"].(string)
 		switch sourceType {
 		case "hot":
-			ids := []int64{}
+			ids := []string{}
 			if idsRaw, ok := sourceMap["ids"].([]interface{}); ok {
 				for _, id := range idsRaw {
-					if idFloat, ok := id.(float64); ok {
-						ids = append(ids, int64(idFloat))
+					// 支持字符串和数字两种格式
+					if idStr, ok := id.(string); ok {
+						ids = append(ids, idStr)
+					} else if idFloat, ok := id.(float64); ok {
+						ids = append(ids, fmt.Sprintf("%.0f", idFloat))
 					}
 				}
 			}
@@ -89,11 +92,14 @@ func buildFanoutNode(config map[string]interface{}) (pipeline.Node, error) {
 }
 
 func buildHotNode(config map[string]interface{}) (pipeline.Node, error) {
-	ids := []int64{}
+	ids := []string{}
 	if idsRaw, ok := config["ids"].([]interface{}); ok {
 		for _, id := range idsRaw {
-			if idFloat, ok := id.(float64); ok {
-				ids = append(ids, int64(idFloat))
+			// 支持字符串和数字两种格式
+			if idStr, ok := id.(string); ok {
+				ids = append(ids, idStr)
+			} else if idFloat, ok := id.(float64); ok {
+				ids = append(ids, fmt.Sprintf("%.0f", idFloat))
 			}
 		}
 	}
@@ -178,11 +184,14 @@ func buildFilterNode(config map[string]interface{}) (pipeline.Node, error) {
 
 		switch filterType {
 		case "blacklist":
-			ids := []int64{}
+			ids := []string{}
 			if idsRaw, ok := filterMap["item_ids"].([]interface{}); ok {
 				for _, id := range idsRaw {
-					if idFloat, ok := id.(float64); ok {
-						ids = append(ids, int64(idFloat))
+					// 支持字符串和数字两种格式
+					if idStr, ok := id.(string); ok {
+						ids = append(ids, idStr)
+					} else if idFloat, ok := id.(float64); ok {
+						ids = append(ids, fmt.Sprintf("%.0f", idFloat))
 					}
 				}
 			}

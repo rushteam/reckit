@@ -18,8 +18,11 @@ import "time"
 //  短期行为      实时调权
 //  实验桶        策略切换
 //  可更新        Online Learning
+//
+// ID 类型设计：
+//   - 使用 string 类型（通用，支持所有 ID 格式）
 type UserProfile struct {
-	UserID int64
+	UserID string // 使用 string 类型（通用，支持所有 ID 格式）
 
 	// 静态属性（冷启动 / 基础过滤）
 	Gender   string // male / female / unknown
@@ -31,8 +34,8 @@ type UserProfile struct {
 	Interests map[string]float64
 
 	// 行为统计（短期）- 实时调权
-	RecentClicks   []int64 // 最近点击的物品 ID
-	RecentImpress []int64 // 最近曝光的物品 ID
+	RecentClicks   []string // 最近点击的物品 ID
+	RecentImpress []string // 最近曝光的物品 ID
 
 	// 偏好信号
 	PreferTags map[string]float64 // 标签偏好
@@ -45,12 +48,12 @@ type UserProfile struct {
 }
 
 // NewUserProfile 创建一个新的用户画像。
-func NewUserProfile(userID int64) *UserProfile {
+func NewUserProfile(userID string) *UserProfile {
 	return &UserProfile{
 		UserID:        userID,
 		Interests:     make(map[string]float64),
-		RecentClicks:  make([]int64, 0),
-		RecentImpress: make([]int64, 0),
+		RecentClicks:  make([]string, 0),
+		RecentImpress: make([]string, 0),
 		PreferTags:    make(map[string]float64),
 		Buckets:       make(map[string]string),
 		UpdateTime:    time.Now(),
@@ -67,9 +70,9 @@ func (p *UserProfile) UpdateInterest(category string, weight float64) {
 }
 
 // AddRecentClick 添加最近点击记录。
-func (p *UserProfile) AddRecentClick(itemID int64, maxSize int) {
+func (p *UserProfile) AddRecentClick(itemID string, maxSize int) {
 	if p.RecentClicks == nil {
-		p.RecentClicks = make([]int64, 0)
+		p.RecentClicks = make([]string, 0)
 	}
 	// 去重
 	for _, id := range p.RecentClicks {
@@ -86,9 +89,9 @@ func (p *UserProfile) AddRecentClick(itemID int64, maxSize int) {
 }
 
 // AddRecentImpress 添加最近曝光记录。
-func (p *UserProfile) AddRecentImpress(itemID int64, maxSize int) {
+func (p *UserProfile) AddRecentImpress(itemID string, maxSize int) {
 	if p.RecentImpress == nil {
-		p.RecentImpress = make([]int64, 0)
+		p.RecentImpress = make([]string, 0)
 	}
 	// 去重
 	for _, id := range p.RecentImpress {

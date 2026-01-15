@@ -10,8 +10,8 @@ import (
 // 用于本地缓存，减少对远程特征服务的访问。
 type MemoryFeatureCache struct {
 	mu                sync.RWMutex
-	userFeatures      map[int64]*cacheEntry
-	itemFeatures      map[int64]*cacheEntry
+	userFeatures      map[string]*cacheEntry
+	itemFeatures      map[string]*cacheEntry
 	maxSize           int
 	defaultTTL        time.Duration
 	cleanupInterval   time.Duration
@@ -28,8 +28,8 @@ type cacheEntry struct {
 // NewMemoryFeatureCache 创建内存特征缓存
 func NewMemoryFeatureCache(maxSize int, defaultTTL time.Duration) *MemoryFeatureCache {
 	cache := &MemoryFeatureCache{
-		userFeatures:    make(map[int64]*cacheEntry),
-		itemFeatures:    make(map[int64]*cacheEntry),
+		userFeatures:    make(map[string]*cacheEntry),
+		itemFeatures:    make(map[string]*cacheEntry),
 		maxSize:         maxSize,
 		defaultTTL:      defaultTTL,
 		cleanupInterval: 1 * time.Minute,
@@ -90,13 +90,13 @@ func (c *MemoryFeatureCache) evictLRU() {
 	}
 }
 
-func (c *MemoryFeatureCache) evictLRUFromMap(m map[int64]*cacheEntry) {
+func (c *MemoryFeatureCache) evictLRUFromMap(m map[string]*cacheEntry) {
 	if len(m) <= c.maxSize {
 		return
 	}
 
 	// 找到最久未访问的条目
-	var oldestKey int64
+	var oldestKey string
 	var oldestTime time.Time
 	first := true
 
@@ -113,7 +113,7 @@ func (c *MemoryFeatureCache) evictLRUFromMap(m map[int64]*cacheEntry) {
 	}
 }
 
-func (c *MemoryFeatureCache) GetUserFeatures(ctx context.Context, userID int64) (map[string]float64, bool) {
+func (c *MemoryFeatureCache) GetUserFeatures(ctx context.Context, userID string) (map[string]float64, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -133,7 +133,7 @@ func (c *MemoryFeatureCache) GetUserFeatures(ctx context.Context, userID int64) 
 	return entry.features, true
 }
 
-func (c *MemoryFeatureCache) SetUserFeatures(ctx context.Context, userID int64, features map[string]float64, ttl time.Duration) {
+func (c *MemoryFeatureCache) SetUserFeatures(ctx context.Context, userID string, features map[string]float64, ttl time.Duration) {
 	if ttl <= 0 {
 		ttl = c.defaultTTL
 	}
@@ -153,7 +153,7 @@ func (c *MemoryFeatureCache) SetUserFeatures(ctx context.Context, userID int64, 
 	}
 }
 
-func (c *MemoryFeatureCache) GetItemFeatures(ctx context.Context, itemID int64) (map[string]float64, bool) {
+func (c *MemoryFeatureCache) GetItemFeatures(ctx context.Context, itemID string) (map[string]float64, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -173,7 +173,7 @@ func (c *MemoryFeatureCache) GetItemFeatures(ctx context.Context, itemID int64) 
 	return entry.features, true
 }
 
-func (c *MemoryFeatureCache) SetItemFeatures(ctx context.Context, itemID int64, features map[string]float64, ttl time.Duration) {
+func (c *MemoryFeatureCache) SetItemFeatures(ctx context.Context, itemID string, features map[string]float64, ttl time.Duration) {
 	if ttl <= 0 {
 		ttl = c.defaultTTL
 	}
@@ -193,13 +193,13 @@ func (c *MemoryFeatureCache) SetItemFeatures(ctx context.Context, itemID int64, 
 	}
 }
 
-func (c *MemoryFeatureCache) InvalidateUserFeatures(ctx context.Context, userID int64) {
+func (c *MemoryFeatureCache) InvalidateUserFeatures(ctx context.Context, userID string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.userFeatures, userID)
 }
 
-func (c *MemoryFeatureCache) InvalidateItemFeatures(ctx context.Context, itemID int64) {
+func (c *MemoryFeatureCache) InvalidateItemFeatures(ctx context.Context, itemID string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.itemFeatures, itemID)
@@ -208,8 +208,8 @@ func (c *MemoryFeatureCache) InvalidateItemFeatures(ctx context.Context, itemID 
 func (c *MemoryFeatureCache) Clear(ctx context.Context) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.userFeatures = make(map[int64]*cacheEntry)
-	c.itemFeatures = make(map[int64]*cacheEntry)
+	c.userFeatures = make(map[string]*cacheEntry)
+	c.itemFeatures = make(map[string]*cacheEntry)
 }
 
 // Close 关闭缓存，停止清理协程

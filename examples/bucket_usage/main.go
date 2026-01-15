@@ -18,7 +18,7 @@ func main() {
 	// ========== SetBucket 使用示例 ==========
 
 	// 1. 创建用户画像并设置实验桶
-	userProfile := core.NewUserProfile(1)
+	userProfile := core.NewUserProfile("1")
 
 	// 设置实验桶：用于 A/B 测试和策略切换
 	// key: 实验名称，value: 实验组/策略版本
@@ -29,7 +29,7 @@ func main() {
 
 	// 2. 在 Node 中使用 GetBucket 获取实验桶值
 	rctx := &core.RecommendContext{
-		UserID: 1,
+		UserID: "1",
 		Scene:  "feed",
 		User:   userProfile,
 	}
@@ -66,7 +66,7 @@ func main() {
 
 	fmt.Println("\n=== 推荐结果 ===")
 	for i, item := range items {
-		fmt.Printf("%d. 物品 %d (分数: %.4f)\n", i+1, item.ID, item.Score)
+		fmt.Printf("%d. 物品 %s (分数: %.4f)\n", i+1, item.ID, item.Score)
 		if item.Labels != nil {
 			for k, v := range item.Labels {
 				if k == "bucket_strategy" {
@@ -96,23 +96,23 @@ func (r *recallWithBucket) Recall(
 	case "v2":
 		// 使用新版本召回：更多个性化
 		items = []*core.Item{
-			core.NewItem(1),
-			core.NewItem(2),
-			core.NewItem(3),
+			core.NewItem("1"),
+			core.NewItem("2"),
+			core.NewItem("3"),
 		}
 		fmt.Println("使用召回策略 v2：个性化召回")
 	case "v1":
 		// 使用旧版本召回：热门召回
 		items = []*core.Item{
-			core.NewItem(4),
-			core.NewItem(5),
+			core.NewItem("4"),
+			core.NewItem("5"),
 		}
 		fmt.Println("使用召回策略 v1：热门召回")
 	default:
 		// 默认策略
 		items = []*core.Item{
-			core.NewItem(1),
-			core.NewItem(2),
+			core.NewItem("1"),
+			core.NewItem("2"),
 		}
 		fmt.Println("使用默认召回策略")
 	}

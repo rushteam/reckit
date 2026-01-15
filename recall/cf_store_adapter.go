@@ -3,7 +3,6 @@ package recall
 import (
 	"context"
 	"encoding/json"
-	"strconv"
 
 	"reckit/store"
 )
@@ -32,92 +31,70 @@ func NewStoreCFAdapter(s store.Store, keyPrefix string) *StoreCFAdapter {
 	}
 }
 
-func (a *StoreCFAdapter) GetUserItems(ctx context.Context, userID int64) (map[int64]float64, error) {
-	key := a.KeyPrefix + ":user:" + strconv.FormatInt(userID, 10)
+func (a *StoreCFAdapter) GetUserItems(ctx context.Context, userID string) (map[string]float64, error) {
+	key := a.KeyPrefix + ":user:" + userID
 	data, err := a.store.Get(ctx, key)
 	if err != nil {
 		if err == store.ErrNotFound {
-			return make(map[int64]float64), nil
+			return make(map[string]float64), nil
 		}
 		return nil, err
 	}
 
-	var result map[int64]float64
-	// 尝试解析 JSON
+	var result map[string]float64
 	if err := json.Unmarshal(data, &result); err != nil {
-		// 如果失败，尝试解析为 map[string]float64 然后转换
-		var strMap map[string]float64
-		if err2 := json.Unmarshal(data, &strMap); err2 != nil {
-			return nil, err
-		}
-		result = make(map[int64]float64, len(strMap))
-		for k, v := range strMap {
-			if id, err := strconv.ParseInt(k, 10, 64); err == nil {
-				result[id] = v
-			}
-		}
+		return nil, err
 	}
 
 	return result, nil
 }
 
-func (a *StoreCFAdapter) GetItemUsers(ctx context.Context, itemID int64) (map[int64]float64, error) {
-	key := a.KeyPrefix + ":item:" + strconv.FormatInt(itemID, 10)
+func (a *StoreCFAdapter) GetItemUsers(ctx context.Context, itemID string) (map[string]float64, error) {
+	key := a.KeyPrefix + ":item:" + itemID
 	data, err := a.store.Get(ctx, key)
 	if err != nil {
 		if err == store.ErrNotFound {
-			return make(map[int64]float64), nil
+			return make(map[string]float64), nil
 		}
 		return nil, err
 	}
 
-	var result map[int64]float64
-	// 尝试解析 JSON
+	var result map[string]float64
 	if err := json.Unmarshal(data, &result); err != nil {
-		// 如果失败，尝试解析为 map[string]float64 然后转换
-		var strMap map[string]float64
-		if err2 := json.Unmarshal(data, &strMap); err2 != nil {
-			return nil, err
-		}
-		result = make(map[int64]float64, len(strMap))
-		for k, v := range strMap {
-			if id, err := strconv.ParseInt(k, 10, 64); err == nil {
-				result[id] = v
-			}
-		}
+		return nil, err
 	}
 
 	return result, nil
 }
 
-func (a *StoreCFAdapter) GetAllUsers(ctx context.Context) ([]int64, error) {
+func (a *StoreCFAdapter) GetAllUsers(ctx context.Context) ([]string, error) {
 	key := a.KeyPrefix + ":users"
 	data, err := a.store.Get(ctx, key)
 	if err != nil {
 		if err == store.ErrNotFound {
-			return []int64{}, nil
+			return []string{}, nil
 		}
 		return nil, err
 	}
 
-	var result []int64
+	var result []string
 	if err := json.Unmarshal(data, &result); err != nil {
 		return nil, err
 	}
 	return result, nil
 }
 
-func (a *StoreCFAdapter) GetAllItems(ctx context.Context) ([]int64, error) {
+func (a *StoreCFAdapter) GetAllItems(ctx context.Context) ([]string, error) {
 	key := a.KeyPrefix + ":items"
 	data, err := a.store.Get(ctx, key)
 	if err != nil {
 		if err == store.ErrNotFound {
-			return []int64{}, nil
+			return []string{}, nil
 		}
 		return nil, err
 	}
 
-	var result []int64
+	var result []string
 	if err := json.Unmarshal(data, &result); err != nil {
 		return nil, err
 	}
@@ -127,26 +104,26 @@ func (a *StoreCFAdapter) GetAllItems(ctx context.Context) ([]int64, error) {
 // SetupCFTestData 辅助函数：为测试准备协同过滤数据到 Store 中。
 // 使用 StoreCFAdapter + MemoryStore 时，可以用这个函数方便地添加测试数据。
 func SetupCFTestData(ctx context.Context, adapter *StoreCFAdapter, interactions []struct {
-	UserID int64
-	ItemID int64
+	UserID string
+	ItemID string
 	Score  float64
 }) error {
 	// 收集所有用户和物品
-	userItems := make(map[int64]map[int64]float64)
-	itemUsers := make(map[int64]map[int64]float64)
-	allUsers := make(map[int64]bool)
-	allItems := make(map[int64]bool)
+	userItems := make(map[string]map[string]float64)
+	itemUsers := make(map[string]map[string]float64)
+	allUsers := make(map[string]bool)
+	allItems := make(map[string]bool)
 
 	for _, inter := range interactions {
 		// 添加到 userItems
 		if userItems[inter.UserID] == nil {
-			userItems[inter.UserID] = make(map[int64]float64)
+			userItems[inter.UserID] = make(map[string]float64)
 		}
 		userItems[inter.UserID][inter.ItemID] = inter.Score
 
 		// 添加到 itemUsers
 		if itemUsers[inter.ItemID] == nil {
-			itemUsers[inter.ItemID] = make(map[int64]float64)
+			itemUsers[inter.ItemID] = make(map[string]float64)
 		}
 		itemUsers[inter.ItemID][inter.UserID] = inter.Score
 
@@ -156,7 +133,7 @@ func SetupCFTestData(ctx context.Context, adapter *StoreCFAdapter, interactions 
 
 	// 写入用户物品交互数据
 	for userID, items := range userItems {
-		key := adapter.KeyPrefix + ":user:" + strconv.FormatInt(userID, 10)
+		key := adapter.KeyPrefix + ":user:" + userID
 		data, err := json.Marshal(items)
 		if err != nil {
 			return err
@@ -168,7 +145,7 @@ func SetupCFTestData(ctx context.Context, adapter *StoreCFAdapter, interactions 
 
 	// 写入物品用户交互数据
 	for itemID, users := range itemUsers {
-		key := adapter.KeyPrefix + ":item:" + strconv.FormatInt(itemID, 10)
+		key := adapter.KeyPrefix + ":item:" + itemID
 		data, err := json.Marshal(users)
 		if err != nil {
 			return err
@@ -179,7 +156,7 @@ func SetupCFTestData(ctx context.Context, adapter *StoreCFAdapter, interactions 
 	}
 
 	// 写入所有用户列表
-	userList := make([]int64, 0, len(allUsers))
+	userList := make([]string, 0, len(allUsers))
 	for userID := range allUsers {
 		userList = append(userList, userID)
 	}
@@ -193,7 +170,7 @@ func SetupCFTestData(ctx context.Context, adapter *StoreCFAdapter, interactions 
 	}
 
 	// 写入所有物品列表
-	itemList := make([]int64, 0, len(allItems))
+	itemList := make([]string, 0, len(allItems))
 	for itemID := range allItems {
 		itemList = append(itemList, itemID)
 	}

@@ -262,7 +262,7 @@ if kvStore, ok := redisStore.(store.KeyValueStore); ok {
 ```go
 fanout := &recall.Fanout{
     Sources: []recall.Source{
-        &recall.Hot{IDs: []int64{1, 2, 3}},
+        &recall.Hot{IDs: []string{"1", "2", "3"}},
         &recall.ANN{...},
     },
     Dedup:         true,

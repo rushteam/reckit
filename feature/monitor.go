@@ -99,7 +99,7 @@ func (m *MemoryFeatureMonitor) RecordFeatureUsage(ctx context.Context, featureNa
 	m.featureValues[featureName] = values
 }
 
-func (m *MemoryFeatureMonitor) RecordFeatureMissing(ctx context.Context, featureName string, entityType string, entityID int64) {
+func (m *MemoryFeatureMonitor) RecordFeatureMissing(ctx context.Context, featureName string, entityType string, entityID string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

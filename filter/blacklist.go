@@ -7,10 +7,9 @@ import (
 )
 
 // BlacklistFilter 是黑名单过滤器，过滤掉黑名单中的物品。
-// 支持从内存列表或 Store 读取黑名单。
 type BlacklistFilter struct {
 	// ItemIDs 是内存中的黑名单物品 ID 列表
-	ItemIDs []int64
+	ItemIDs []string
 
 	// Store 用于从存储中读取黑名单（可选）
 	Store BlacklistStore
@@ -19,15 +18,14 @@ type BlacklistFilter struct {
 	Key string
 }
 
-// BlacklistStore 是黑名单存储接口，用于从外部存储读取黑名单。
+// BlacklistStore 是黑名单存储接口。
 type BlacklistStore interface {
 	// GetBlacklist 获取黑名单物品 ID 列表
-	GetBlacklist(ctx context.Context, key string) ([]int64, error)
+	GetBlacklist(ctx context.Context, key string) ([]string, error)
 }
 
 // NewBlacklistFilter 创建一个黑名单过滤器。
-// 如果提供了 storeAdapter，将从 Store 读取黑名单；否则使用 itemIDs。
-func NewBlacklistFilter(itemIDs []int64, storeAdapter *StoreAdapter, key string) *BlacklistFilter {
+func NewBlacklistFilter(itemIDs []string, storeAdapter *StoreAdapter, key string) *BlacklistFilter {
 	var store BlacklistStore
 	if storeAdapter != nil {
 		store = storeAdapter
@@ -59,7 +57,7 @@ func (f *BlacklistFilter) ShouldFilter(
 		}
 	}
 
-	// 从 Store 检查（如果配置了）
+	// 从 Store 检查
 	if f.Store != nil && f.Key != "" {
 		blacklist, err := f.Store.GetBlacklist(ctx, f.Key)
 		if err == nil {

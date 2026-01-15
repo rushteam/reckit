@@ -8,7 +8,7 @@ import (
 	"reckit/pkg/utils"
 )
 
-// UserHistory 是基于用户历史行为的个性化召回源。
+// UserHistory 是基于用户 historical 行为的个性化召回源。
 // 支持从 Store 读取用户的浏览、点击、购买等历史，推荐相似物品。
 type UserHistory struct {
 	Store UserHistoryStore
@@ -25,16 +25,21 @@ type UserHistory struct {
 	// TimeWindow 时间窗口（秒），只考虑该时间窗口内的历史
 	// 0 表示考虑所有历史
 	TimeWindow int64
+
+	// EnableSimilarExtend 是否启用相似物品扩展
+	EnableSimilarExtend bool
 }
 
 // UserHistoryStore 是用户历史存储接口。
 type UserHistoryStore interface {
 	// GetUserHistory 获取用户的历史行为物品列表
-	GetUserHistory(ctx context.Context, userID int64, keyPrefix, behaviorType string, timeWindow int64) ([]int64, error)
+	GetUserHistory(ctx context.Context, userID string, keyPrefix, behaviorType string, timeWindow int64) ([]string, error)
+}
 
-	// GetSimilarItems 获取与用户历史物品相似的物品（可选，用于扩展推荐）
-	// 如果未实现，则直接返回历史物品
-	GetSimilarItems(ctx context.Context, itemIDs []int64, topK int) ([]int64, error)
+// SimilarItemStore 获取相似物品的存储接口
+type SimilarItemStore interface {
+	// GetSimilarItems 获取给定物品列表的相似物品
+	GetSimilarItems(ctx context.Context, itemIDs []string, topK int) ([]string, error)
 }
 
 func (r *UserHistory) Name() string {
@@ -57,7 +62,7 @@ func (r *UserHistory) Recall(
 	ctx context.Context,
 	rctx *core.RecommendContext,
 ) ([]*core.Item, error) {
-	if r.Store == nil || rctx == nil || rctx.UserID == 0 {
+	if r.Store == nil || rctx == nil || rctx.UserID == "" {
 		return nil, nil
 	}
 
@@ -88,16 +93,16 @@ func (r *UserHistory) Recall(
 	}
 
 	// 如果支持相似物品推荐，获取相似物品
-	if similarStore, ok := r.Store.(interface {
-		GetSimilarItems(ctx context.Context, itemIDs []int64, topK int) ([]int64, error)
-	}); ok {
-		topK := r.TopK
-		if topK <= 0 {
-			topK = 20
-		}
-		similarIDs, err := similarStore.GetSimilarItems(ctx, itemIDs, topK)
-		if err == nil && len(similarIDs) > 0 {
-			itemIDs = similarIDs
+	if r.EnableSimilarExtend {
+		if similarStore, ok := r.Store.(SimilarItemStore); ok {
+			topK := r.TopK
+			if topK <= 0 {
+				topK = 20
+			}
+			similarIDs, err := similarStore.GetSimilarItems(ctx, itemIDs, topK)
+			if err == nil && len(similarIDs) > 0 {
+				itemIDs = similarIDs
+			}
 		}
 	}
 

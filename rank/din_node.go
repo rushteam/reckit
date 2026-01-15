@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 
 	"reckit/core"
 	"reckit/model"
@@ -38,7 +39,7 @@ func (n *DINNode) Process(
 	}
 
 	// 从 UserProfile 获取用户行为序列
-	var behaviorSeq []int64
+	var behaviorSeq []string
 	if rctx != nil && rctx.User != nil {
 		behaviorSeq = rctx.User.RecentClicks
 		if len(behaviorSeq) > maxLen {
@@ -56,14 +57,34 @@ func (n *DINNode) Process(
 		for k, v := range it.Features {
 			features[k] = v
 		}
-		features["candidate_item_id"] = float64(it.ID)
+		// 将 string ID 转换为 float64（如果 ID 是数字字符串）
+		if idFloat, err := strconv.ParseFloat(it.ID, 64); err == nil {
+			features["candidate_item_id"] = idFloat
+		} else {
+			// 对于非数字 ID，使用哈希值
+			hash := 0.0
+			for _, c := range it.ID {
+				hash = hash*31.0 + float64(c)
+			}
+			features["candidate_item_id"] = hash
+		}
 
 		// 添加用户行为序列到特征中
 		for i, itemID := range behaviorSeq {
 			if i >= maxLen {
 				break
 			}
-			features[fmt.Sprintf("behavior_item_%d", i)] = float64(itemID)
+			// 将 string ID 转换为 float64
+			if idFloat, err := strconv.ParseFloat(itemID, 64); err == nil {
+				features[fmt.Sprintf("behavior_item_%d", i)] = idFloat
+			} else {
+				// 对于非数字 ID，使用哈希值
+				hash := 0.0
+				for _, c := range itemID {
+					hash = hash*31.0 + float64(c)
+				}
+				features[fmt.Sprintf("behavior_item_%d", i)] = hash
+			}
 		}
 
 		score, err := n.Model.Predict(features)

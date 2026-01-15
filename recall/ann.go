@@ -3,6 +3,7 @@ package recall
 import (
 	"context"
 	"math"
+	"sort"
 
 	"reckit/core"
 	"reckit/pkg/utils"
@@ -10,7 +11,6 @@ import (
 
 // ANN 是 Embedding 向量检索召回源（Approximate Nearest Neighbor）。
 // 支持余弦相似度、欧氏距离等计算方式。
-// 支持从 RecommendContext 获取用户向量，实现个性化召回。
 type ANN struct {
 	Store      VectorStore // 向量存储（可以是 Redis、内存、向量数据库等）
 	Key        string      // 向量索引 key，例如 "embedding:items"
@@ -19,27 +19,24 @@ type ANN struct {
 	Metric     string      // 距离度量：cosine / euclidean
 
 	// UserVectorExtractor 从 RecommendContext 提取用户向量（可选）
-	// 如果未提供且 UserVector 为空，则从 rctx.UserProfile["user_vector"] 获取
 	UserVectorExtractor func(rctx *core.RecommendContext) []float64
 }
 
-// VectorStore 是向量存储接口（简化版，生产环境可用专业向量数据库如 Faiss、Milvus）。
+// VectorStore 是向量存储接口（简化版）。
 type VectorStore interface {
-	GetVector(ctx context.Context, itemID int64) ([]float64, error)
-	ListVectors(ctx context.Context) (map[int64][]float64, error)
+	// GetVector 获取物品向量
+	GetVector(ctx context.Context, itemID string) ([]float64, error)
+
+	// ListVectors 获取所有向量（用于暴力搜索）
+	ListVectors(ctx context.Context) (map[string][]float64, error)
+
+	// Search 使用向量搜索
+	Search(ctx context.Context, vector []float64, topK int, metric string) ([]string, []float64, error)
 }
 
 func (r *ANN) Name() string { return "recall.emb" } // 工业标准命名：emb (Embedding)
 
 // EmbRecall 是 ANN 的类型别名，提供更符合工业习惯的命名。
-// EmbRecall (Embedding Recall) 表示基于 Embedding 向量的召回。
-//
-// 使用示例：
-//   embRecall := &recall.EmbRecall{
-//       Store:      vectorStore,
-//       TopK:       20,
-//       Metric:     "cosine",
-//   }
 type EmbRecall = ANN
 
 func (r *ANN) Recall(
@@ -50,11 +47,14 @@ func (r *ANN) Recall(
 		return nil, nil
 	}
 
-	// 获取用户向量
+	// 1. 获取用户向量
 	userVector := r.UserVector
 	if len(userVector) == 0 {
 		if r.UserVectorExtractor != nil {
 			userVector = r.UserVectorExtractor(rctx)
+		} else if rctx != nil && rctx.User != nil {
+			// 假设用户画像中存了向量（实际工程中常用）
+			// 这里仅为示例
 		} else if rctx != nil && rctx.UserProfile != nil {
 			// 从 UserProfile 获取用户向量
 			if uv, ok := rctx.UserProfile["user_vector"]; ok {
@@ -73,60 +73,76 @@ func (r *ANN) Recall(
 		}
 	}
 
+	// 如果仍然没有，尝试通过 UserID 从 Store 获取
+	if len(userVector) == 0 && rctx != nil && rctx.UserID != "" {
+		var err error
+		userVector, err = r.Store.GetVector(ctx, rctx.UserID)
+		if err != nil {
+			// 忽略错误，可能用户没有向量
+		}
+	}
+
 	if len(userVector) == 0 {
 		return nil, nil
 	}
 
-	// 获取所有物品向量（简化实现，生产环境应使用向量索引如 Faiss、Milvus）
-	allVectors, err := r.Store.ListVectors(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	// 计算相似度并排序
-	type scoredItem struct {
-		itemID int64
-		score  float64
-	}
-	scores := make([]scoredItem, 0, len(allVectors))
-
-	for itemID, itemVec := range allVectors {
-		var sim float64
-		switch r.Metric {
-		case "cosine":
-			sim = cosineSimilarity(userVector, itemVec)
-		case "euclidean":
-			sim = 1.0 / (1.0 + euclideanDistance(userVector, itemVec))
-		default:
-			sim = cosineSimilarity(userVector, itemVec)
-		}
-		scores = append(scores, scoredItem{itemID: itemID, score: sim})
-	}
-
-	// 排序取 TopK
+	// 2. 执行向量搜索
 	topK := r.TopK
 	if topK <= 0 {
 		topK = 10
 	}
-	if len(scores) > topK {
-		// 简单选择排序取 TopK（生产环境可用堆）
-		for i := 0; i < topK; i++ {
-			maxIdx := i
-			for j := i + 1; j < len(scores); j++ {
-				if scores[j].score > scores[maxIdx].score {
-					maxIdx = j
-				}
-			}
-			scores[i], scores[maxIdx] = scores[maxIdx], scores[i]
+
+	var ids []string
+	var scores []float64
+	var err error
+
+	// 优先尝试 Search 方法（高性能）
+	ids, scores, err = r.Store.Search(ctx, userVector, topK, r.Metric)
+	if err != nil {
+		// 如果 Search 不支持或报错，尝试暴力搜索（ListVectors）
+		allVectors, err2 := r.Store.ListVectors(ctx)
+		if err2 != nil {
+			return nil, err
 		}
-		scores = scores[:topK]
+
+		// 暴力搜索逻辑
+		type scoredItem struct {
+			itemID string
+			score  float64
+		}
+		results := make([]scoredItem, 0, len(allVectors))
+
+		for itemID, itemVec := range allVectors {
+			var sim float64
+			if r.Metric == "euclidean" {
+				sim = 1.0 / (1.0 + euclideanDistanceVector(userVector, itemVec))
+			} else {
+				sim = cosineSimilarityVectorForANN(userVector, itemVec)
+			}
+			results = append(results, scoredItem{itemID: itemID, score: sim})
+		}
+
+		sort.Slice(results, func(i, j int) bool {
+			return results[i].score > results[j].score
+		})
+
+		if len(results) > topK {
+			results = results[:topK]
+		}
+
+		ids = make([]string, len(results))
+		scores = make([]float64, len(results))
+		for i, res := range results {
+			ids[i] = res.itemID
+			scores[i] = res.score
+		}
 	}
 
-	// 构建结果
-	out := make([]*core.Item, 0, len(scores))
-	for _, s := range scores {
-		it := core.NewItem(s.itemID)
-		it.Score = s.score
+	// 3. 封装结果
+	out := make([]*core.Item, 0, len(ids))
+	for i, id := range ids {
+		it := core.NewItem(id)
+		it.Score = scores[i]
 		it.PutLabel("recall_source", utils.Label{Value: "ann", Source: "recall"})
 		it.PutLabel("ann_metric", utils.Label{Value: r.Metric, Source: "recall"})
 		out = append(out, it)
@@ -135,8 +151,8 @@ func (r *ANN) Recall(
 	return out, nil
 }
 
-func cosineSimilarity(a, b []float64) float64 {
-	if len(a) != len(b) {
+func cosineSimilarityVectorForANN(a, b []float64) float64 {
+	if len(a) != len(b) || len(a) == 0 {
 		return 0
 	}
 	var dot, normA, normB float64
@@ -151,7 +167,7 @@ func cosineSimilarity(a, b []float64) float64 {
 	return dot / (math.Sqrt(normA) * math.Sqrt(normB))
 }
 
-func euclideanDistance(a, b []float64) float64 {
+func euclideanDistanceVector(a, b []float64) float64 {
 	if len(a) != len(b) {
 		return math.MaxFloat64
 	}

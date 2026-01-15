@@ -58,7 +58,7 @@ func main() {
 		generateRandomVector(dimension),
 		generateRandomVector(dimension),
 	}
-	itemIDs := []int64{1, 2, 3}
+	itemIDs := []string{"1", "2", "3"}
 
 	err = milvusService.Insert(ctx, &vector.InsertRequest{
 		Collection: collectionName,
@@ -86,7 +86,7 @@ func main() {
 	} else {
 		fmt.Printf("搜索到 %d 个结果:\n", len(searchResult.IDs))
 		for i, id := range searchResult.IDs {
-			fmt.Printf("  %d. 物品 %d (相似度: %.4f)\n", i+1, id, searchResult.Scores[i])
+			fmt.Printf("  %d. 物品 %s (相似度: %.4f)\n", i+1, id, searchResult.Scores[i])
 		}
 	}
 
@@ -94,20 +94,16 @@ func main() {
 	fmt.Println("\n=== 与 recall.ANN 集成 ===")
 	adapter := vector.NewVectorStoreAdapter(milvusService, collectionName)
 
-	// 注意：由于 VectorStoreAdapter 的 GetVector 和 ListVectors 返回错误
-	// 需要修改 recall.ANN 以支持直接使用 ANNService.Search
-	// 或者创建一个增强版的 ANN 实现
-
 	// 创建推荐上下文
 	rctx := &core.RecommendContext{
-		UserID: 1,
+		UserID: "1",
 		Scene:  "feed",
 		UserProfile: map[string]any{
 			"user_vector": userVector,
 		},
 	}
 
-	// 使用 ANN 召回（注意：当前实现会失败，因为 ListVectors 不支持）
+	// 使用 ANN 召回
 	ann := &recall.ANN{
 		Store:      adapter,
 		TopK:       10,
@@ -118,25 +114,20 @@ func main() {
 	items, err := ann.Recall(ctx, rctx)
 	if err != nil {
 		fmt.Printf("ANN 召回失败: %v\n", err)
-		fmt.Println("提示：当前 VectorStoreAdapter 的 ListVectors 不支持，")
-		fmt.Println("      建议直接使用 ANNService.Search 或修改 recall.ANN 实现")
 	} else {
 		fmt.Printf("ANN 召回成功，返回 %d 个物品\n", len(items))
 		for i, item := range items {
-			fmt.Printf("  %d. 物品 %d (分数: %.4f)\n", i+1, item.ID, item.Score)
+			fmt.Printf("  %d. 物品 %s (分数: %.4f)\n", i+1, item.ID, item.Score)
 		}
 	}
 
 	// ========== 6. Pipeline 集成示例 ==========
 	fmt.Println("\n=== Pipeline 集成示例 ===")
-	// 注意：由于适配器限制，这里只是示例代码结构
-	// 实际使用时需要修改 recall.ANN 以支持 ANNService
 
 	p := &pipeline.Pipeline{
 		Nodes: []pipeline.Node{
 			&recall.Fanout{
 				Sources: []recall.Source{
-					// 使用 Milvus 的 ANN 召回
 					ann,
 				},
 				Dedup: true,
@@ -152,11 +143,9 @@ func main() {
 	}
 }
 
-// generateRandomVector 生成随机向量（用于示例）
 func generateRandomVector(dimension int) []float64 {
 	vec := make([]float64, dimension)
 	for i := range vec {
-		// 简单的伪随机数生成（实际应该使用真正的随机数）
 		vec[i] = float64(i%10) / 10.0
 	}
 	return vec

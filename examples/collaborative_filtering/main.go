@@ -21,29 +21,24 @@ func main() {
 	cfStore := recall.NewStoreCFAdapter(memStore, "cf")
 
 	// 2. 模拟用户-物品交互数据
-	// 用户1: 喜欢物品 1, 2, 3
-	// 用户2: 喜欢物品 2, 3, 4 (与用户1有共同兴趣)
-	// 用户3: 喜欢物品 4, 5, 6 (与用户1、2兴趣不同)
-	// 用户4: 喜欢物品 1, 3, 5 (与用户1有部分共同兴趣)
 	setupTestData(ctx, cfStore)
 
 	// 3. 创建用户协同过滤召回源
 	userCF := &recall.UserBasedCF{
 		Store:            cfStore,
-		TopKSimilarUsers: 10, // 考虑 Top 10 相似用户
-		TopKItems:        5,  // 返回 Top 5 物品
+		TopKSimilarUsers: 10,
+		TopKItems:        5,
 		SimilarityMetric: "cosine",
-		MinCommonItems:   2, // 至少 2 个共同物品
+		MinCommonItems:   2,
 	}
 
 	// 4. 创建物品协同过滤召回源（i2i）
-	// 使用 I2IRecall 别名，更符合工业习惯
 	i2i := &recall.I2IRecall{
 		Store:            cfStore,
-		TopKSimilarItems: 10, // 考虑 Top 10 相似物品
-		TopKItems:        5,  // 返回 Top 5 物品
+		TopKSimilarItems: 10,
+		TopKItems:        5,
 		SimilarityMetric: "cosine",
-		MinCommonUsers:   2, // 至少 2 个共同用户
+		MinCommonUsers:   2,
 	}
 
 	// 5. 测试用户协同过滤
@@ -61,39 +56,15 @@ func main() {
 
 func setupTestData(ctx context.Context, cfStore *recall.StoreCFAdapter) {
 	interactions := []struct {
-		UserID int64
-		ItemID int64
+		UserID string
+		ItemID string
 		Score  float64
 	}{
-		// 用户1的交互
-		{1, 1, 5.0}, // 用户1 对物品1 评分5
-		{1, 2, 4.0}, // 用户1 对物品2 评分4
-		{1, 3, 5.0}, // 用户1 对物品3 评分5
-
-		// 用户2的交互（与用户1有共同兴趣）
-		{2, 2, 5.0}, // 用户2 对物品2 评分5
-		{2, 3, 4.0}, // 用户2 对物品3 评分4
-		{2, 4, 5.0}, // 用户2 对物品4 评分5
-		{2, 1, 4.0}, // 用户2 对物品1 评分4（增加共同用户）
-
-		// 用户3的交互（兴趣不同）
-		{3, 4, 4.0}, // 用户3 对物品4 评分4
-		{3, 5, 5.0}, // 用户3 对物品5 评分5
-		{3, 6, 4.0}, // 用户3 对物品6 评分4
-		{3, 3, 3.0}, // 用户3 对物品3 评分3（增加共同用户）
-
-		// 用户4的交互（与用户1有部分共同兴趣）
-		{4, 1, 4.0}, // 用户4 对物品1 评分4
-		{4, 3, 5.0}, // 用户4 对物品3 评分5
-		{4, 5, 4.0}, // 用户4 对物品5 评分4
-		{4, 4, 3.0}, // 用户4 对物品4 评分3（增加共同用户）
-
-		// 用户5的交互（与用户1、2高度相似）
-		{5, 1, 5.0}, // 用户5 对物品1 评分5
-		{5, 2, 5.0}, // 用户5 对物品2 评分5
-		{5, 3, 4.0}, // 用户5 对物品3 评分4
-		{5, 7, 5.0}, // 用户5 对物品7 评分5（新物品）
-		{5, 4, 4.0}, // 用户5 对物品4 评分4（增加共同用户）
+		{"1", "1", 5.0}, {"1", "2", 4.0}, {"1", "3", 5.0},
+		{"2", "2", 5.0}, {"2", "3", 4.0}, {"2", "4", 5.0}, {"2", "1", 4.0},
+		{"3", "4", 4.0}, {"3", "5", 5.0}, {"3", "6", 4.0}, {"3", "3", 3.0},
+		{"4", "1", 4.0}, {"4", "3", 5.0}, {"4", "5", 4.0}, {"4", "4", 3.0},
+		{"5", "1", 5.0}, {"5", "2", 5.0}, {"5", "3", 4.0}, {"5", "7", 5.0}, {"5", "4", 4.0},
 	}
 
 	if err := recall.SetupCFTestData(ctx, cfStore, interactions); err != nil {
@@ -102,9 +73,8 @@ func setupTestData(ctx context.Context, cfStore *recall.StoreCFAdapter) {
 }
 
 func testUserCF(ctx context.Context, userCF *recall.UserBasedCF) {
-	// 为用户1推荐（用户1已经交互过物品1,2,3）
 	rctx := &core.RecommendContext{
-		UserID: 1,
+		UserID: "1",
 		Scene:  "feed",
 	}
 
@@ -114,17 +84,16 @@ func testUserCF(ctx context.Context, userCF *recall.UserBasedCF) {
 		return
 	}
 
-	fmt.Printf("为用户 %d 推荐:\n", rctx.UserID)
+	fmt.Printf("为用户 %s 推荐:\n", rctx.UserID)
 	for i, item := range items {
-		fmt.Printf("  %d. 物品 %d (分数: %.4f, 来源: %s)\n",
+		fmt.Printf("  %d. 物品 %s (分数: %.4f, 来源: %s)\n",
 			i+1, item.ID, item.Score, getLabelValue(item, "recall_source"))
 	}
 }
 
 func testItemCF(ctx context.Context, i2i *recall.I2IRecall) {
-	// 为用户1推荐（基于用户1的历史物品1,2,3）
 	rctx := &core.RecommendContext{
-		UserID: 1,
+		UserID: "1",
 		Scene:  "feed",
 	}
 
@@ -134,30 +103,29 @@ func testItemCF(ctx context.Context, i2i *recall.I2IRecall) {
 		return
 	}
 
-	fmt.Printf("为用户 %d 推荐 (基于物品相似度):\n", rctx.UserID)
+	fmt.Printf("为用户 %s 推荐 (基于物品相似度):\n", rctx.UserID)
 	for i, item := range items {
-		fmt.Printf("  %d. 物品 %d (分数: %.4f, 来源: %s)\n",
+		fmt.Printf("  %d. 物品 %s (分数: %.4f, 来源: %s)\n",
 			i+1, item.ID, item.Score, getLabelValue(item, "recall_source"))
 	}
 }
 
 func testPipeline(ctx context.Context, userCF *recall.UserBasedCF, i2i *recall.I2IRecall) {
-	// 创建多路召回 Pipeline
 	p := &pipeline.Pipeline{
 		Nodes: []pipeline.Node{
 			&recall.Fanout{
 				Sources: []recall.Source{
-					userCF, // 用户协同过滤 (u2i)
-					i2i,    // 物品协同过滤 (i2i)
+					userCF,
+					i2i,
 				},
 				Dedup:         true,
-				MergeStrategy: "priority", // 优先使用第一个召回源的结果
+				MergeStrategy: "priority",
 			},
 		},
 	}
 
 	rctx := &core.RecommendContext{
-		UserID: 1,
+		UserID: "1",
 		Scene:  "feed",
 	}
 
@@ -167,9 +135,9 @@ func testPipeline(ctx context.Context, userCF *recall.UserBasedCF, i2i *recall.I
 		return
 	}
 
-	fmt.Printf("Pipeline 推荐结果 (用户 %d):\n", rctx.UserID)
+	fmt.Printf("Pipeline 推荐结果 (用户 %s):\n", rctx.UserID)
 	for i, item := range items {
-		fmt.Printf("  %d. 物品 %d (分数: %.4f, 来源: %s)\n",
+		fmt.Printf("  %d. 物品 %s (分数: %.4f, 来源: %s)\n",
 			i+1, item.ID, item.Score, getLabelValue(item, "recall_source"))
 	}
 }

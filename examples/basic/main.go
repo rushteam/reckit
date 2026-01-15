@@ -99,7 +99,7 @@ func main() {
 	}
 
 	rctx := &core.RecommendContext{
-		UserID: 42,
+		UserID: "42",
 		Scene:  "feed",
 		Params: map[string]any{"debug": true},
 		UserProfile: map[string]any{
@@ -117,6 +117,6 @@ func main() {
 	}
 
 	for i, it := range items {
-		fmt.Printf("#%d id=%d score=%.4f labels=%v\n", i, it.ID, it.Score, it.Labels)
+		fmt.Printf("#%d id=%s score=%.4f labels=%v\n", i, it.ID, it.Score, it.Labels)
 	}
 }

@@ -3,6 +3,7 @@ package recall
 import (
 	"context"
 	"math"
+	"sort"
 
 	"reckit/core"
 	"reckit/pkg/utils"
@@ -12,17 +13,17 @@ import (
 type CFStore interface {
 	// GetUserItems 获取用户交互过的物品及其评分/权重
 	// 返回 map[itemID]score，score 可以是评分、点击次数、时长等
-	GetUserItems(ctx context.Context, userID int64) (map[int64]float64, error)
+	GetUserItems(ctx context.Context, userID string) (map[string]float64, error)
 
 	// GetItemUsers 获取与物品交互过的用户及其评分/权重
 	// 返回 map[userID]score
-	GetItemUsers(ctx context.Context, itemID int64) (map[int64]float64, error)
+	GetItemUsers(ctx context.Context, itemID string) (map[string]float64, error)
 
 	// GetAllUsers 获取所有用户 ID 列表（用于用户协同过滤）
-	GetAllUsers(ctx context.Context) ([]int64, error)
+	GetAllUsers(ctx context.Context) ([]string, error)
 
 	// GetAllItems 获取所有物品 ID 列表（用于物品协同过滤）
-	GetAllItems(ctx context.Context) ([]int64, error)
+	GetAllItems(ctx context.Context) ([]string, error)
 }
 
 // UserBasedCF 是基于用户的协同过滤召回源（User-based Collaborative Filtering, User-CF）。
@@ -72,7 +73,7 @@ func (r *UserBasedCF) Recall(
 	ctx context.Context,
 	rctx *core.RecommendContext,
 ) ([]*core.Item, error) {
-	if r.Store == nil || rctx == nil || rctx.UserID == 0 {
+	if r.Store == nil || rctx == nil || rctx.UserID == "" {
 		return nil, nil
 	}
 
@@ -93,7 +94,7 @@ func (r *UserBasedCF) Recall(
 
 	// 计算与目标用户的相似度
 	type userSimilarity struct {
-		userID    int64
+		userID    string
 		similarity float64
 	}
 	similarities := make([]userSimilarity, 0)
@@ -125,7 +126,7 @@ func (r *UserBasedCF) Recall(
 		}
 
 		// 计算共同物品
-		commonItems := make(map[int64]struct{})
+		commonItems := make(map[string]struct{})
 		targetScores := make([]float64, 0)
 		userScores := make([]float64, 0)
 
@@ -150,7 +151,7 @@ func (r *UserBasedCF) Recall(
 		case "cosine":
 			fallthrough
 		default:
-			sim = cosineSimilarity(targetScores, userScores)
+			sim = cosineSimilarityVector(targetScores, userScores)
 		}
 
 		if sim > 0 { // 只保留正相似度
@@ -163,22 +164,19 @@ func (r *UserBasedCF) Recall(
 
 	// 排序取 TopK 相似用户
 	if len(similarities) > topKSimilar {
-		// 简单选择排序
-		for i := 0; i < topKSimilar; i++ {
-			maxIdx := i
-			for j := i + 1; j < len(similarities); j++ {
-				if similarities[j].similarity > similarities[maxIdx].similarity {
-					maxIdx = j
-				}
-			}
-			similarities[i], similarities[maxIdx] = similarities[maxIdx], similarities[i]
-		}
+		sort.Slice(similarities, func(i, j int) bool {
+			return similarities[i].similarity > similarities[j].similarity
+		})
 		similarities = similarities[:topKSimilar]
+	} else {
+		sort.Slice(similarities, func(i, j int) bool {
+			return similarities[i].similarity > similarities[j].similarity
+		})
 	}
 
 	// 收集相似用户喜欢的物品（加权）
 	// score[itemID] = Σ(similarity * userScore)
-	itemScores := make(map[int64]float64)
+	itemScores := make(map[string]float64)
 	for _, sim := range similarities {
 		userItems, err := r.Store.GetUserItems(ctx, sim.userID)
 		if err != nil {
@@ -197,7 +195,7 @@ func (r *UserBasedCF) Recall(
 
 	// 转换为排序列表
 	type scoredItem struct {
-		itemID int64
+		itemID string
 		score  float64
 	}
 	scoredItems := make([]scoredItem, 0, len(itemScores))
@@ -213,16 +211,10 @@ func (r *UserBasedCF) Recall(
 	if topK <= 0 {
 		topK = 20
 	}
+	sort.Slice(scoredItems, func(i, j int) bool {
+		return scoredItems[i].score > scoredItems[j].score
+	})
 	if len(scoredItems) > topK {
-		for i := 0; i < topK; i++ {
-			maxIdx := i
-			for j := i + 1; j < len(scoredItems); j++ {
-				if scoredItems[j].score > scoredItems[maxIdx].score {
-					maxIdx = j
-				}
-			}
-			scoredItems[i], scoredItems[maxIdx] = scoredItems[maxIdx], scoredItems[i]
-		}
 		scoredItems = scoredItems[:topK]
 	}
 
@@ -295,26 +287,24 @@ func (r *ItemBasedCF) Recall(
 	ctx context.Context,
 	rctx *core.RecommendContext,
 ) ([]*core.Item, error) {
-	if r.Store == nil || rctx == nil || rctx.UserID == 0 {
+	if r.Store == nil || rctx == nil || rctx.UserID == "" {
 		return nil, nil
 	}
 
 	// 获取用户的历史交互物品
-	var userItems map[int64]float64
+	var userItems map[string]float64
 	var err error
 
 	if r.UserHistoryKey != "" && rctx.UserProfile != nil {
 		// 从 Context 获取用户历史
 		if history, ok := rctx.UserProfile[r.UserHistoryKey]; ok {
-			if items, ok := history.(map[int64]float64); ok {
+			if items, ok := history.(map[string]float64); ok {
 				userItems = items
 			} else if items, ok := history.(map[string]interface{}); ok {
-				userItems = make(map[int64]float64)
+				userItems = make(map[string]float64)
 				for k, v := range items {
-					if itemID, err := parseInt64(k); err == nil {
-						if score, ok := v.(float64); ok {
-							userItems[itemID] = score
-						}
+					if score, ok := v.(float64); ok {
+						userItems[k] = score
 					}
 				}
 			}
@@ -341,7 +331,7 @@ func (r *ItemBasedCF) Recall(
 
 	// 计算用户历史物品与其他物品的相似度
 	type itemSimilarity struct {
-		itemID    int64
+		itemID    string
 		similarity float64
 	}
 
@@ -361,7 +351,7 @@ func (r *ItemBasedCF) Recall(
 	}
 
 	// 为每个用户历史物品，找到相似物品
-	itemScores := make(map[int64]float64)
+	itemScores := make(map[string]float64)
 
 	for historyItemID, historyScore := range userItems {
 		// 获取历史物品的交互用户
@@ -386,7 +376,7 @@ func (r *ItemBasedCF) Recall(
 			}
 
 			// 计算共同用户
-			commonUsers := make(map[int64]struct{})
+			commonUsers := make(map[string]struct{})
 			historyScores := make([]float64, 0)
 			candidateScores := make([]float64, 0)
 
@@ -411,7 +401,7 @@ func (r *ItemBasedCF) Recall(
 			case "cosine":
 				fallthrough
 			default:
-				sim = cosineSimilarity(historyScores, candidateScores)
+				sim = cosineSimilarityVector(historyScores, candidateScores)
 			}
 
 			if sim > 0 { // 只保留正相似度
@@ -423,16 +413,10 @@ func (r *ItemBasedCF) Recall(
 		}
 
 		// 排序取 TopK 相似物品
+		sort.Slice(similarities, func(i, j int) bool {
+			return similarities[i].similarity > similarities[j].similarity
+		})
 		if len(similarities) > topKSimilar {
-			for i := 0; i < topKSimilar; i++ {
-				maxIdx := i
-				for j := i + 1; j < len(similarities); j++ {
-					if similarities[j].similarity > similarities[maxIdx].similarity {
-						maxIdx = j
-					}
-				}
-				similarities[i], similarities[maxIdx] = similarities[maxIdx], similarities[i]
-			}
 			similarities = similarities[:topKSimilar]
 		}
 
@@ -444,7 +428,7 @@ func (r *ItemBasedCF) Recall(
 
 	// 转换为排序列表
 	type scoredItem struct {
-		itemID int64
+		itemID string
 		score  float64
 	}
 	scoredItems := make([]scoredItem, 0, len(itemScores))
@@ -460,16 +444,10 @@ func (r *ItemBasedCF) Recall(
 	if topK <= 0 {
 		topK = 20
 	}
+	sort.Slice(scoredItems, func(i, j int) bool {
+		return scoredItems[i].score > scoredItems[j].score
+	})
 	if len(scoredItems) > topK {
-		for i := 0; i < topK; i++ {
-			maxIdx := i
-			for j := i + 1; j < len(scoredItems); j++ {
-				if scoredItems[j].score > scoredItems[maxIdx].score {
-					maxIdx = j
-				}
-			}
-			scoredItems[i], scoredItems[maxIdx] = scoredItems[maxIdx], scoredItems[i]
-		}
 		scoredItems = scoredItems[:topK]
 	}
 
@@ -488,24 +466,10 @@ func (r *ItemBasedCF) Recall(
 
 // U2IRecall 是 UserBasedCF 的类型别名，提供更符合工业习惯的命名。
 // u2i (User-to-Item) 表示"直接给用户算候选物品集合"的召回方向。
-//
-// 使用示例：
-//   u2i := &recall.U2IRecall{
-//       Store:            cfStore,
-//       TopKSimilarUsers: 10,
-//       TopKItems:        5,
-//   }
 type U2IRecall = UserBasedCF
 
 // I2IRecall 是 ItemBasedCF 的类型别名，提供更符合工业习惯的命名。
 // i2i (Item-to-Item) 是工业级召回的"常青树"，电商、内容流、短视频都在用。
-//
-// 使用示例：
-//   i2i := &recall.I2IRecall{
-//       Store:            cfStore,
-//       TopKSimilarItems: 10,
-//       TopKItems:        5,
-//   }
 type I2IRecall = ItemBasedCF
 
 // pearsonCorrelation 计算皮尔逊相关系数
@@ -540,27 +504,19 @@ func pearsonCorrelation(x, y []float64) float64 {
 	return cov / math.Sqrt(varX*varY)
 }
 
-// parseInt64 辅助函数：解析字符串为 int64
-func parseInt64(s string) (int64, error) {
-	var result int64
-	var sign int64 = 1
-	start := 0
-
-	if len(s) == 0 {
-		return 0, nil
+// cosineSimilarityVector 计算两个向量的余弦相似度
+func cosineSimilarityVector(x, y []float64) float64 {
+	if len(x) != len(y) || len(x) == 0 {
+		return 0
 	}
-
-	if s[0] == '-' {
-		sign = -1
-		start = 1
+	var dotProduct, normX, normY float64
+	for i := range x {
+		dotProduct += x[i] * y[i]
+		normX += x[i] * x[i]
+		normY += y[i] * y[i]
 	}
-
-	for i := start; i < len(s); i++ {
-		if s[i] < '0' || s[i] > '9' {
-			return 0, nil
-		}
-		result = result*10 + int64(s[i]-'0')
+	if normX == 0 || normY == 0 {
+		return 0
 	}
-
-	return result * sign, nil
+	return dotProduct / (math.Sqrt(normX) * math.Sqrt(normY))
 }

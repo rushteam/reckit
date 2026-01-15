@@ -84,7 +84,7 @@ err := milvusService.Insert(ctx, &vector.InsertRequest{
         {0.1, 0.2, 0.3, ...}, // 物品 1 的向量
         {0.4, 0.5, 0.6, ...}, // 物品 2 的向量
     },
-    IDs: []int64{1, 2},
+    IDs: []string{"1", "2"},
 })
 ```
 

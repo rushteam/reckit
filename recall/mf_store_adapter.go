@@ -3,7 +3,6 @@ package recall
 import (
 	"context"
 	"encoding/json"
-	"strconv"
 
 	"reckit/store"
 )
@@ -31,8 +30,8 @@ func NewStoreMFAdapter(s store.Store, keyPrefix string) *StoreMFAdapter {
 	}
 }
 
-func (a *StoreMFAdapter) GetUserVector(ctx context.Context, userID int64) ([]float64, error) {
-	key := a.KeyPrefix + ":user:" + strconv.FormatInt(userID, 10)
+func (a *StoreMFAdapter) GetUserVector(ctx context.Context, userID string) ([]float64, error) {
+	key := a.KeyPrefix + ":user:" + userID
 	data, err := a.store.Get(ctx, key)
 	if err != nil {
 		if err == store.ErrNotFound {
@@ -48,8 +47,8 @@ func (a *StoreMFAdapter) GetUserVector(ctx context.Context, userID int64) ([]flo
 	return result, nil
 }
 
-func (a *StoreMFAdapter) GetItemVector(ctx context.Context, itemID int64) ([]float64, error) {
-	key := a.KeyPrefix + ":item:" + strconv.FormatInt(itemID, 10)
+func (a *StoreMFAdapter) GetItemVector(ctx context.Context, itemID string) ([]float64, error) {
+	key := a.KeyPrefix + ":item:" + itemID
 	data, err := a.store.Get(ctx, key)
 	if err != nil {
 		if err == store.ErrNotFound {
@@ -65,24 +64,24 @@ func (a *StoreMFAdapter) GetItemVector(ctx context.Context, itemID int64) ([]flo
 	return result, nil
 }
 
-func (a *StoreMFAdapter) GetAllItemVectors(ctx context.Context) (map[int64][]float64, error) {
+func (a *StoreMFAdapter) GetAllItemVectors(ctx context.Context) (map[string][]float64, error) {
 	// 先获取所有物品列表
 	itemsKey := a.KeyPrefix + ":items"
 	itemsData, err := a.store.Get(ctx, itemsKey)
 	if err != nil {
 		if err == store.ErrNotFound {
-			return make(map[int64][]float64), nil
+			return make(map[string][]float64), nil
 		}
 		return nil, err
 	}
 
-	var itemIDs []int64
+	var itemIDs []string
 	if err := json.Unmarshal(itemsData, &itemIDs); err != nil {
 		return nil, err
 	}
 
 	// 批量获取物品向量
-	result := make(map[int64][]float64)
+	result := make(map[string][]float64)
 	for _, itemID := range itemIDs {
 		vector, err := a.GetItemVector(ctx, itemID)
 		if err != nil {

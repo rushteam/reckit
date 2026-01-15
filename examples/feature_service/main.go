@@ -70,7 +70,7 @@ func main() {
 			// 召回
 			&recall.Fanout{
 				Sources: []recall.Source{
-					&recall.Hot{IDs: []int64{1, 2, 3, 4, 5}},
+					&recall.Hot{IDs: []string{"1", "2", "3", "4", "5"}},
 				},
 				Dedup: true,
 			},
@@ -83,7 +83,7 @@ func main() {
 
 	// 7. 创建用户上下文
 	rctx := &core.RecommendContext{
-		UserID: 42,
+		UserID: "42",
 		Scene:  "feed",
 		UserProfile: map[string]any{
 			"age":    25.0,
@@ -105,7 +105,7 @@ func main() {
 		if item == nil {
 			continue
 		}
-		fmt.Printf("\n[%d] Item ID: %d, Score: %.4f\n", i+1, item.ID, item.Score)
+		fmt.Printf("\n[%d] Item ID: %s, Score: %.4f\n", i+1, item.ID, item.Score)
 		fmt.Printf("    特征数量: %d\n", len(item.Features))
 		fmt.Printf("    用户特征: ")
 		for k, v := range item.Features {
@@ -132,7 +132,7 @@ func main() {
 	fmt.Println("\n=== 直接使用特征服务 ===")
 
 	// 获取用户特征
-	userFeatures, err := featureService.GetUserFeatures(ctx, 42)
+	userFeatures, err := featureService.GetUserFeatures(ctx, "42")
 	if err != nil {
 		log.Printf("获取用户特征失败: %v", err)
 	} else {
@@ -140,7 +140,7 @@ func main() {
 	}
 
 	// 批量获取物品特征
-	itemIDs := []int64{1, 2, 3}
+	itemIDs := []string{"1", "2", "3"}
 	itemFeatures, err := featureService.BatchGetItemFeatures(ctx, itemIDs)
 	if err != nil {
 		log.Printf("批量获取物品特征失败: %v", err)
@@ -149,7 +149,7 @@ func main() {
 	}
 
 	// 获取实时特征
-	realtimeFeatures, err := featureService.GetRealtimeFeatures(ctx, 42, 1)
+	realtimeFeatures, err := featureService.GetRealtimeFeatures(ctx, "42", "1")
 	if err != nil {
 		log.Printf("获取实时特征失败: %v", err)
 	} else {

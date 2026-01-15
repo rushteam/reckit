@@ -32,7 +32,7 @@ func main() {
 
 	// 创建推荐上下文
 	rctx := &core.RecommendContext{
-		UserID: 42,
+		UserID: "42",
 		Scene:  "feed",
 		Params: map[string]any{"debug": true},
 		Realtime: map[string]any{
@@ -50,6 +50,6 @@ func main() {
 	// 输出结果
 	fmt.Printf("Pipeline 执行成功，返回 %d 个物品:\n", len(items))
 	for i, it := range items {
-		fmt.Printf("#%d id=%d score=%.4f labels=%v\n", i, it.ID, it.Score, it.Labels)
+		fmt.Printf("#%d id=%s score=%.4f labels=%v\n", i, it.ID, it.Score, it.Labels)
 	}
 }
