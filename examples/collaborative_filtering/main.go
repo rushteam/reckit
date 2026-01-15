@@ -8,21 +8,24 @@ import (
 	"reckit/core"
 	"reckit/pipeline"
 	"reckit/recall"
+	"reckit/store"
 )
 
 func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// 1. 创建内存协同过滤存储
-	cfStore := recall.NewMemoryCFStore()
+	// 1. 创建内存存储和协同过滤适配器
+	memStore := store.NewMemoryStore()
+	defer memStore.Close()
+	cfStore := recall.NewStoreCFAdapter(memStore, "cf")
 
 	// 2. 模拟用户-物品交互数据
 	// 用户1: 喜欢物品 1, 2, 3
 	// 用户2: 喜欢物品 2, 3, 4 (与用户1有共同兴趣)
 	// 用户3: 喜欢物品 4, 5, 6 (与用户1、2兴趣不同)
 	// 用户4: 喜欢物品 1, 3, 5 (与用户1有部分共同兴趣)
-	setupTestData(cfStore)
+	setupTestData(ctx, cfStore)
 
 	// 3. 创建用户协同过滤召回源
 	userCF := &recall.UserBasedCF{
@@ -56,36 +59,46 @@ func main() {
 	testPipeline(ctx, userCF, i2i)
 }
 
-func setupTestData(cfStore *recall.MemoryCFStore) {
-	// 用户1的交互
-	cfStore.AddInteraction(1, 1, 5.0) // 用户1 对物品1 评分5
-	cfStore.AddInteraction(1, 2, 4.0) // 用户1 对物品2 评分4
-	cfStore.AddInteraction(1, 3, 5.0) // 用户1 对物品3 评分5
+func setupTestData(ctx context.Context, cfStore *recall.StoreCFAdapter) {
+	interactions := []struct {
+		UserID int64
+		ItemID int64
+		Score  float64
+	}{
+		// 用户1的交互
+		{1, 1, 5.0}, // 用户1 对物品1 评分5
+		{1, 2, 4.0}, // 用户1 对物品2 评分4
+		{1, 3, 5.0}, // 用户1 对物品3 评分5
 
-	// 用户2的交互（与用户1有共同兴趣）
-	cfStore.AddInteraction(2, 2, 5.0) // 用户2 对物品2 评分5
-	cfStore.AddInteraction(2, 3, 4.0) // 用户2 对物品3 评分4
-	cfStore.AddInteraction(2, 4, 5.0) // 用户2 对物品4 评分5
-	cfStore.AddInteraction(2, 1, 4.0) // 用户2 对物品1 评分4（增加共同用户）
+		// 用户2的交互（与用户1有共同兴趣）
+		{2, 2, 5.0}, // 用户2 对物品2 评分5
+		{2, 3, 4.0}, // 用户2 对物品3 评分4
+		{2, 4, 5.0}, // 用户2 对物品4 评分5
+		{2, 1, 4.0}, // 用户2 对物品1 评分4（增加共同用户）
 
-	// 用户3的交互（兴趣不同）
-	cfStore.AddInteraction(3, 4, 4.0) // 用户3 对物品4 评分4
-	cfStore.AddInteraction(3, 5, 5.0) // 用户3 对物品5 评分5
-	cfStore.AddInteraction(3, 6, 4.0) // 用户3 对物品6 评分4
-	cfStore.AddInteraction(3, 3, 3.0) // 用户3 对物品3 评分3（增加共同用户）
+		// 用户3的交互（兴趣不同）
+		{3, 4, 4.0}, // 用户3 对物品4 评分4
+		{3, 5, 5.0}, // 用户3 对物品5 评分5
+		{3, 6, 4.0}, // 用户3 对物品6 评分4
+		{3, 3, 3.0}, // 用户3 对物品3 评分3（增加共同用户）
 
-	// 用户4的交互（与用户1有部分共同兴趣）
-	cfStore.AddInteraction(4, 1, 4.0) // 用户4 对物品1 评分4
-	cfStore.AddInteraction(4, 3, 5.0) // 用户4 对物品3 评分5
-	cfStore.AddInteraction(4, 5, 4.0) // 用户4 对物品5 评分4
-	cfStore.AddInteraction(4, 4, 3.0) // 用户4 对物品4 评分3（增加共同用户）
+		// 用户4的交互（与用户1有部分共同兴趣）
+		{4, 1, 4.0}, // 用户4 对物品1 评分4
+		{4, 3, 5.0}, // 用户4 对物品3 评分5
+		{4, 5, 4.0}, // 用户4 对物品5 评分4
+		{4, 4, 3.0}, // 用户4 对物品4 评分3（增加共同用户）
 
-	// 用户5的交互（与用户1、2高度相似）
-	cfStore.AddInteraction(5, 1, 5.0) // 用户5 对物品1 评分5
-	cfStore.AddInteraction(5, 2, 5.0) // 用户5 对物品2 评分5
-	cfStore.AddInteraction(5, 3, 4.0) // 用户5 对物品3 评分4
-	cfStore.AddInteraction(5, 7, 5.0) // 用户5 对物品7 评分5（新物品）
-	cfStore.AddInteraction(5, 4, 4.0) // 用户5 对物品4 评分4（增加共同用户）
+		// 用户5的交互（与用户1、2高度相似）
+		{5, 1, 5.0}, // 用户5 对物品1 评分5
+		{5, 2, 5.0}, // 用户5 对物品2 评分5
+		{5, 3, 4.0}, // 用户5 对物品3 评分4
+		{5, 7, 5.0}, // 用户5 对物品7 评分5（新物品）
+		{5, 4, 4.0}, // 用户5 对物品4 评分4（增加共同用户）
+	}
+
+	if err := recall.SetupCFTestData(ctx, cfStore, interactions); err != nil {
+		panic(fmt.Sprintf("设置测试数据失败: %v", err))
+	}
 }
 
 func testUserCF(ctx context.Context, userCF *recall.UserBasedCF) {

@@ -65,7 +65,7 @@ type UserBasedCF struct {
 }
 
 func (r *UserBasedCF) Name() string {
-	return "recall.user_based_cf" // 或 "recall.u2i" (u2u → u2i)
+	return "recall.u2i" // 工业标准命名：u2i (User-to-Item)
 }
 
 func (r *UserBasedCF) Recall(
@@ -485,6 +485,17 @@ func (r *ItemBasedCF) Recall(
 
 	return out, nil
 }
+
+// U2IRecall 是 UserBasedCF 的类型别名，提供更符合工业习惯的命名。
+// u2i (User-to-Item) 表示"直接给用户算候选物品集合"的召回方向。
+//
+// 使用示例：
+//   u2i := &recall.U2IRecall{
+//       Store:            cfStore,
+//       TopKSimilarUsers: 10,
+//       TopKItems:        5,
+//   }
+type U2IRecall = UserBasedCF
 
 // I2IRecall 是 ItemBasedCF 的类型别名，提供更符合工业习惯的命名。
 // i2i (Item-to-Item) 是工业级召回的"常青树"，电商、内容流、短视频都在用。

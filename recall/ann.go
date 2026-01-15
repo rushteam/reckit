@@ -29,7 +29,18 @@ type VectorStore interface {
 	ListVectors(ctx context.Context) (map[int64][]float64, error)
 }
 
-func (r *ANN) Name() string { return "recall.ann" }
+func (r *ANN) Name() string { return "recall.emb" } // 工业标准命名：emb (Embedding)
+
+// EmbRecall 是 ANN 的类型别名，提供更符合工业习惯的命名。
+// EmbRecall (Embedding Recall) 表示基于 Embedding 向量的召回。
+//
+// 使用示例：
+//   embRecall := &recall.EmbRecall{
+//       Store:      vectorStore,
+//       TopK:       20,
+//       Metric:     "cosine",
+//   }
+type EmbRecall = ANN
 
 func (r *ANN) Recall(
 	ctx context.Context,

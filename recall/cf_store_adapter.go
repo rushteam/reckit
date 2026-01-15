@@ -8,105 +8,6 @@ import (
 	"reckit/store"
 )
 
-// MemoryCFStore 是基于内存的协同过滤存储实现（用于测试和示例）。
-// 生产环境应该实现基于 Redis、MySQL 等的版本。
-type MemoryCFStore struct {
-	// userItems[userID][itemID] = score
-	userItems map[int64]map[int64]float64
-
-	// itemUsers[itemID][userID] = score
-	itemUsers map[int64]map[int64]float64
-
-	// 所有用户和物品的列表
-	allUsers []int64
-	allItems []int64
-}
-
-// NewMemoryCFStore 创建一个内存协同过滤存储。
-func NewMemoryCFStore() *MemoryCFStore {
-	return &MemoryCFStore{
-		userItems: make(map[int64]map[int64]float64),
-		itemUsers: make(map[int64]map[int64]float64),
-		allUsers:  make([]int64, 0),
-		allItems:  make([]int64, 0),
-	}
-}
-
-// AddInteraction 添加用户-物品交互记录。
-func (s *MemoryCFStore) AddInteraction(userID, itemID int64, score float64) {
-	// 添加到 userItems
-	if s.userItems[userID] == nil {
-		s.userItems[userID] = make(map[int64]float64)
-	}
-	s.userItems[userID][itemID] = score
-
-	// 添加到 itemUsers
-	if s.itemUsers[itemID] == nil {
-		s.itemUsers[itemID] = make(map[int64]float64)
-	}
-	s.itemUsers[itemID][userID] = score
-
-	// 更新用户列表
-	userExists := false
-	for _, uid := range s.allUsers {
-		if uid == userID {
-			userExists = true
-			break
-		}
-	}
-	if !userExists {
-		s.allUsers = append(s.allUsers, userID)
-	}
-
-	// 更新物品列表
-	itemExists := false
-	for _, iid := range s.allItems {
-		if iid == itemID {
-			itemExists = true
-			break
-		}
-	}
-	if !itemExists {
-		s.allItems = append(s.allItems, itemID)
-	}
-}
-
-func (s *MemoryCFStore) GetUserItems(ctx context.Context, userID int64) (map[int64]float64, error) {
-	if items, ok := s.userItems[userID]; ok {
-		// 返回副本
-		result := make(map[int64]float64, len(items))
-		for k, v := range items {
-			result[k] = v
-		}
-		return result, nil
-	}
-	return make(map[int64]float64), nil
-}
-
-func (s *MemoryCFStore) GetItemUsers(ctx context.Context, itemID int64) (map[int64]float64, error) {
-	if users, ok := s.itemUsers[itemID]; ok {
-		// 返回副本
-		result := make(map[int64]float64, len(users))
-		for k, v := range users {
-			result[k] = v
-		}
-		return result, nil
-	}
-	return make(map[int64]float64), nil
-}
-
-func (s *MemoryCFStore) GetAllUsers(ctx context.Context) ([]int64, error) {
-	result := make([]int64, len(s.allUsers))
-	copy(result, s.allUsers)
-	return result, nil
-}
-
-func (s *MemoryCFStore) GetAllItems(ctx context.Context) ([]int64, error) {
-	result := make([]int64, len(s.allItems))
-	copy(result, s.allItems)
-	return result, nil
-}
-
 // StoreCFAdapter 是基于 Store 接口的协同过滤存储适配器。
 // 从 Redis/MySQL 等存储中读取用户-物品交互数据。
 type StoreCFAdapter struct {
@@ -221,4 +122,85 @@ func (a *StoreCFAdapter) GetAllItems(ctx context.Context) ([]int64, error) {
 		return nil, err
 	}
 	return result, nil
+}
+
+// SetupCFTestData 辅助函数：为测试准备协同过滤数据到 Store 中。
+// 使用 StoreCFAdapter + MemoryStore 时，可以用这个函数方便地添加测试数据。
+func SetupCFTestData(ctx context.Context, adapter *StoreCFAdapter, interactions []struct {
+	UserID int64
+	ItemID int64
+	Score  float64
+}) error {
+	// 收集所有用户和物品
+	userItems := make(map[int64]map[int64]float64)
+	itemUsers := make(map[int64]map[int64]float64)
+	allUsers := make(map[int64]bool)
+	allItems := make(map[int64]bool)
+
+	for _, inter := range interactions {
+		// 添加到 userItems
+		if userItems[inter.UserID] == nil {
+			userItems[inter.UserID] = make(map[int64]float64)
+		}
+		userItems[inter.UserID][inter.ItemID] = inter.Score
+
+		// 添加到 itemUsers
+		if itemUsers[inter.ItemID] == nil {
+			itemUsers[inter.ItemID] = make(map[int64]float64)
+		}
+		itemUsers[inter.ItemID][inter.UserID] = inter.Score
+
+		allUsers[inter.UserID] = true
+		allItems[inter.ItemID] = true
+	}
+
+	// 写入用户物品交互数据
+	for userID, items := range userItems {
+		key := adapter.KeyPrefix + ":user:" + strconv.FormatInt(userID, 10)
+		data, err := json.Marshal(items)
+		if err != nil {
+			return err
+		}
+		if err := adapter.store.Set(ctx, key, data); err != nil {
+			return err
+		}
+	}
+
+	// 写入物品用户交互数据
+	for itemID, users := range itemUsers {
+		key := adapter.KeyPrefix + ":item:" + strconv.FormatInt(itemID, 10)
+		data, err := json.Marshal(users)
+		if err != nil {
+			return err
+		}
+		if err := adapter.store.Set(ctx, key, data); err != nil {
+			return err
+		}
+	}
+
+	// 写入所有用户列表
+	userList := make([]int64, 0, len(allUsers))
+	for userID := range allUsers {
+		userList = append(userList, userID)
+	}
+	usersKey := adapter.KeyPrefix + ":users"
+	usersData, err := json.Marshal(userList)
+	if err != nil {
+		return err
+	}
+	if err := adapter.store.Set(ctx, usersKey, usersData); err != nil {
+		return err
+	}
+
+	// 写入所有物品列表
+	itemList := make([]int64, 0, len(allItems))
+	for itemID := range allItems {
+		itemList = append(itemList, itemID)
+	}
+	itemsKey := adapter.KeyPrefix + ":items"
+	itemsData, err := json.Marshal(itemList)
+	if err != nil {
+		return err
+	}
+	return adapter.store.Set(ctx, itemsKey, itemsData)
 }
