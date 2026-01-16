@@ -9,6 +9,7 @@
 | MF / ALS | MFRecall | Recall | ✅ 已支持 | `recall/matrix_factorization.go` | `recall.mf` |
 | Embedding | EmbRecall | Recall | ✅ 已支持 | `recall/ann.go` | `recall.emb` |
 | Content | ContentRecall | Recall | ✅ 已支持 | `recall/content.go` | `recall.content` |
+| RPC 召回 | RPCRecall | Recall | ✅ 已支持 | `recall/rpc_recall.go` | `recall.rpc` |
 
 **所有算法均已实现并支持！** ✅
 
@@ -121,6 +122,80 @@ contentStore := recall.NewStoreContentAdapter(memStore, "content")
 
 **Label**: `recall.content`
 
+### 6. RPC 召回 → RPCRecall ✅
+
+**实现类**: `RPCRecall`
+
+**核心思想**: 通过 RPC/HTTP 调用外部召回服务，支持微服务架构和第三方召回 API
+
+**使用场景**:
+- 调用远程召回服务（Python/Java 等实现）
+- 调用微服务架构中的召回服务
+- 调用第三方召回 API
+- 集成已有的召回系统
+
+**使用示例**:
+
+```go
+// 基础用法（使用默认请求/响应格式）
+rpcRecall := recall.NewRPCRecall(
+    "http://localhost:8080/recall", // 召回服务端点
+    2*time.Second,                   // 超时时间
+).WithTopK(20)
+
+// 在 Fanout 中使用
+fanout := &recall.Fanout{
+    Sources: []recall.Source{
+        rpcRecall,
+        &recall.Hot{IDs: []string{"1", "2", "3"}},
+    },
+    Dedup:         true,
+    Timeout:       2 * time.Second,
+    MaxConcurrent: 5,
+    MergeStrategy: &recall.PriorityMergeStrategy{},
+}
+```
+
+**默认请求格式（JSON）**:
+
+```json
+{
+  "user_id": "user_123",
+  "top_k": 20,
+  "scene": "feed",
+  "user_profile": {...},
+  "realtime": {...}
+}
+```
+
+**默认响应格式（JSON）**:
+
+```json
+{
+  "items": [
+    {"id": "item_1", "score": 0.95, "features": {...}, "meta": {...}},
+    {"id": "item_2", "score": 0.87, "features": {...}, "meta": {...}}
+  ]
+}
+```
+
+或者简化格式：
+
+```json
+{
+  "item_ids": ["item_1", "item_2", "item_3"],
+  "scores": [0.95, 0.87, 0.82]
+}
+```
+
+**Label**: `recall.rpc`
+
+**工程特征**:
+- 实时性：取决于远程服务响应时间
+- 可扩展性：强（支持任意远程服务）
+- 灵活性：高（支持自定义请求/响应格式）
+- 适用场景：微服务架构、第三方集成
+
 ## 存储接口
 
 ### CFStore（协同过滤）
@@ -157,6 +232,7 @@ pipeline := &pipeline.Pipeline{
                 &recall.MFRecall{...},       // MF/ALS
                 &recall.EmbRecall{...},      // Embedding
                 &recall.ContentRecall{...},   // Content
+                recall.NewRPCRecall("http://localhost:8080/recall", 2*time.Second), // RPC 召回
             },
             MergeStrategy: &recall.PriorityMergeStrategy{},
         },
