@@ -106,39 +106,331 @@ rctx := &core.RecommendContext{
 
 ANN 实现了 `recall.Source` 接口，可以：
 
-1. **单独使用**:
+#### 1. 基础用法（单独使用）
+
 ```go
+import (
+    "context"
+    "time"
+    
+    "github.com/rushteam/reckit/core"
+    "github.com/rushteam/reckit/recall"
+    "github.com/rushteam/reckit/vector"
+)
+
+// 创建 Milvus 服务
+milvusService := vector.NewMilvusService(
+    "localhost:19530",
+    vector.WithMilvusAuth("root", "Milvus"),
+    vector.WithMilvusDatabase("recommend"),
+    vector.WithMilvusTimeout(30),
+)
+defer milvusService.Close()
+
+// 创建适配器
+adapter := vector.NewVectorStoreAdapter(milvusService, "items")
+
+// 创建推荐上下文（包含用户向量）
+userVector := []float64{0.1, 0.2, 0.3, ...} // 用户向量
+rctx := &core.RecommendContext{
+    UserID: "user_123",
+    Scene:  "feed",
+    UserProfile: map[string]any{
+        "user_vector": userVector,
+    },
+}
+
+// 创建 ANN 召回
 ann := &recall.ANN{
-    Store:      vectorStore,
+    Store:      adapter,
     TopK:       20,
     Metric:     "cosine",
+    UserVector: userVector, // 直接提供用户向量
 }
+
+// 执行召回
+ctx := context.Background()
 items, err := ann.Recall(ctx, rctx)
+if err != nil {
+    log.Fatal(err)
+}
+
+// 使用召回结果
+for _, item := range items {
+    fmt.Printf("Item: %s, Score: %.4f\n", item.ID, item.Score)
+}
 ```
 
-2. **集成到 Fanout**（多路召回）:
+#### 2. 集成到 Fanout（多路召回）
+
 ```go
+import (
+    "github.com/rushteam/reckit/recall"
+    "github.com/rushteam/reckit/vector"
+)
+
+// 创建向量服务适配器
+milvusService := vector.NewMilvusService("localhost:19530")
+defer milvusService.Close()
+adapter := vector.NewVectorStoreAdapter(milvusService, "items")
+
+// 创建多种召回源
+hotRecall := &recall.Hot{IDs: []string{"1", "2", "3", "4", "5"}}
+annRecall := &recall.ANN{
+    Store:      adapter,
+    TopK:       20,
+    Metric:     "cosine",
+    UserVector: userVector,
+}
+i2iRecall := &recall.I2IRecall{
+    Store:            cfStore,
+    TopKSimilarItems: 10,
+    TopKItems:        20,
+    SimilarityCalculator: &recall.CosineSimilarity{},
+    Config:            config,
+}
+
+// 创建 Fanout（多路并发召回）
 fanout := &recall.Fanout{
     Sources: []recall.Source{
-        &recall.Hot{...},
-        &recall.ANN{...},  // Embedding 召回
-        &recall.UserHistory{...},
+        hotRecall,   // 热门召回（优先级 0）
+        annRecall,   // Embedding 召回（优先级 1）
+        i2iRecall,   // Item-CF 召回（优先级 2）
     },
-    MergeStrategy: "priority",
+    Dedup:         true,
+    Timeout:       2 * time.Second,
+    MaxConcurrent: 5,
+    MergeStrategy: &recall.PriorityMergeStrategy{},
+}
+
+// 执行多路召回
+items, err := fanout.Process(ctx, rctx, nil)
+```
+
+#### 3. 集成到 Pipeline（完整推荐流程）
+
+```go
+import (
+    "github.com/rushteam/reckit/core"
+    "github.com/rushteam/reckit/pipeline"
+    "github.com/rushteam/reckit/recall"
+    "github.com/rushteam/reckit/vector"
+)
+
+// 创建向量服务
+milvusService := vector.NewMilvusService("localhost:19530")
+defer milvusService.Close()
+adapter := vector.NewVectorStoreAdapter(milvusService, "items")
+
+// 创建推荐上下文
+rctx := &core.RecommendContext{
+    UserID: "user_123",
+    Scene:  "feed",
+    UserProfile: map[string]any{
+        "user_vector": userVector,
+        "age":          25.0,
+        "gender":       1.0,
+    },
+    Realtime: map[string]any{
+        "hour":   float64(time.Now().Hour()),
+        "device": "mobile",
+    },
+}
+
+// 创建 Pipeline
+p := &pipeline.Pipeline{
+    Nodes: []pipeline.Node{
+        // 多路召回
+        &recall.Fanout{
+            Sources: []recall.Source{
+                &recall.Hot{IDs: []string{"1", "2", "3"}},
+                &recall.ANN{
+                    Store:      adapter,
+                    TopK:       20,
+                    Metric:     "cosine",
+                    UserVector: userVector,
+                },
+            },
+            Dedup:         true,
+            Timeout:       2 * time.Second,
+            MaxConcurrent: 5,
+            MergeStrategy: &recall.PriorityMergeStrategy{},
+        },
+        // 过滤节点
+        &filter.FilterNode{
+            Filters: []filter.Filter{
+                filter.NewUserBlockFilter(nil, "user:block"),
+                filter.NewExposedFilter(nil, "user:exposed", 7*24*3600),
+            },
+        },
+        // 特征注入
+        &feature.EnrichNode{
+            UserFeaturePrefix:  "user_",
+            ItemFeaturePrefix:  "item_",
+            CrossFeaturePrefix: "cross_",
+        },
+        // 排序节点
+        &rank.LRNode{
+            Bias: 0.0,
+            Weights: map[string]float64{
+                "ctr": 1.2,
+                "cvr": 0.8,
+            },
+        },
+        // 重排节点
+        &rerank.Diversity{LabelKey: "category"},
+    },
+}
+
+// 运行 Pipeline
+items, err := p.Run(ctx, rctx, nil)
+```
+
+#### 4. 使用 Milvus 服务的完整示例
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "time"
+
+    "github.com/rushteam/reckit/core"
+    "github.com/rushteam/reckit/pipeline"
+    "github.com/rushteam/reckit/recall"
+    "github.com/rushteam/reckit/vector"
+)
+
+func main() {
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
+    // 1. 创建 Milvus 服务
+    milvusService := vector.NewMilvusService(
+        "localhost:19530",
+        vector.WithMilvusAuth("root", "Milvus"),
+        vector.WithMilvusDatabase("recommend"),
+        vector.WithMilvusTimeout(30),
+    )
+    defer milvusService.Close()
+
+    // 2. 检查并创建集合
+    collectionName := "items"
+    dimension := 128
+    exists, _ := milvusService.HasCollection(ctx, collectionName)
+    if !exists {
+        milvusService.CreateCollection(ctx, &vector.CreateCollectionRequest{
+            Name:      collectionName,
+            Dimension: dimension,
+            Metric:    "cosine",
+        })
+    }
+
+    // 3. 插入向量（示例）
+    vectors := [][]float64{
+        generateRandomVector(dimension),
+        generateRandomVector(dimension),
+        generateRandomVector(dimension),
+    }
+    itemIDs := []string{"1", "2", "3"}
+    milvusService.Insert(ctx, &vector.InsertRequest{
+        Collection: collectionName,
+        Vectors:    vectors,
+        IDs:        itemIDs,
+    })
+
+    // 4. 创建适配器
+    adapter := vector.NewVectorStoreAdapter(milvusService, collectionName)
+
+    // 5. 创建推荐上下文
+    userVector := generateRandomVector(dimension)
+    rctx := &core.RecommendContext{
+        UserID: "1",
+        Scene:  "feed",
+        UserProfile: map[string]any{
+            "user_vector": userVector,
+        },
+    }
+
+    // 6. 使用 ANN 召回
+    ann := &recall.ANN{
+        Store:      adapter,
+        TopK:       10,
+        Metric:     "cosine",
+        UserVector: userVector,
+    }
+
+    items, err := ann.Recall(ctx, rctx)
+    if err != nil {
+        fmt.Printf("ANN 召回失败: %v\n", err)
+        return
+    }
+
+    fmt.Printf("ANN 召回成功，返回 %d 个物品\n", len(items))
+    for i, item := range items {
+        fmt.Printf("  %d. 物品 %s (分数: %.4f)\n", i+1, item.ID, item.Score)
+    }
+
+    // 7. Pipeline 集成
+    p := &pipeline.Pipeline{
+        Nodes: []pipeline.Node{
+            &recall.Fanout{
+                Sources: []recall.Source{ann},
+                Dedup:   true,
+            },
+        },
+    }
+
+    items, err = p.Run(ctx, rctx, nil)
+    if err != nil {
+        fmt.Printf("Pipeline 执行失败: %v\n", err)
+    } else {
+        fmt.Printf("Pipeline 执行成功，返回 %d 个物品\n", len(items))
+    }
+}
+
+func generateRandomVector(dimension int) []float64 {
+    vec := make([]float64, dimension)
+    for i := range vec {
+        vec[i] = float64(i%10) / 10.0
+    }
+    return vec
 }
 ```
 
-3. **集成到 Pipeline**:
+#### 5. 使用自定义用户向量提取器
+
 ```go
-pipeline := &pipeline.Pipeline{
-    Nodes: []pipeline.Node{
-        &recall.Fanout{
-            Sources: []recall.Source{
-                &recall.ANN{...},
-            },
-        },
-        // 其他节点...
-    },
+// 自定义用户向量提取器
+userVectorExtractor := func(rctx *core.RecommendContext) []float64 {
+    // 从多个来源组合用户向量
+    if rctx.UserProfile == nil {
+        return nil
+    }
+    
+    // 方式1: 直接从 UserProfile 获取
+    if uv, ok := rctx.UserProfile["user_vector"]; ok {
+        if vec, ok := uv.([]float64); ok {
+            return vec
+        }
+    }
+    
+    // 方式2: 从特征计算用户向量
+    // 例如：使用用户特征（年龄、性别等）生成向量
+    age, _ := rctx.UserProfile["age"].(float64)
+    gender, _ := rctx.UserProfile["gender"].(float64)
+    
+    // 这里可以使用模型或规则生成向量
+    return []float64{age / 100.0, gender, ...}
+}
+
+// 使用自定义提取器
+ann := &recall.ANN{
+    Store:              adapter,
+    TopK:               20,
+    Metric:             "cosine",
+    UserVectorExtractor: userVectorExtractor, // 使用自定义提取器
 }
 ```
 
@@ -182,5 +474,18 @@ pipeline := &pipeline.Pipeline{
 
 1. **向量维度**: 确保用户向量和物品向量维度一致
 2. **向量归一化**: 建议对向量进行归一化处理，特别是使用余弦相似度时
-3. **性能考虑**: 当前实现为全量扫描，大规模数据建议使用专业向量数据库
+3. **性能考虑**: 
+   - 优先使用 `Search` 方法（高性能，支持向量索引）
+   - 如果 `Search` 失败，会回退到暴力搜索（适用于小规模数据）
+   - 大规模数据建议使用专业向量数据库（如 Milvus）
 4. **向量更新**: 需要建立向量更新机制，保证向量数据的时效性
+5. **接口限制**: 
+   - `VectorStoreAdapter.GetVector` 和 `ListVectors` 返回 `ErrNotSupported`
+   - 原因：向量数据库通常不支持这些操作
+   - 解决方案：使用 `Search` 方法进行向量检索
+
+## 参考资源
+
+- **完整示例**: `examples/milvus_ann/main.go`
+- **向量服务文档**: `vector/README.md`
+- **召回算法文档**: `RECALL_ALGORITHMS.md`

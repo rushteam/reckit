@@ -89,15 +89,112 @@ mfStore := recall.NewStoreMFAdapter(memStore, "mf")
 **核心思想**: 基于 Embedding 向量的近似最近邻检索
 
 **使用示例**:
+
 ```go
+import (
+    "github.com/rushteam/reckit/recall"
+    "github.com/rushteam/reckit/vector"
+)
+
+// 1. 创建 Milvus 服务
+milvusService := vector.NewMilvusService(
+    "localhost:19530",
+    vector.WithMilvusAuth("root", "Milvus"),
+    vector.WithMilvusDatabase("recommend"),
+    vector.WithMilvusTimeout(30),
+)
+defer milvusService.Close()
+
+// 2. 创建适配器
+adapter := vector.NewVectorStoreAdapter(milvusService, "items")
+
+// 3. 创建 Embedding 召回
+userVector := []float64{0.1, 0.2, 0.3, ...} // 用户向量
 embRecall := &recall.EmbRecall{
-    Store:      vectorStore,
+    Store:      adapter,
     TopK:       20,
     Metric:     "cosine",
+    UserVector: userVector, // 直接提供用户向量
+}
+
+// 4. 执行召回
+items, err := embRecall.Recall(ctx, rctx)
+```
+
+**从 Context 获取用户向量**:
+
+```go
+rctx := &core.RecommendContext{
+    UserID: "user_123",
+    Scene:  "feed",
+    UserProfile: map[string]any{
+        "user_vector": []float64{0.1, 0.2, 0.3, ...},
+    },
+}
+
+embRecall := &recall.EmbRecall{
+    Store:  adapter,
+    TopK:   20,
+    Metric: "cosine",
+    // 不设置 UserVector，会从 rctx.UserProfile["user_vector"] 获取
+}
+```
+
+**使用自定义向量提取器**:
+
+```go
+embRecall := &recall.EmbRecall{
+    Store:  adapter,
+    TopK:   20,
+    Metric: "cosine",
+    UserVectorExtractor: func(rctx *core.RecommendContext) []float64 {
+        // 自定义提取逻辑
+        if rctx.UserProfile == nil {
+            return nil
+        }
+        if uv, ok := rctx.UserProfile["user_vector"]; ok {
+            if vec, ok := uv.([]float64); ok {
+                return vec
+            }
+        }
+        return nil
+    },
+}
+```
+
+**集成到 Fanout（多路召回）**:
+
+```go
+fanout := &recall.Fanout{
+    Sources: []recall.Source{
+        &recall.Hot{IDs: []string{"1", "2", "3"}},
+        embRecall, // Embedding 召回
+        &recall.I2IRecall{...},
+    },
+    Dedup:         true,
+    Timeout:       2 * time.Second,
+    MaxConcurrent: 5,
+    MergeStrategy: &recall.PriorityMergeStrategy{},
+}
+```
+
+**存储适配器**:
+
+```go
+// 使用 Milvus 服务
+milvusService := vector.NewMilvusService("localhost:19530")
+adapter := vector.NewVectorStoreAdapter(milvusService, "items")
+
+// 使用适配器
+embRecall := &recall.EmbRecall{
+    Store: adapter,
+    // ...
 }
 ```
 
 **Label**: `recall.emb`
+
+**完整示例**: 参考 `examples/milvus_ann/main.go`
 
 ### 5. Content → ContentRecall ✅
 
