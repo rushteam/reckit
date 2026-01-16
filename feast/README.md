@@ -9,13 +9,15 @@ Feast 是一个开源的 Feature Store，用于机器学习的特征管理。本
 - `ClientFactory` 接口：支持依赖注入
 
 ### 2. 实现层（Infrastructure Layer）
-- `HTTPClient`：HTTP 客户端实现（使用 Feast Feature Server HTTP API）
+- `HTTPClient`：HTTP 客户端实现（使用 Feast Feature Server HTTP API，自定义实现）
+- `GrpcClient`：gRPC 客户端实现（使用官方 SDK `github.com/feast-dev/feast/sdk/go`）
 - `FeatureServiceAdapter`：将 Feast Client 适配为 `feature.FeatureService` 接口
 
 ### 3. 高内聚低耦合
 - 通过接口抽象避免直接依赖 Python SDK
 - 支持依赖注入，可以替换实现
 - 使用标准 HTTP/gRPC 协议，不依赖特定 SDK
+- 支持官方 SDK 和自定义实现，用户可根据需求选择
 
 ## 核心接口
 
@@ -49,6 +51,10 @@ type Client interface {
 
 ### 1. 创建 Feast 客户端
 
+本包提供两种客户端实现方式：
+
+#### 方式 A：使用 HTTP 客户端（自定义实现，推荐用于简单场景）
+
 ```go
 import "github.com/rushteam/reckit/feast"
 
@@ -62,6 +68,46 @@ if err != nil {
 }
 defer client.Close()
 ```
+
+#### 方式 B：使用 gRPC 客户端（官方 SDK，推荐用于生产环境）
+
+```go
+import "github.com/rushteam/reckit/feast"
+
+// 创建 gRPC 客户端（使用官方 SDK）
+client, err := feast.NewGrpcClient(
+    "localhost",  // 主机地址
+    6565,         // gRPC 端口（默认 6565）
+    "my_project", // 项目名称
+)
+if err != nil {
+    log.Fatal(err)
+}
+defer client.Close()
+```
+
+#### 方式 C：使用工厂模式（自动选择实现）
+
+```go
+import "github.com/rushteam/reckit/feast"
+
+factory := &feast.DefaultClientFactory{}
+
+// 使用 HTTP 客户端
+httpClient, err := factory.NewClient(ctx, "http://localhost:6566", "my_project")
+
+// 使用 gRPC 客户端（官方 SDK）
+grpcClient, err := factory.NewClient(
+    ctx, 
+    "localhost:6565", 
+    "my_project",
+    feast.WithGRPC(), // 指定使用 gRPC
+)
+```
+
+**选择建议：**
+- **HTTP 客户端**：简单易用，支持完整功能（包括历史特征、物化等）
+- **gRPC 客户端**：性能更好，使用官方 SDK，但仅支持在线特征获取
 
 ### 2. 获取在线特征
 
@@ -241,19 +287,49 @@ func main() {
 client, err := feast.NewHTTPClient(
     "http://localhost:6566",
     "my_project",
-    // 可以添加更多配置选项（待实现）
+    feast.WithFeastTimeout(10 * time.Second), // 设置超时
+    feast.WithFeastAuth(&feast.AuthConfig{    // 设置认证
+        Type:   "bearer",
+        Token:  "your-token",
+    }),
+)
+```
+
+### gRPC 客户端选项（官方 SDK）
+
+```go
+client, err := feast.NewGrpcClient(
+    "localhost",
+    6565,
+    "my_project",
+    feast.WithFeastTimeout(10 * time.Second), // 设置超时
+    feast.WithFeastAuth(&feast.AuthConfig{    // 设置认证
+        Type:   "static", // gRPC 支持 static token
+        Token:  "your-token",
+    }),
 )
 ```
 
 ### 认证配置
 
+支持的认证类型：
+- `basic`：HTTP Basic 认证（仅 HTTP 客户端）
+- `bearer`：Bearer Token 认证（仅 HTTP 客户端）
+- `api_key`：API Key 认证（仅 HTTP 客户端）
+- `static`：静态 Token 认证（仅 gRPC 客户端，使用官方 SDK）
+
 ```go
-auth := &feast.AuthConfig{
+// HTTP 客户端认证
+httpAuth := &feast.AuthConfig{
     Type:     "bearer",
     Token:    "your-token",
 }
 
-// 在创建客户端时传入认证信息（待实现）
+// gRPC 客户端认证（官方 SDK）
+grpcAuth := &feast.AuthConfig{
+    Type:     "static",
+    Token:    "your-token",
+}
 ```
 
 ## 架构设计
@@ -275,26 +351,127 @@ auth := &feast.AuthConfig{
                   ▼
 ┌─────────────────────────────────────────┐
 │         Client (接口)                    │
-│    (feast/client.go)                    │
+│    (feast/client.go) - 领域层抽象         │
 └─────────────────┬───────────────────────┘
                   │
-                  │ 实现
-                  ▼
-┌─────────────────────────────────────────┐
-│         HTTPClient                      │
-│    (feast/http_client.go)               │
-└─────────────────┬───────────────────────┘
-                  │
-                  │ HTTP/gRPC
-                  ▼
-┌─────────────────────────────────────────┐
-│      Feast Feature Server               │
-│    (http://localhost:6566)              │
-└─────────────────────────────────────────┘
+        ┌─────────┴─────────┐
+        │                    │
+        │ 实现（基础设施层）    │
+        ▼                    ▼
+┌──────────────────┐  ┌──────────────────┐
+│   HTTPClient     │  │   GrpcClient     │
+│ (自定义实现)      │  │ (官方 SDK)       │
+│ http_client.go   │  │ grpc_client.go   │
+└────────┬─────────┘  └────────┬─────────┘
+         │                      │
+         │ HTTP                 │ gRPC
+         ▼                      ▼
+┌──────────────────┐  ┌──────────────────┐
+│  Feast Server    │  │  Feast Server    │
+│  (HTTP API)      │  │  (gRPC API)      │
+│  :6566           │  │  :6565           │
+└──────────────────┘  └──────────────────┘
 ```
+
+### DDD 分层说明
+
+1. **领域层（Domain Layer）**：
+   - `Client` 接口：定义 Feast 客户端的领域抽象
+   - `FeatureServiceAdapter`：适配器，连接领域和基础设施
+
+2. **基础设施层（Infrastructure Layer）**：
+   - `HTTPClient`：自定义 HTTP 实现
+   - `GrpcClient`：基于官方 SDK 的 gRPC 实现
+
+3. **应用层（Application Layer）**：
+   - `DefaultClientFactory`：工厂模式，统一创建客户端
+
+## 依赖说明
+
+### 官方 SDK 依赖
+
+使用 gRPC 客户端（`GrpcClient`）需要添加官方 SDK 依赖：
+
+```bash
+go get github.com/feast-dev/feast/sdk/go@latest
+```
+
+### 可选依赖
+
+- `google.golang.org/grpc`：gRPC 客户端库（官方 SDK 已包含）
+
+## 完整示例
+
+### 使用官方 SDK gRPC 客户端
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "time"
+
+    "github.com/rushteam/reckit/feast"
+    "github.com/rushteam/reckit/feature"
+)
+
+func main() {
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+
+    // 方式 1：直接创建 gRPC 客户端（官方 SDK）
+    client, err := feast.NewGrpcClient("localhost", 6565, "my_project")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer client.Close()
+
+    // 方式 2：使用统一入口（推荐）
+    // client, err := feast.NewClient("localhost:6565", "my_project", feast.WithGRPC())
+
+    // 创建特征映射
+    mapping := &feast.FeatureMapping{
+        UserFeatures: []string{
+            "user_stats:age",
+            "user_stats:gender",
+        },
+        ItemFeatures: []string{
+            "item_stats:price",
+            "item_stats:category",
+        },
+        UserEntityKey: "user_id",
+        ItemEntityKey: "item_id",
+    }
+
+    // 创建适配器
+    adapter := feast.NewFeatureServiceAdapter(client, mapping)
+
+    // 使用适配器作为 FeatureService
+    var featureService feature.FeatureService = adapter
+
+    // 获取用户特征
+    features, err := featureService.GetUserFeatures(ctx, "user_123")
+    if err != nil {
+        log.Fatal(err)
+    }
+    log.Printf("用户特征: %+v", features)
+}
+```
+
+### 选择建议
+
+| 特性 | HTTP 客户端 | gRPC 客户端（官方 SDK） |
+|------|------------|----------------------|
+| 性能 | 良好 | 优秀 |
+| 延迟 | 较高 | 低 |
+| 功能完整性 | 完整（支持所有操作） | 主要支持在线特征 |
+| 依赖 | 无外部依赖 | 需要官方 SDK |
+| 适用场景 | 开发/测试/简单场景 | 生产环境/高性能需求 |
 
 ## 参考
 
 - [Feast 官方文档](https://docs.feast.dev/)
 - [Feast GitHub](https://github.com/feast-dev/feast)
+- [Feast Go SDK](https://pkg.go.dev/github.com/feast-dev/feast/sdk/go)
 - [Feast Feature Server API](https://docs.feast.dev/reference/api/feast-online-serving-api)

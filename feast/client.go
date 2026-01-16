@@ -186,17 +186,38 @@ type ClientFactory interface {
 }
 
 // DefaultClientFactory 是默认的 Feast 客户端工厂（使用 HTTP/gRPC）。
-// 实际实现需要连接 Feast Feature Server。
+// 根据配置自动选择 HTTP 或 gRPC 客户端实现。
 type DefaultClientFactory struct{}
 
 // NewClient 创建 Feast 客户端
+// 根据配置选项自动选择实现：
+//   - 如果 UseGRPC=true，使用官方 SDK 的 gRPC 客户端
+//   - 否则使用自定义的 HTTP 客户端
 func (f *DefaultClientFactory) NewClient(ctx context.Context, endpoint, project string, opts ...ClientOption) (Client, error) {
-	// 实际实现：
-	// 使用 HTTP/gRPC 客户端连接 Feast Feature Server
-	// 不直接依赖 Python SDK，保持低耦合
+	config := &ClientConfig{
+		Endpoint: endpoint,
+		Project:  project,
+		Timeout:  30 * time.Second,
+		UseGRPC:  false, // 默认使用 HTTP
+	}
 
-	// 占位实现
-	return nil, nil
+	// 应用配置选项
+	for _, opt := range opts {
+		opt(config)
+	}
+
+	// 根据配置选择实现
+	if config.UseGRPC {
+		// 解析 endpoint 获取 host 和 port
+		host, port := parseEndpoint(endpoint)
+		if port == 0 {
+			port = 6565 // 默认 gRPC 端口
+		}
+		return NewGrpcClient(host, port, project, opts...)
+	}
+
+	// 使用 HTTP 客户端
+	return NewHTTPClient(endpoint, project, opts...)
 }
 
 // ClientOption Feast 客户端配置选项
@@ -222,7 +243,8 @@ type ClientConfig struct {
 
 // AuthConfig 认证配置
 type AuthConfig struct {
-	// Type 认证类型：basic, bearer, api_key
+	// Type 认证类型：basic, bearer, api_key, static
+	// static 用于 gRPC 的静态 Token 认证
 	Type string
 
 	// Username 用户名（basic auth）
@@ -231,9 +253,23 @@ type AuthConfig struct {
 	// Password 密码（basic auth）
 	Password string
 
-	// Token Token（bearer auth）
+	// Token Token（bearer auth 或 static auth）
 	Token string
 
 	// APIKey API Key（api_key auth）
 	APIKey string
+}
+
+// WithGRPC 配置选项：使用 gRPC 客户端（官方 SDK）
+func WithGRPC() ClientOption {
+	return func(c *ClientConfig) {
+		c.UseGRPC = true
+	}
+}
+
+// WithHTTP 配置选项：使用 HTTP 客户端（自定义实现）
+func WithHTTP() ClientOption {
+	return func(c *ClientConfig) {
+		c.UseGRPC = false
+	}
 }

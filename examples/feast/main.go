@@ -20,10 +20,28 @@ func main() {
 	defer cancel()
 
 	// 1. 创建 Feast 客户端
-	feastClient, err := feast.NewHTTPClient(
-		"http://localhost:6566", // Feast Feature Server 端点
-		"my_project",             // 项目名称
+	// 方式 A：使用 HTTP 客户端（自定义实现，支持完整功能）
+	// feastClient, err := feast.NewHTTPClient(
+	// 	"http://localhost:6566", // Feast Feature Server 端点
+	// 	"my_project",             // 项目名称
+	// )
+	
+	// 方式 B：使用 gRPC 客户端（官方 SDK，性能更好，推荐生产环境）
+	feastClient, err := feast.NewGrpcClient(
+		"localhost",  // 主机地址
+		6565,         // gRPC 端口（默认 6565）
+		"my_project", // 项目名称
 	)
+	
+	// 方式 C：使用工厂模式（自动选择）
+	// factory := &feast.DefaultClientFactory{}
+	// feastClient, err := factory.NewClient(
+	// 	ctx,
+	// 	"localhost:6565",
+	// 	"my_project",
+	// 	feast.WithGRPC(), // 或 feast.WithHTTP()
+	// )
+	
 	if err != nil {
 		log.Fatalf("创建 Feast 客户端失败: %v", err)
 	}
