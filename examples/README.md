@@ -55,7 +55,27 @@ go run ./examples/dsl
 go run ./examples/personalization
 ```
 
-### 5. rpc_xgb - Python XGBoost 模型调用
+### 5. feature_version - 特征版本管理
+
+演示如何实现特征版本管理，包括：
+- 多版本特征存储（v1, v2）
+- 版本化特征服务
+- 灰度发布（流量分配）
+- 版本降级策略
+- 版本元数据管理
+
+运行：
+```bash
+go run ./examples/feature_version
+```
+
+**特性**：
+- 支持在存储 key 中包含版本号（如 `user:features:v2:42`）
+- 根据用户 ID 哈希自动选择版本（灰度发布）
+- 新版本失败时自动降级到旧版本
+- 版本元数据管理（版本信息、特征列表、状态）
+
+### 6. rpc_xgb - Python XGBoost 模型调用
 
 演示如何调用 Python 训练的 XGBoost 模型进行排序，实现端到端闭环。
 
@@ -83,6 +103,9 @@ go run ./examples/dsl
 
 # 千人千面推荐
 go run ./examples/personalization
+
+# 特征版本管理
+go run ./examples/feature_version
 
 # Python XGBoost 模型调用（需要先启动 Python 服务）
 go run ./examples/rpc_xgb
