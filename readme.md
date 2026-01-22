@@ -487,12 +487,12 @@ items, _ := p.Run(ctx, rctx, nil)
 
 ## 📚 文档
 
-- [架构设计文档](ARCHITECTURE.md) - 详细架构设计说明
-- [召回算法文档](RECALL_ALGORITHMS.md) - 召回算法详解和使用指南
-- [排序模型文档](RANK_MODELS.md) - 排序模型详解
-- [协同过滤文档](COLLABORATIVE_FILTERING.md) - 协同过滤算法详解
-- [可扩展性分析](EXTENSIBILITY_ANALYSIS.md) - 扩展指南和最佳实践
-- [用户画像文档](USER_PROFILE.md) - 用户画像使用指南
+- [架构设计文档](docs/ARCHITECTURE.md) - 详细架构设计说明
+- [召回算法文档](docs/RECALL_ALGORITHMS.md) - 召回算法详解和使用指南
+- [排序模型文档](docs/RANK_MODELS.md) - 排序模型详解
+- [协同过滤文档](docs/COLLABORATIVE_FILTERING.md) - 协同过滤算法详解
+- [可扩展性分析](docs/EXTENSIBILITY_ANALYSIS.md) - 扩展指南和最佳实践
+- [用户画像文档](docs/USER_PROFILE.md) - 用户画像使用指南
 - [AI Coding 指南](CLAUDE.md) - AI 辅助开发指南
 
 ## 🗂️ 目录结构
@@ -556,6 +556,6 @@ require (
 
 **Made with ❤️ by [Rush Team](https://github.com/rushteam)**
 
-[文档](README.md) • [示例](../examples/) • [问题反馈](https://github.com/rushteam/reckit/issues)
+[文档](README.md) • [示例](examples/) • [问题反馈](https://github.com/rushteam/reckit/issues)
 
 </div>

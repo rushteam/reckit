@@ -63,7 +63,46 @@ resp, err := tfService.Predict(ctx, &service.PredictRequest{
 err := tfService.Health(ctx)
 ```
 
-### 2. ANN Service
+### 2. TorchServe
+
+**协议**：
+- REST API：端口 8080（推理）、8081（管理）
+- gRPC API：端口 7070（需要额外配置）
+
+**使用示例**：
+
+```go
+import "github.com/rushteam/reckit/service"
+
+// 使用 REST API
+torchService := service.NewTorchServeClient(
+    "http://localhost:8080",
+    "my_model",
+    service.WithTorchServeVersion("1.0"),
+    service.WithTorchServeTimeout(30*time.Second),
+)
+
+// 批量预测
+resp, err := torchService.Predict(ctx, &service.PredictRequest{
+    Features: []map[string]float64{
+        {"feature1": 0.1, "feature2": 0.2, ...}, // 实例 1
+        {"feature1": 0.3, "feature2": 0.4, ...}, // 实例 2
+    },
+})
+
+// 或使用 Instances（特征向量）
+resp, err := torchService.Predict(ctx, &service.PredictRequest{
+    Instances: [][]float64{
+        {0.1, 0.2, 0.3, ...}, // 实例 1
+        {0.4, 0.5, 0.6, ...}, // 实例 2
+    },
+})
+
+// 健康检查
+err := torchService.Health(ctx)
+```
+
+### 3. ANN Service
 
 **协议**：HTTP/REST
 
@@ -108,8 +147,18 @@ config := &service.ServiceConfig{
     Timeout:     30,
 }
 
+// TorchServe 配置
+torchConfig := &service.ServiceConfig{
+    Type:        service.ServiceTypeTorchServe,
+    Endpoint:    "http://localhost:8080",
+    ModelName:   "my_model",
+    ModelVersion: "1.0",
+    Timeout:     30,
+}
+
 // 创建服务
 mlService, err := service.NewMLService(config)
+torchService, err := service.NewMLService(torchConfig)
 if err != nil {
     // 处理错误
 }
@@ -209,6 +258,36 @@ POST /v1/models/{model_name}:predict
 }
 ```
 
+### TorchServe REST API
+
+**请求格式**：
+```json
+POST /predictions/{model_name}
+{
+    "data": [{"feature1": 0.1, "feature2": 0.2, ...}, ...]
+}
+```
+
+或使用特征向量：
+```json
+POST /predictions/{model_name}
+{
+    "data": [[0.1, 0.2, 0.3, ...], ...]
+}
+```
+
+**响应格式**（取决于模型 Handler）：
+```json
+[0.85, 0.72, ...]
+```
+
+或：
+```json
+{
+    "prediction": 0.85
+}
+```
+
 ### ANN Service HTTP API
 
 **请求格式**：
@@ -236,31 +315,19 @@ POST /v1/vector/search
 
 ## 实现状态
 
-当前为**占位实现**，接口已定义但未完整实现。实际实现需要：
+### ✅ 已实现
 
-### TF Serving
+- **TensorFlow Serving REST API**：完全支持
+- **TorchServe REST API**：完全支持
+- **ANN Service**：完全支持
 
-1. **安装依赖**：
-   ```bash
-   go get google.golang.org/grpc
-   go get github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf
-   ```
+### ⚠️ 部分实现
 
-2. **实现 gRPC 客户端**：
-   - 连接管理
-   - 请求构建
-   - 响应解析
+- **TensorFlow Serving gRPC**：接口已定义，需要 protobuf 依赖（当前回退到 REST API）
 
-3. **实现 REST 客户端**：
-   - HTTP 请求
-   - JSON 序列化/反序列化
+### 📝 待实现
 
-### ANN Service
-
-1. **实现 HTTP 客户端**：
-   - 请求构建
-   - 响应解析
-   - 错误处理
+- **TorchServe gRPC**：需要额外配置和 protobuf 依赖
 
 ## 使用示例
 
@@ -276,3 +343,5 @@ go run ./examples/ml_service
 - [TensorFlow Serving 文档](https://www.tensorflow.org/tfx/guide/serving)
 - [TensorFlow Serving REST API](https://www.tensorflow.org/tfx/serving/api_rest)
 - [TensorFlow Serving gRPC API](https://www.tensorflow.org/tfx/serving/api_rest)
+- [TorchServe 文档](https://pytorch.org/serve/)
+- [TorchServe REST API](https://pytorch.org/serve/rest_api.html)

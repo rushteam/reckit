@@ -48,8 +48,16 @@ func NewMLService(config *ServiceConfig) (MLService, error) {
 		return nil, fmt.Errorf("custom service not implemented")
 
 	case ServiceTypeTorchServe:
-		// TODO: 实现 TorchServe 客户端
-		return nil, fmt.Errorf("torch serve not implemented")
+		opts := []TorchServeOption{
+			WithTorchServeTimeout(timeout),
+		}
+		if config.ModelVersion != "" {
+			opts = append(opts, WithTorchServeVersion(config.ModelVersion))
+		}
+		if config.Auth != nil {
+			opts = append(opts, WithTorchServeAuth(config.Auth))
+		}
+		return NewTorchServeClient(config.Endpoint, config.ModelName, opts...), nil
 
 	default:
 		return nil, fmt.Errorf("unsupported service type: %s", config.Type)
