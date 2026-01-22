@@ -460,8 +460,8 @@ result, _ := eval.Evaluate(`label.recall_source.contains("ann")`)
 
 ## 相关文档
 
-- `readme.md` - 项目主文档
-- `ARCHITECTURE.md` - 架构设计文档
-- `RECALL_ALGORITHMS.md` - 召回算法文档
-- `RANK_MODELS.md` - 排序模型文档
-- `EXTENSIBILITY_ANALYSIS.md` - 可扩展性分析
+- `README.md` - 项目主文档
+- `docs/ARCHITECTURE.md` - 架构设计文档
+- `docs/RECALL_ALGORITHMS.md` - 召回算法文档
+- `docs/RANK_MODELS.md` - 排序模型文档
+- `docs/EXTENSIBILITY_ANALYSIS.md` - 可扩展性分析

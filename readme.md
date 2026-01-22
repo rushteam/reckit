@@ -556,6 +556,6 @@ require (
 
 **Made with ❤️ by [Rush Team](https://github.com/rushteam)**
 
-[文档](readme.md) • [示例](examples/) • [问题反馈](https://github.com/rushteam/reckit/issues)
+[文档](README.md) • [示例](../examples/) • [问题反馈](https://github.com/rushteam/reckit/issues)
 
 </div>
