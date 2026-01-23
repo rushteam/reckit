@@ -6,6 +6,16 @@ Reckit 是一个工业级推荐系统工具库，采用 **Pipeline + Node** 架�
 
 **包名**：`github.com/rushteam/reckit`
 
+### 项目宗旨
+
+场景分工：
+- **深度模型、复杂梯度更新** → 适用工具：**PyTorch/Tensorflow**
+- **高并发、低延迟、统计计算** → 适用工具：**Golang(Reckit)**
+
+本项目采用 **PyTorch/Tensorflow + Golang** 的分工模式：
+- **PyTorch/Tensorflow**：负责深度模型的训练、复杂梯度更新等机器学习任务
+- **Golang (Reckit)**：负责高并发推荐服务、低延迟在线推理、统计计算等生产环境任务
+
 **核心设计原则**：
 - 所有策略、算法、配置都通过**接口**实现，不使用字符串匹配
 - 用户可以通过实现接口扩展功能，**无需修改库代码**
