@@ -37,15 +37,15 @@ type EnrichNode struct {
 	UserFeaturePrefix  string
 	ItemFeaturePrefix  string
 	CrossFeaturePrefix string
-	
+
 	// KeyUserFeatures 关键用户特征列表（用于交叉特征生成）
 	// 如果未设置，使用默认列表：["age", "gender", "user_id"]
 	KeyUserFeatures []string
-	
+
 	// KeyItemFeatures 关键物品特征列表（用于交叉特征生成）
 	// 如果未设置，使用默认列表：["ctr", "cvr", "price", "score"]
 	KeyItemFeatures []string
-	
+
 	// GlobalFeatureConfig 全局特征配置（可选）
 	// 如果设置，可以从全局配置读取默认前缀
 	GlobalFeatureConfig *FeatureConfig
@@ -55,10 +55,10 @@ type EnrichNode struct {
 type FeatureConfig struct {
 	// DefaultUserPrefix 默认用户特征前缀
 	DefaultUserPrefix string
-	
+
 	// DefaultItemPrefix 默认物品特征前缀
 	DefaultItemPrefix string
-	
+
 	// DefaultCrossPrefix 默认交叉特征前缀
 	DefaultCrossPrefix string
 }
@@ -315,13 +315,13 @@ func (n *EnrichNode) toFloat64(v interface{}) (float64, bool) {
 }
 
 // isNumericFeature 判断特征名是否为数值特征
-func (n *EnrichNode) isNumericFeature(key string) bool {
-	// 简单判断：排除明显的分类特征
-	nonNumeric := []string{"gender", "category", "type", "status"}
-	for _, nn := range nonNumeric {
-		if key == nn {
-			return false
-		}
-	}
-	return true
-}
+// func (n *EnrichNode) isNumericFeature(key string) bool {
+// 	// 简单判断：排除明显的分类特征
+// 	nonNumeric := []string{"gender", "category", "type", "status"}
+// 	for _, nn := range nonNumeric {
+// 		if key == nn {
+// 			return false
+// 		}
+// 	}
+// 	return true
+// }

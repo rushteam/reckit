@@ -309,6 +309,49 @@ monitor := &PrometheusFeatureMonitor{}
 service := feature.NewBaseFeatureService(provider, feature.WithMonitor(monitor))
 ```
 
+## 特征处理工具类
+
+Reckit 提供了完整的特征处理工具类，位于 `feature/processing.go` 和 `feature/encoder.go`：
+
+### 归一化/标准化
+
+- **ZScoreNormalizer**: Z-score 标准化 `(x - μ) / σ`
+- **MinMaxNormalizer**: Min-Max 归一化 `(x - min) / (max - min)`
+- **RobustNormalizer**: Robust 标准化 `(x - median) / IQR`
+- **LogNormalizer**: Log 变换 `log(x + 1)`
+- **SqrtNormalizer**: 平方根变换 `sqrt(x)`
+
+### 分类特征编码
+
+- **OneHotEncoder**: One-Hot 编码（独热编码）
+- **LabelEncoder**: Label 编码（标签编码）
+- **HashEncoder**: Hash 编码（哈希编码）
+- **TargetEncoder**: Target 编码（目标编码）
+- **FrequencyEncoder**: 频率编码
+- **BinaryEncoder**: 二进制编码
+
+### 特征工程
+
+- **CrossFeatureGenerator**: 交叉特征生成（乘积、比值、差值、组合）
+- **EqualWidthBinner**: 等宽分桶
+- **CustomBinner**: 自定义分桶
+
+### 缺失值处理
+
+- **MissingValueHandler**: 缺失值处理器（填充固定值）
+
+### 特征选择
+
+- **FeatureSelector**: 特征选择器（选择/排除特征）
+
+### 特征统计
+
+- **ComputeStatistics**: 计算特征统计信息（均值、标准差、分位数等）
+
+详细文档请参考：[特征处理方法文档](../../docs/FEATURE_PROCESSING.md)
+
+使用示例请参考：[特征处理示例](../../examples/feature_processing/main.go)
+
 ## 最佳实践
 
 1. **批量获取优先**：使用 `BatchGet*` 方法减少网络往返
@@ -316,6 +359,7 @@ service := feature.NewBaseFeatureService(provider, feature.WithMonitor(monitor))
 3. **监控特征质量**：使用 FeatureMonitor 监控特征分布和缺失率
 4. **降级策略**：配置降级策略，确保特征服务不可用时系统仍能运行
 5. **特征版本管理**：在存储 key 中包含特征版本，支持特征热更新
+6. **特征处理一致性**：训练和推理使用相同的特征处理参数
 
 ## 性能优化
 

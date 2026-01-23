@@ -9,23 +9,23 @@ import (
 // MemoryFeatureMonitor 是内存特征监控实现，用于监控特征使用情况、缺失率、错误率等。
 // 生产环境可以使用 Prometheus、StatsD 等外部监控系统。
 type MemoryFeatureMonitor struct {
-	mu                sync.RWMutex
-	featureStats      map[string]*FeatureStats
-	featureValues     map[string][]float64 // 用于计算统计信息
-	maxSamples        int                 // 每个特征保留的最大样本数
-	updateInterval    time.Duration
-	updateTicker      *time.Ticker
-	stopUpdate        chan struct{}
+	mu             sync.RWMutex
+	featureStats   map[string]*FeatureStats
+	featureValues  map[string][]float64 // 用于计算统计信息
+	maxSamples     int                  // 每个特征保留的最大样本数
+	updateInterval time.Duration
+	updateTicker   *time.Ticker
+	stopUpdate     chan struct{}
 }
 
 // NewMemoryFeatureMonitor 创建内存特征监控
 func NewMemoryFeatureMonitor(maxSamples int) *MemoryFeatureMonitor {
 	monitor := &MemoryFeatureMonitor{
-		featureStats:  make(map[string]*FeatureStats),
-		featureValues: make(map[string][]float64),
-		maxSamples:    maxSamples,
+		featureStats:   make(map[string]*FeatureStats),
+		featureValues:  make(map[string][]float64),
+		maxSamples:     maxSamples,
 		updateInterval: 10 * time.Second,
-		stopUpdate:    make(chan struct{}),
+		stopUpdate:     make(chan struct{}),
 	}
 
 	// 启动统计更新协程
@@ -64,14 +64,15 @@ func (m *MemoryFeatureMonitor) calculateStats() {
 			m.featureStats[featureName] = stats
 		}
 
-		// 计算统计信息
-		stats.Mean = mean(values)
-		stats.Std = std(values)
-		stats.Min = min(values)
-		stats.Max = max(values)
-		stats.P50 = percentile(values, 0.5)
-		stats.P95 = percentile(values, 0.95)
-		stats.P99 = percentile(values, 0.99)
+		// 使用统一的统计计算函数
+		computedStats := ComputeStatistics(values)
+		stats.Mean = computedStats.Mean
+		stats.Std = computedStats.Std
+		stats.Min = computedStats.Min
+		stats.Max = computedStats.Max
+		stats.P50 = computedStats.Median // P50 就是中位数
+		stats.P95 = computedStats.P95
+		stats.P99 = computedStats.P99
 		stats.LastUpdateTime = time.Now()
 	}
 }
@@ -156,81 +157,4 @@ func (m *MemoryFeatureMonitor) GetFeatureStats(ctx context.Context, featureName 
 // Close 关闭监控，停止更新协程
 func (m *MemoryFeatureMonitor) Close() {
 	close(m.stopUpdate)
-}
-
-// 辅助函数：计算统计信息
-
-func mean(values []float64) float64 {
-	if len(values) == 0 {
-		return 0
-	}
-	sum := 0.0
-	for _, v := range values {
-		sum += v
-	}
-	return sum / float64(len(values))
-}
-
-func std(values []float64) float64 {
-	if len(values) == 0 {
-		return 0
-	}
-	m := mean(values)
-	sum := 0.0
-	for _, v := range values {
-		diff := v - m
-		sum += diff * diff
-	}
-	return sum / float64(len(values))
-}
-
-func min(values []float64) float64 {
-	if len(values) == 0 {
-		return 0
-	}
-	m := values[0]
-	for _, v := range values[1:] {
-		if v < m {
-			m = v
-		}
-	}
-	return m
-}
-
-func max(values []float64) float64 {
-	if len(values) == 0 {
-		return 0
-	}
-	m := values[0]
-	for _, v := range values[1:] {
-		if v > m {
-			m = v
-		}
-	}
-	return m
-}
-
-func percentile(values []float64, p float64) float64 {
-	if len(values) == 0 {
-		return 0
-	}
-	// 排序后取分位数
-	sorted := make([]float64, len(values))
-	copy(sorted, values)
-	
-	// 简单冒泡排序（生产环境可以使用更高效的排序算法）
-	for i := 0; i < len(sorted)-1; i++ {
-		for j := 0; j < len(sorted)-i-1; j++ {
-			if sorted[j] > sorted[j+1] {
-				sorted[j], sorted[j+1] = sorted[j+1], sorted[j]
-			}
-		}
-	}
-	
-	// 计算分位数索引
-	idx := int(float64(len(sorted)) * p)
-	if idx >= len(sorted) {
-		idx = len(sorted) - 1
-	}
-	return sorted[idx]
 }
