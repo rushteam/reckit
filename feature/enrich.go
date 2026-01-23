@@ -3,6 +3,7 @@ package feature
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
 	"strconv"
 	"strings"
 
@@ -28,14 +29,19 @@ type EnrichNode struct {
 	// 如果设置了 FeatureService，此选项将被忽略
 	ItemFeatureExtractor func(item *core.Item) map[string]float64
 
+	// SceneFeatureExtractor 从 RecommendContext 提取场景特征（传统模式）
+	// 场景特征用于区分不同的推荐场景（如 feed、search、detail 等）
+	SceneFeatureExtractor func(rctx *core.RecommendContext) map[string]float64
+
 	// CrossFeatureExtractor 生成交叉特征（用户-物品交叉特征）
 	CrossFeatureExtractor func(userFeatures map[string]float64, itemFeatures map[string]float64) map[string]float64
 
 	// FeaturePrefix 特征前缀，用于区分不同类型的特征
-	// 例如：user_*, item_*, cross_*
-	// 如果为空，使用默认值（user_, item_, cross_）
+	// 例如：user_*, item_*, scene_*, cross_*
+	// 如果为空，使用默认值（user_, item_, scene_, cross_）
 	UserFeaturePrefix  string
 	ItemFeaturePrefix  string
+	SceneFeaturePrefix string
 	CrossFeaturePrefix string
 
 	// KeyUserFeatures 关键用户特征列表（用于交叉特征生成）
@@ -59,6 +65,9 @@ type FeatureConfig struct {
 	// DefaultItemPrefix 默认物品特征前缀
 	DefaultItemPrefix string
 
+	// DefaultScenePrefix 默认场景特征前缀
+	DefaultScenePrefix string
+
 	// DefaultCrossPrefix 默认交叉特征前缀
 	DefaultCrossPrefix string
 }
@@ -68,6 +77,7 @@ func DefaultFeatureConfig() *FeatureConfig {
 	return &FeatureConfig{
 		DefaultUserPrefix:  "user_",
 		DefaultItemPrefix:  "item_",
+		DefaultScenePrefix: "scene_",
 		DefaultCrossPrefix: "cross_",
 	}
 }
@@ -130,6 +140,17 @@ func (n *EnrichNode) Process(
 		}
 	}
 
+	// 场景特征前缀
+	scenePrefix := n.SceneFeaturePrefix
+	if scenePrefix == "" {
+		if n.GlobalFeatureConfig != nil {
+			scenePrefix = n.GlobalFeatureConfig.DefaultScenePrefix
+		}
+		if scenePrefix == "" {
+			scenePrefix = "scene_" // 最终默认值
+		}
+	}
+
 	// 交叉特征前缀
 	crossPrefix := n.CrossFeaturePrefix
 	if crossPrefix == "" {
@@ -139,6 +160,14 @@ func (n *EnrichNode) Process(
 		if crossPrefix == "" {
 			crossPrefix = "cross_" // 最终默认值
 		}
+	}
+
+	// 提取场景特征
+	var sceneFeatures map[string]float64
+	if n.SceneFeatureExtractor != nil {
+		sceneFeatures = n.SceneFeatureExtractor(rctx)
+	} else {
+		sceneFeatures = n.defaultSceneFeatureExtractor(rctx)
 	}
 
 	// 批量获取物品特征（如果使用 FeatureService）
@@ -194,7 +223,7 @@ func (n *EnrichNode) Process(
 		for k, v := range itemFeatures {
 			key := k
 			// 如果特征名不包含前缀，则添加前缀
-			if !strings.HasPrefix(k, itemPrefix) && !strings.HasPrefix(k, userPrefix) && !strings.HasPrefix(k, crossPrefix) {
+			if !strings.HasPrefix(k, itemPrefix) && !strings.HasPrefix(k, userPrefix) && !strings.HasPrefix(k, scenePrefix) && !strings.HasPrefix(k, crossPrefix) {
 				key = itemPrefix + k
 			}
 			// 如果已存在，保留原值（物品特征优先）
@@ -203,7 +232,13 @@ func (n *EnrichNode) Process(
 			}
 		}
 
-		// 生成交叉特征
+		// 合并场景特征（带前缀）
+		for k, v := range sceneFeatures {
+			key := scenePrefix + k
+			item.Features[key] = v
+		}
+
+		// 生成交叉特征（包含用户、物品、场景特征）
 		if n.CrossFeatureExtractor != nil {
 			crossFeatures := n.CrossFeatureExtractor(userFeatures, itemFeatures)
 			for k, v := range crossFeatures {
@@ -211,8 +246,8 @@ func (n *EnrichNode) Process(
 				item.Features[key] = v
 			}
 		} else {
-			// 默认交叉特征：用户-物品特征组合
-			crossFeatures := n.defaultCrossFeatures(userFeatures, itemFeatures)
+			// 默认交叉特征：用户-物品-场景特征组合
+			crossFeatures := n.defaultCrossFeatures(userFeatures, itemFeatures, sceneFeatures)
 			for k, v := range crossFeatures {
 				key := crossPrefix + k
 				item.Features[key] = v
@@ -257,8 +292,44 @@ func (n *EnrichNode) defaultUserFeatureExtractor(rctx *core.RecommendContext) ma
 	return features
 }
 
-// defaultCrossFeatures 默认交叉特征生成
-func (n *EnrichNode) defaultCrossFeatures(userFeatures, itemFeatures map[string]float64) map[string]float64 {
+// defaultSceneFeatureExtractor 默认场景特征提取器
+func (n *EnrichNode) defaultSceneFeatureExtractor(rctx *core.RecommendContext) map[string]float64 {
+	features := make(map[string]float64)
+
+	if rctx != nil {
+		// 场景ID哈希特征
+		if rctx.Scene != "" {
+			// 将场景字符串转换为数值特征
+			h := fnv.New32a()
+			h.Write([]byte(rctx.Scene))
+			sceneHash := h.Sum32()
+			features["scene_id"] = float64(sceneHash)
+			features["scene_id_hash"] = float64(sceneHash % 1000) // 归一化到 0-1000
+
+			// 场景字符串长度特征
+			features["scene_len"] = float64(len(rctx.Scene))
+		}
+
+		// 从 Params 中提取场景相关特征
+		if rctx.Params != nil {
+			if sceneType, ok := rctx.Params["scene_type"]; ok {
+				if fv, ok := n.toFloat64(sceneType); ok {
+					features["scene_type"] = fv
+				}
+			}
+			if pageType, ok := rctx.Params["page_type"]; ok {
+				if fv, ok := n.toFloat64(pageType); ok {
+					features["page_type"] = fv
+				}
+			}
+		}
+	}
+
+	return features
+}
+
+// defaultCrossFeatures 默认交叉特征生成（包含场景特征）
+func (n *EnrichNode) defaultCrossFeatures(userFeatures, itemFeatures, sceneFeatures map[string]float64) map[string]float64 {
 	crossFeatures := make(map[string]float64)
 
 	// 简单的交叉特征：用户特征 × 物品特征
@@ -272,6 +343,7 @@ func (n *EnrichNode) defaultCrossFeatures(userFeatures, itemFeatures map[string]
 		keyItemFeatures = []string{"ctr", "cvr", "price", "score"} // 默认值
 	}
 
+	// 用户-物品交叉特征
 	for _, uk := range keyUserFeatures {
 		uv, uok := userFeatures[uk]
 		if !uok {
@@ -285,6 +357,30 @@ func (n *EnrichNode) defaultCrossFeatures(userFeatures, itemFeatures map[string]
 			// 生成交叉特征
 			key := fmt.Sprintf("%s_x_%s", uk, ik)
 			crossFeatures[key] = uv * iv
+		}
+	}
+
+	// 用户-场景交叉特征
+	if sceneID, ok := sceneFeatures["scene_id"]; ok {
+		for _, uk := range keyUserFeatures {
+			uv, uok := userFeatures[uk]
+			if !uok {
+				continue
+			}
+			key := fmt.Sprintf("%s_x_scene", uk)
+			crossFeatures[key] = uv * sceneID
+		}
+	}
+
+	// 物品-场景交叉特征
+	if sceneID, ok := sceneFeatures["scene_id"]; ok {
+		for _, ik := range keyItemFeatures {
+			iv, iok := itemFeatures[ik]
+			if !iok {
+				continue
+			}
+			key := fmt.Sprintf("%s_x_scene", ik)
+			crossFeatures[key] = iv * sceneID
 		}
 	}
 

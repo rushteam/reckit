@@ -14,7 +14,17 @@ import (
 // RPCNode 是通过 RPC 调用外部模型服务的排序 Node。
 // 支持 GBDT、XGBoost、TensorFlow Serving 等。
 type RPCNode struct {
+	// Model 排序模型，用于 RPC 预测
 	Model model.RankModel
+
+	// StripFeaturePrefix 是否去掉特征名前缀后再发给模型服务。
+	//
+	// - false（默认）：不去掉前缀，直接传递 EnrichNode 产出的特征名（如 user_age、item_ctr、cross_age_x_ctr）。
+	//   训练时 FEATURE_COLUMNS 需使用带前缀的名称，与在线一致。
+	//
+	// - true：去掉 user_、item_、cross_、scene_ 等前缀，转换为无前缀特征名（如 age、ctr、age_x_ctr）。
+	//   适用于训练时 FEATURE_COLUMNS 使用无前缀名称的旧模型或外部模型。
+	StripFeaturePrefix bool
 }
 
 func (n *RPCNode) Name() string        { return "rank.rpc" }
@@ -37,8 +47,14 @@ func (n *RPCNode) Process(
 		if it == nil {
 			continue
 		}
-		// 转换特征名：去掉前缀（user_, item_, cross_），以匹配 Python 训练时的特征名
-		features := n.normalizeFeatures(it.Features)
+		// 按 StripFeaturePrefix 决定是否去掉特征前缀；默认不去掉，与 FEATURE_COLUMNS 带前缀对齐
+		features := it.Features
+		if features == nil {
+			features = make(map[string]float64)
+		}
+		if n.StripFeaturePrefix {
+			features = n.stripFeaturePrefix(features)
+		}
 		validItems = append(validItems, it)
 		featuresList = append(featuresList, features)
 	}
@@ -85,23 +101,22 @@ func (n *RPCNode) Process(
 	return items, nil
 }
 
-// normalizeFeatures 将带前缀的特征名转换为原始特征名，以匹配 Python 训练时的特征名
-// 例如：item_ctr -> ctr, user_age -> age, cross_age_x_ctr -> age_x_ctr
-func (n *RPCNode) normalizeFeatures(features map[string]float64) map[string]float64 {
-	normalized := make(map[string]float64)
-	prefixes := []string{"item_", "user_", "cross_"}
+// stripFeaturePrefix 去掉 user_、item_、cross_、scene_ 等前缀，得到无前缀特征名。
+// 仅在 StripFeaturePrefix == true 时使用，用于兼容训练时 FEATURE_COLUMNS 为无前缀的模型。
+// 例如：item_ctr -> ctr, user_age -> age, cross_age_x_ctr -> age_x_ctr, scene_id -> id
+func (n *RPCNode) stripFeaturePrefix(features map[string]float64) map[string]float64 {
+	out := make(map[string]float64)
+	prefixes := []string{"item_", "user_", "cross_", "scene_"}
 
 	for k, v := range features {
-		// 尝试去掉前缀
-		originalKey := k
-		for _, prefix := range prefixes {
-			if strings.HasPrefix(k, prefix) {
-				originalKey = strings.TrimPrefix(k, prefix)
+		key := k
+		for _, p := range prefixes {
+			if strings.HasPrefix(k, p) {
+				key = strings.TrimPrefix(k, p)
 				break
 			}
 		}
-		normalized[originalKey] = v
+		out[key] = v
 	}
-
-	return normalized
+	return out
 }

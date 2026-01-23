@@ -42,32 +42,33 @@ MODEL_PATH = features.MODEL_PATH
 
 
 def generate_sample_data(output_path: str, n_samples: int = 1000):
-    """生成示例训练数据"""
+    """生成示例训练数据（列名与 FEATURE_COLUMNS 带前缀格式一致）"""
     np.random.seed(42)
     
+    item_ctr = np.random.uniform(0.01, 0.5, n_samples)
+    item_cvr = np.random.uniform(0.001, 0.1, n_samples)
+    item_price = np.random.uniform(10, 200, n_samples)
+    user_age = np.random.randint(18, 60, n_samples).astype(np.float64)
+    user_gender = np.random.randint(0, 3, n_samples).astype(np.float64)  # 0=未知，1=男，2=女
+
     data = {
-        # 物品特征
-        "ctr": np.random.uniform(0.01, 0.5, n_samples),
-        "cvr": np.random.uniform(0.001, 0.1, n_samples),
-        "price": np.random.uniform(10, 200, n_samples),
-        # 用户特征
-        "age": np.random.randint(18, 60, n_samples),
-        "gender": np.random.randint(0, 3, n_samples),  # 0=未知，1=男，2=女
-        # 交叉特征
-        "age_x_ctr": np.random.uniform(0.1, 10, n_samples),
-        "gender_x_price": np.random.uniform(0, 200, n_samples),
+        "item_ctr": item_ctr,
+        "item_cvr": item_cvr,
+        "item_price": item_price,
+        "user_age": user_age,
+        "user_gender": user_gender,
+        "cross_age_x_ctr": user_age * item_ctr,
+        "cross_gender_x_price": user_gender * item_price,
     }
     
     # 生成标签（简单的线性组合 + 噪声）
-    # 注意：gender 现在是 0=未知，1=男，2=女，所以除以2归一化到0-1范围
     label = (
-        0.5 * data["ctr"] * 10 +
-        0.3 * data["cvr"] * 20 +
-        0.1 * data["age"] / 100 +
-        0.05 * data["gender"] / 2.0 +  # 归一化性别到0-1范围
-        np.random.normal(0, 0.1, n_samples)
+        0.5 * data["item_ctr"] * 10
+        + 0.3 * data["item_cvr"] * 20
+        + 0.1 * data["user_age"] / 100
+        + 0.05 * data["user_gender"] / 2.0
+        + np.random.normal(0, 0.1, n_samples)
     )
-    # 转换为二分类标签（点击率 > 阈值）
     data[LABEL_COLUMN] = (label > 0.5).astype(int)
     
     df = pd.DataFrame(data)

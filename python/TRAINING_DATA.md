@@ -6,20 +6,20 @@
 
 训练数据采用 **CSV 格式**，包含特征列和标签列。
 
-### 特征列（7个）
+### 特征列（7个，带前缀，与 EnrichNode / RPCNode 默认不 strip 时一致）
 
-#### 1. 物品特征
-- **`ctr`** (点击率): 物品的历史点击率，范围通常在 0.01-0.5
-- **`cvr`** (转化率): 物品的历史转化率，范围通常在 0.001-0.1
-- **`price`** (价格): 物品的价格，范围通常在 10-200
+#### 1. 物品特征（item_*）
+- **`item_ctr`** (点击率): 物品的历史点击率，范围通常在 0.01-0.5
+- **`item_cvr`** (转化率): 物品的历史转化率，范围通常在 0.001-0.1
+- **`item_price`** (价格): 物品的价格，范围通常在 10-200
 
-#### 2. 用户特征
-- **`age`** (年龄): 用户年龄，范围通常在 18-60
-- **`gender`** (性别): 用户性别，0=未知，1=男，2=女
+#### 2. 用户特征（user_*）
+- **`user_age`** (年龄): 用户年龄，范围通常在 18-60
+- **`user_gender`** (性别): 用户性别，0=未知，1=男，2=女
 
-#### 3. 交叉特征
-- **`age_x_ctr`**: 年龄 × CTR 交叉特征，用于捕捉年龄与点击率的交互效应
-- **`gender_x_price`**: 性别 × 价格交叉特征，用于捕捉性别与价格的交互效应
+#### 3. 交叉特征（cross_*）
+- **`cross_age_x_ctr`**: 年龄 × CTR 交叉特征，用于捕捉年龄与点击率的交互效应
+- **`cross_gender_x_price`**: 性别 × 价格交叉特征，用于捕捉性别与价格的交互效应
 
 ### 标签列
 
@@ -30,18 +30,18 @@
 ### 数据示例
 
 ```csv
-ctr,cvr,price,age,gender,age_x_ctr,gender_x_price,label
-0.15,0.08,99.0,25,1,3.75,99.0,1
-0.12,0.05,150.0,30,2,3.6,300.0,0
-0.08,0.03,200.0,45,1,3.6,200.0,0
-0.20,0.10,50.0,22,0,4.4,0.0,1
+item_ctr,item_cvr,item_price,user_age,user_gender,cross_age_x_ctr,cross_gender_x_price,label
+0.15,0.08,99.0,25.0,1.0,3.75,99.0,1
+0.12,0.05,150.0,30.0,2.0,3.6,300.0,0
+0.08,0.03,200.0,45.0,1.0,3.6,200.0,0
+0.20,0.10,50.0,22.0,0.0,4.4,0.0,1
 ...
 ```
 
 **说明**: 
-- `gender=0`: 未知
-- `gender=1`: 男
-- `gender=2`: 女
+- `user_gender=0`: 未知
+- `user_gender=1`: 男
+- `user_gender=2`: 女
 
 ## 预测目标
 
@@ -66,14 +66,14 @@ ctr,cvr,price,age,gender,age_x_ctr,gender_x_price,label
 2. **标签生成逻辑**:
    ```python
    label = (
-       0.5 * ctr * 10 +                    # CTR 权重最高
-       0.3 * cvr * 20 +                    # CVR 次之
-       0.1 * age / 100 +                   # 年龄影响较小
-       0.05 * gender / 2.0 +               # 性别影响最小（归一化到0-1范围）
-       随机噪声                            # 增加数据真实性
+       0.5 * item_ctr * 10 +                    # CTR 权重最高
+       0.3 * item_cvr * 20 +                    # CVR 次之
+       0.1 * user_age / 100 +                   # 年龄影响较小
+       0.05 * user_gender / 2.0 +               # 性别影响最小（归一化到0-1范围）
+       随机噪声                                 # 增加数据真实性
    )
    # 转换为二分类：label > 0.5 则为 1，否则为 0
-   # 注意：gender 值为 0=未知，1=男，2=女，除以2.0归一化
+   # 注意：user_gender 值为 0=未知，1=男，2=女，除以2.0归一化
    ```
 
 3. **数据切分**:
@@ -110,26 +110,22 @@ ctr,cvr,price,age,gender,age_x_ctr,gender_x_price,label
 {
   "features_list": [
     {
-      "ctr": 0.15,
-      "cvr": 0.08,
-      "price": 99.0,
-      "age": 25.0,
-      "ctr": 0.15,
-      "cvr": 0.08,
-      "price": 99.0,
-      "age": 25.0,
-      "gender": 1.0,
-      "age_x_ctr": 3.75,
-      "gender_x_price": 99.0
+      "item_ctr": 0.15,
+      "item_cvr": 0.08,
+      "item_price": 99.0,
+      "user_age": 25.0,
+      "user_gender": 1.0,
+      "cross_age_x_ctr": 3.75,
+      "cross_gender_x_price": 99.0
     },
     {
-      "ctr": 0.12,
-      "cvr": 0.05,
-      "price": 150.0,
-      "age": 30.0,
-      "gender": 2.0,
-      "age_x_ctr": 3.6,
-      "gender_x_price": 300.0
+      "item_ctr": 0.12,
+      "item_cvr": 0.05,
+      "item_price": 150.0,
+      "user_age": 30.0,
+      "user_gender": 2.0,
+      "cross_age_x_ctr": 3.6,
+      "cross_gender_x_price": 300.0
     }
   ]
 }
@@ -148,7 +144,7 @@ ctr,cvr,price,age,gender,age_x_ctr,gender_x_price,label
 ### 准备数据文件
 
 1. 创建 CSV 文件，包含以下列：
-   - 特征列：`ctr`, `cvr`, `price`, `age`, `gender`, `age_x_ctr`, `gender_x_price`
+   - 特征列：`item_ctr`, `item_cvr`, `item_price`, `user_age`, `user_gender`, `cross_age_x_ctr`, `cross_gender_x_price`
    - 标签列：`label`（0 或 1）
 
 2. 将数据文件放到 `python/data/` 目录下
