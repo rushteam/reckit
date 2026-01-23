@@ -6,10 +6,13 @@ import (
 )
 
 // Encoder 是特征编码器接口
+// 所有编码都需要特征名才能正确编码（因为需要通过特征名查找对应的配置）
 type Encoder interface {
-	// Encode 编码单个值
-	Encode(value interface{}) map[string]float64
-	// EncodeFeatures 编码特征字典
+	// EncodeWithKey 编码单个值（指定特征名）
+	// 这是编码的核心方法，因为所有编码都需要通过特征名查找配置
+	EncodeWithKey(key string, value interface{}) map[string]float64
+	// EncodeFeatures 编码特征字典（批量编码）
+	// 内部会调用 EncodeWithKey 对每个特征进行编码
 	EncodeFeatures(features map[string]interface{}) map[string]float64
 }
 
@@ -32,13 +35,6 @@ func NewOneHotEncoder(categories map[string][]string) *OneHotEncoder {
 func (e *OneHotEncoder) WithPrefix(prefix string) *OneHotEncoder {
 	e.Prefix = prefix
 	return e
-}
-
-// Encode 编码单个值
-func (e *OneHotEncoder) Encode(value interface{}) map[string]float64 {
-	// One-Hot 编码需要知道特征名和类别列表
-	// 使用 EncodeWithKey 方法
-	return make(map[string]float64)
 }
 
 // EncodeWithKey 编码单个值（指定特征名）
@@ -92,13 +88,6 @@ func NewLabelEncoder(labelMap map[string]map[string]int) *LabelEncoder {
 	}
 }
 
-// Encode 编码单个值
-func (e *LabelEncoder) Encode(value interface{}) map[string]float64 {
-	// Label 编码需要知道特征名
-	// 使用 EncodeWithKey 方法
-	return make(map[string]float64)
-}
-
 // EncodeWithKey 编码单个值（指定特征名）
 func (e *LabelEncoder) EncodeWithKey(key string, value interface{}) map[string]float64 {
 	encoded := make(map[string]float64)
@@ -150,13 +139,6 @@ func (e *HashEncoder) WithPrefix(prefix string) *HashEncoder {
 	return e
 }
 
-// Encode 编码单个值
-func (e *HashEncoder) Encode(value interface{}) map[string]float64 {
-	// Hash 编码需要知道特征名
-	// 使用 EncodeWithKey 方法
-	return make(map[string]float64)
-}
-
 // EncodeWithKey 编码单个值（指定特征名）
 func (e *HashEncoder) EncodeWithKey(key string, value interface{}) map[string]float64 {
 	encoded := make(map[string]float64)
@@ -203,13 +185,6 @@ func NewBinaryEncoder(maxBits int) *BinaryEncoder {
 	return &BinaryEncoder{
 		MaxBits: maxBits,
 	}
-}
-
-// Encode 编码单个值
-func (e *BinaryEncoder) Encode(value interface{}) map[string]float64 {
-	// 二进制编码需要知道特征名
-	// 使用 EncodeWithKey 方法
-	return make(map[string]float64)
 }
 
 // EncodeWithKey 编码单个值（指定特征名）
@@ -264,13 +239,6 @@ func NewTargetEncoder(encodings map[string]map[string]float64) *TargetEncoder {
 	}
 }
 
-// Encode 编码单个值
-func (e *TargetEncoder) Encode(value interface{}) map[string]float64 {
-	// Target 编码需要知道特征名
-	// 使用 EncodeWithKey 方法
-	return make(map[string]float64)
-}
-
 // EncodeWithKey 编码单个值（指定特征名）
 func (e *TargetEncoder) EncodeWithKey(key string, value interface{}) map[string]float64 {
 	encoded := make(map[string]float64)
@@ -315,13 +283,6 @@ func NewFrequencyEncoder(frequencies map[string]map[string]float64) *FrequencyEn
 	}
 }
 
-// Encode 编码单个值
-func (e *FrequencyEncoder) Encode(value interface{}) map[string]float64 {
-	// 频率编码需要知道特征名
-	// 使用 EncodeWithKey 方法
-	return make(map[string]float64)
-}
-
 // EncodeWithKey 编码单个值（指定特征名）
 func (e *FrequencyEncoder) EncodeWithKey(key string, value interface{}) map[string]float64 {
 	encoded := make(map[string]float64)
@@ -342,6 +303,204 @@ func (e *FrequencyEncoder) EncodeWithKey(key string, value interface{}) map[stri
 
 // EncodeFeatures 编码特征字典
 func (e *FrequencyEncoder) EncodeFeatures(features map[string]interface{}) map[string]float64 {
+	encoded := make(map[string]float64)
+	for k, v := range features {
+		encodedFeatures := e.EncodeWithKey(k, v)
+		for ek, ev := range encodedFeatures {
+			encoded[ek] = ev
+		}
+	}
+	return encoded
+}
+
+// EmbeddingEncoder Embedding 编码（嵌入编码）
+// 使用预训练的 Embedding 表将类别映射到低维稠密向量
+// Embedding 是通过神经网络学习得到的，可以捕捉语义相似性
+type EmbeddingEncoder struct {
+	Embeddings map[string]map[string][]float64 // 每个特征名对应的类别到 embedding 向量的映射
+	Prefix     string                          // 特征名前缀
+}
+
+// NewEmbeddingEncoder 创建 Embedding 编码器
+func NewEmbeddingEncoder(embeddings map[string]map[string][]float64) *EmbeddingEncoder {
+	return &EmbeddingEncoder{
+		Embeddings: embeddings,
+		Prefix:     "",
+	}
+}
+
+// WithPrefix 设置特征名前缀
+func (e *EmbeddingEncoder) WithPrefix(prefix string) *EmbeddingEncoder {
+	e.Prefix = prefix
+	return e
+}
+
+// EncodeWithKey 编码单个值（指定特征名）
+func (e *EmbeddingEncoder) EncodeWithKey(key string, value interface{}) map[string]float64 {
+	encoded := make(map[string]float64)
+	embeddingMap, ok := e.Embeddings[key]
+	if !ok {
+		return encoded
+	}
+
+	valStr := fmt.Sprintf("%v", value)
+	embedding, ok := embeddingMap[valStr]
+	if !ok {
+		// 未知类别使用零向量或默认 embedding
+		return encoded
+	}
+
+	prefix := e.Prefix
+	if prefix != "" {
+		prefix = prefix + "_"
+	}
+
+	// 将 embedding 向量展开为特征
+	for i, val := range embedding {
+		featureName := fmt.Sprintf("%s%s_emb_%d", prefix, key, i)
+		encoded[featureName] = val
+	}
+
+	return encoded
+}
+
+// EncodeFeatures 编码特征字典
+func (e *EmbeddingEncoder) EncodeFeatures(features map[string]interface{}) map[string]float64 {
+	encoded := make(map[string]float64)
+	for k, v := range features {
+		encodedFeatures := e.EncodeWithKey(k, v)
+		for ek, ev := range encodedFeatures {
+			encoded[ek] = ev
+		}
+	}
+	return encoded
+}
+
+// OrdinalEncoder 有序编码（Ordinal Encoding）
+// 将有序类别映射为整数，保持顺序关系
+// 与 Label 编码类似，但更明确地表示有序关系
+type OrdinalEncoder struct {
+	OrderMap map[string][]string // 每个特征名对应的有序类别列表（从小到大）
+}
+
+// NewOrdinalEncoder 创建有序编码器
+func NewOrdinalEncoder(orderMap map[string][]string) *OrdinalEncoder {
+	return &OrdinalEncoder{
+		OrderMap: orderMap,
+	}
+}
+
+// EncodeWithKey 编码单个值（指定特征名）
+func (e *OrdinalEncoder) EncodeWithKey(key string, value interface{}) map[string]float64 {
+	encoded := make(map[string]float64)
+	order, ok := e.OrderMap[key]
+	if !ok {
+		return encoded
+	}
+
+	valStr := fmt.Sprintf("%v", value)
+	for i, cat := range order {
+		if cat == valStr {
+			encoded[key] = float64(i)
+			return encoded
+		}
+	}
+
+	// 未知类别默认为 0
+	encoded[key] = 0.0
+	return encoded
+}
+
+// EncodeFeatures 编码特征字典
+func (e *OrdinalEncoder) EncodeFeatures(features map[string]interface{}) map[string]float64 {
+	encoded := make(map[string]float64)
+	for k, v := range features {
+		encodedFeatures := e.EncodeWithKey(k, v)
+		for ek, ev := range encodedFeatures {
+			encoded[ek] = ev
+		}
+	}
+	return encoded
+}
+
+// CountEncoder 计数编码
+// 用类别出现的次数编码
+// 与频率编码类似，但使用绝对计数而不是相对频率
+type CountEncoder struct {
+	Counts map[string]map[string]int64 // 每个特征名对应的类别到计数的映射
+}
+
+// NewCountEncoder 创建计数编码器
+func NewCountEncoder(counts map[string]map[string]int64) *CountEncoder {
+	return &CountEncoder{
+		Counts: counts,
+	}
+}
+
+// EncodeWithKey 编码单个值（指定特征名）
+func (e *CountEncoder) EncodeWithKey(key string, value interface{}) map[string]float64 {
+	encoded := make(map[string]float64)
+	countMap, ok := e.Counts[key]
+	if !ok {
+		return encoded
+	}
+
+	valStr := fmt.Sprintf("%v", value)
+	if count, ok := countMap[valStr]; ok {
+		encoded[key+"_count"] = float64(count)
+	} else {
+		encoded[key+"_count"] = 0.0
+	}
+
+	return encoded
+}
+
+// EncodeFeatures 编码特征字典
+func (e *CountEncoder) EncodeFeatures(features map[string]interface{}) map[string]float64 {
+	encoded := make(map[string]float64)
+	for k, v := range features {
+		encodedFeatures := e.EncodeWithKey(k, v)
+		for ek, ev := range encodedFeatures {
+			encoded[ek] = ev
+		}
+	}
+	return encoded
+}
+
+// WOEEncoder Weight of Evidence (WoE) 编码
+// 证据权重编码，用于衡量类别对目标变量的预测能力
+// 公式: WoE = ln((Good% / Bad%) / (Total Good% / Total Bad%))
+type WOEEncoder struct {
+	WOEMap map[string]map[string]float64 // 每个特征名对应的类别到 WoE 值的映射
+}
+
+// NewWOEEncoder 创建 WoE 编码器
+func NewWOEEncoder(woeMap map[string]map[string]float64) *WOEEncoder {
+	return &WOEEncoder{
+		WOEMap: woeMap,
+	}
+}
+
+// EncodeWithKey 编码单个值（指定特征名）
+func (e *WOEEncoder) EncodeWithKey(key string, value interface{}) map[string]float64 {
+	encoded := make(map[string]float64)
+	woeMap, ok := e.WOEMap[key]
+	if !ok {
+		return encoded
+	}
+
+	valStr := fmt.Sprintf("%v", value)
+	if woe, ok := woeMap[valStr]; ok {
+		encoded[key+"_woe"] = woe
+	} else {
+		encoded[key+"_woe"] = 0.0
+	}
+
+	return encoded
+}
+
+// EncodeFeatures 编码特征字典
+func (e *WOEEncoder) EncodeFeatures(features map[string]interface{}) map[string]float64 {
 	encoded := make(map[string]float64)
 	for k, v := range features {
 		encodedFeatures := e.EncodeWithKey(k, v)

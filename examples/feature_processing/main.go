@@ -8,7 +8,8 @@ import (
 )
 
 func main() {
-	fmt.Println("=== 特征处理工具类示例 ===\n")
+	fmt.Println("=== 特征处理工具类示例 ===")
+	fmt.Println()
 
 	// 1. Z-score 标准化示例
 	fmt.Println("1. Z-score 标准化")
@@ -98,6 +99,78 @@ func main() {
 	encoded = hashEncoder.EncodeFeatures(idFeatures)
 	fmt.Printf("  原始特征: %v\n", idFeatures)
 	fmt.Printf("  Hash 编码后: %v\n", encoded)
+	fmt.Println()
+
+	// 6.1. Embedding 编码示例
+	fmt.Println("6.1. Embedding 编码（嵌入编码）")
+	embeddings := map[string]map[string][]float64{
+		"category": {
+			"electronics": []float64{0.1, 0.2, 0.3, 0.4},
+			"clothing":    []float64{0.2, 0.1, 0.4, 0.3},
+			"books":       []float64{0.3, 0.3, 0.2, 0.2},
+		},
+	}
+	embeddingEncoder := feature.NewEmbeddingEncoder(embeddings).WithPrefix("emb")
+	embeddingFeatures := map[string]interface{}{
+		"category": "electronics",
+	}
+	encoded = embeddingEncoder.EncodeFeatures(embeddingFeatures)
+	fmt.Printf("  原始特征: %v\n", embeddingFeatures)
+	fmt.Printf("  Embedding 编码后: %v\n", encoded)
+	fmt.Println("  说明: Embedding 编码需要预训练的 embedding 表，通常通过深度学习模型训练得到")
+	fmt.Println()
+
+	// 6.2. Ordinal 编码示例
+	fmt.Println("6.2. Ordinal 编码（有序编码）")
+	orderMap := map[string][]string{
+		"level": {"low", "medium", "high"},
+		"size":  {"S", "M", "L", "XL"},
+	}
+	ordinalEncoder := feature.NewOrdinalEncoder(orderMap)
+	ordinalFeatures := map[string]interface{}{
+		"level": "high",
+		"size":  "L",
+	}
+	encoded = ordinalEncoder.EncodeFeatures(ordinalFeatures)
+	fmt.Printf("  原始特征: %v\n", ordinalFeatures)
+	fmt.Printf("  Ordinal 编码后: %v\n", encoded)
+	fmt.Println()
+
+	// 6.3. Count 编码示例
+	fmt.Println("6.3. Count 编码（计数编码）")
+	counts := map[string]map[string]int64{
+		"category": {
+			"electronics": 10000,
+			"clothing":    5000,
+			"books":       2000,
+		},
+	}
+	countEncoder := feature.NewCountEncoder(counts)
+	countFeaturesForEncode := map[string]interface{}{
+		"category": "electronics",
+	}
+	encoded = countEncoder.EncodeFeatures(countFeaturesForEncode)
+	fmt.Printf("  原始特征: %v\n", countFeaturesForEncode)
+	fmt.Printf("  Count 编码后: %v\n", encoded)
+	fmt.Println()
+
+	// 6.4. WoE 编码示例
+	fmt.Println("6.4. WoE 编码（证据权重编码）")
+	woeMap := map[string]map[string]float64{
+		"category": {
+			"electronics": 0.5,
+			"clothing":    -0.3,
+			"books":       0.1,
+		},
+	}
+	woeEncoder := feature.NewWOEEncoder(woeMap)
+	woeFeatures := map[string]interface{}{
+		"category": "electronics",
+	}
+	encoded = woeEncoder.EncodeFeatures(woeFeatures)
+	fmt.Printf("  原始特征: %v\n", woeFeatures)
+	fmt.Printf("  WoE 编码后: %v\n", encoded)
+	fmt.Println("  说明: WoE 编码常用于风控和信用评分场景")
 	fmt.Println()
 
 	// 7. 交叉特征生成示例

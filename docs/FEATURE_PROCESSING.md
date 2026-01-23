@@ -195,12 +195,15 @@ categories := map[string][]string{
 }
 encoder := feature.NewOneHotEncoder(categories).WithPrefix("onehot")
 
-// 编码特征
+// 批量编码特征（推荐）
 features := map[string]interface{}{
     "gender": "male",
     "city":   "beijing",
 }
 encoded := encoder.EncodeFeatures(features)
+
+// 单个值编码（需要指定特征名）
+encoded := encoder.EncodeWithKey("gender", "male")
 // 结果: {
 //   "onehot_gender_0": 1.0, "onehot_gender_1": 0.0, "onehot_gender_2": 0.0,
 //   "onehot_city_0": 1.0, "onehot_city_1": 0.0, "onehot_city_2": 0.0,
@@ -325,7 +328,58 @@ encoded := encoder.EncodeFeatures(features)
 // 结果: {"category_freq": 0.3}
 ```
 
-### 6. Binary 编码（二进制编码）
+### 6. Embedding 编码（嵌入编码）
+
+**原理**：
+- 使用预训练的 Embedding 表将类别映射到低维稠密向量
+- Embedding 是通过神经网络学习得到的，可以捕捉语义相似性
+- **这是深度学习中最常用的编码方法**
+
+**特点**：
+- 维度可控（通常 8-128 维）
+- 学习语义相似性（相似类别在向量空间中距离近）
+- 需要预训练或在线学习
+- 适合高基数类别
+- 主要用于深度学习模型
+
+**与其他编码的区别**：
+- **One-Hot**: 稀疏向量，维度=类别数，无语义信息
+- **Label**: 单个整数，无语义信息
+- **Hash**: 固定维度，可能有冲突，无语义信息
+- **Embedding**: 稠密向量，有语义信息，需要训练
+
+**Reckit 实现**：
+
+```go
+// 创建 Embedding 编码器（需要预训练的 embedding 表）
+embeddings := map[string]map[string][]float64{
+    "category": {
+        "electronics": []float64{0.1, 0.2, 0.3, 0.4},  // 4 维 embedding
+        "clothing":    []float64{0.2, 0.1, 0.4, 0.3},
+        "books":       []float64{0.3, 0.3, 0.2, 0.2},
+    },
+}
+encoder := feature.NewEmbeddingEncoder(embeddings).WithPrefix("emb")
+
+// 编码特征
+features := map[string]interface{}{
+    "category": "electronics",
+}
+encoded := encoder.EncodeFeatures(features)
+// 结果: {
+//   "emb_category_emb_0": 0.1,
+//   "emb_category_emb_1": 0.2,
+//   "emb_category_emb_2": 0.3,
+//   "emb_category_emb_3": 0.4,
+// }
+```
+
+**注意**：Embedding 编码需要预训练的 embedding 表，通常通过以下方式获得：
+1. 在深度学习模型中训练得到（如 Word2Vec、BERT）
+2. 使用预训练模型（如 GloVe、FastText）
+3. 在推荐系统中，通过协同过滤等方法学习得到
+
+### 7. Binary 编码（二进制编码）
 
 **原理**：
 - 将整数类别转换为二进制表示
@@ -353,6 +407,95 @@ encoded := encoder.EncodeFeatures(features)
 //   "category_id_bit_2": 1.0,
 //   ...
 // }
+```
+
+### 8. Ordinal 编码（有序编码）
+
+**原理**：
+- 将有序类别映射为整数，保持顺序关系
+- 与 Label 编码类似，但更明确地表示有序关系
+
+**特点**：
+- 维度低（只有一个特征）
+- 明确保持顺序关系
+- 适合有序类别（如：低、中、高）
+
+**Reckit 实现**：
+
+```go
+// 创建有序编码器
+orderMap := map[string][]string{
+    "level": {"low", "medium", "high"},
+    "size":  {"S", "M", "L", "XL"},
+}
+encoder := feature.NewOrdinalEncoder(orderMap)
+
+// 编码特征
+features := map[string]interface{}{
+    "level": "high",
+    "size":  "L",
+}
+encoded := encoder.EncodeFeatures(features)
+// 结果: {"level": 2.0, "size": 2.0}
+```
+
+### 9. Count 编码（计数编码）
+
+**原理**：
+- 用类别出现的绝对次数编码
+- 与频率编码类似，但使用绝对计数而不是相对频率
+
+**特点**：
+- 维度低
+- 反映类别的常见程度
+- 适合高基数类别
+
+**Reckit 实现**：
+
+```go
+// 创建计数编码器
+counts := map[string]map[string]int64{
+    "category": {
+        "electronics": 10000,
+        "clothing":    5000,
+        "books":       2000,
+    },
+}
+encoder := feature.NewCountEncoder(counts)
+
+// 编码特征
+encoded := encoder.EncodeFeatures(features)
+// 结果: {"category_count": 10000.0}
+```
+
+### 10. WoE 编码（证据权重编码）
+
+**原理**：
+- Weight of Evidence (WoE)，用于衡量类别对目标变量的预测能力
+- 公式: `WoE = ln((Good% / Bad%) / (Total Good% / Total Bad%))`
+- 常用于风控和信用评分
+
+**特点**：
+- 维度低
+- 捕捉类别与目标的关系
+- 需要目标变量数据计算
+
+**Reckit 实现**：
+
+```go
+// 创建 WoE 编码器
+woeMap := map[string]map[string]float64{
+    "category": {
+        "electronics": 0.5,  // 该类别的 WoE 值
+        "clothing":    -0.3,
+        "books":       0.1,
+    },
+}
+encoder := feature.NewWOEEncoder(woeMap)
+
+// 编码特征
+encoded := encoder.EncodeFeatures(features)
+// 结果: {"category_woe": 0.5}
 ```
 
 ---
@@ -648,15 +791,55 @@ enrichNode := &feature.EnrichNode{
 
 ---
 
+## 编码方法总结
+
+### 已实现的编码方法
+
+Reckit 提供了 **10 种编码方法**：
+
+1. **One-Hot 编码**：稀疏二进制向量，适合类别数少（< 50）
+2. **Label 编码**：整数映射，适合有序类别
+3. **Hash 编码**：固定维度，适合高基数类别（百万级）
+4. **Target 编码**：目标变量统计量，适合高基数类别
+5. **Frequency 编码**：频率编码，简单有效
+6. **Embedding 编码**：稠密向量，有语义信息，**需要预训练**
+7. **Binary 编码**：二进制表示，维度 = log2(类别数)
+8. **Ordinal 编码**：有序编码，明确保持顺序关系
+9. **Count 编码**：绝对计数，反映常见程度
+10. **WoE 编码**：证据权重，用于风控场景
+
+### Embedding 编码 vs 其他编码
+
+| 编码方法 | 维度 | 语义信息 | 需要训练 | 适用场景 |
+|---------|------|---------|---------|---------|
+| One-Hot | 高（=类别数） | 无 | 否 | 类别数少 |
+| Label | 低（1） | 无 | 否 | 有序类别 |
+| Hash | 固定 | 无 | 否 | 高基数类别 |
+| Target | 低（1） | 有（与目标相关） | 是（需要目标数据） | 高基数类别 |
+| **Embedding** | **可控（8-128）** | **有（语义相似性）** | **是（需要预训练）** | **深度学习、高基数类别** |
+| Frequency | 低（1） | 无 | 否 | 高基数类别 |
+
+### 编码方法选择指南
+
+- **类别数 < 50**：One-Hot 编码
+- **有序类别**：Ordinal 或 Label 编码
+- **高基数类别（> 1000）**：Hash、Target 或 Embedding 编码
+- **深度学习模型**：**Embedding 编码（推荐）**
+- **树模型**：Label、Target 或 Frequency 编码
+- **线性模型**：One-Hot 编码
+- **风控场景**：WoE 编码
+
 ## 总结
 
 Reckit 提供了完整的特征处理工具类，包括：
 
 1. **归一化**：Z-score、Min-Max、Robust、Log、Sqrt
-2. **编码**：One-Hot、Label、Hash、Target、Frequency、Binary
+2. **编码**：One-Hot、Label、Hash、Target、Frequency、Binary、**Embedding**、Ordinal、Count、WoE（共 10 种）
 3. **特征工程**：交叉特征、分桶
 4. **缺失值处理**：填充固定值
 5. **特征选择**：选择/排除特征
 6. **统计信息**：均值、标准差、分位数等
 
 所有工具类都采用接口设计，易于扩展和组合使用。
+
+**特别说明**：Embedding 编码是深度学习中最常用的编码方法，它通过神经网络学习得到低维稠密向量，可以捕捉语义相似性，是推荐系统中处理高基数类别特征的首选方法。
