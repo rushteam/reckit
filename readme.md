@@ -16,7 +16,7 @@
 
 Reckit 是一个**工业级推荐系统工具包**，采用 **Pipeline + Node** 架构设计，通过接口抽象实现高度可扩展性。支持内容流、电商、广告等多种推荐场景，帮助开发者快速构建生产级推荐系统。
 
-### 🎯 项目宗旨
+### 🎯 工程目标
 
 场景分工：
 - **深度模型、复杂梯度更新** → 适用工具：**PyTorch/Tensorflow**
@@ -500,6 +500,7 @@ items, _ := p.Run(ctx, rctx, nil)
 - [架构设计文档](docs/ARCHITECTURE.md) - 详细架构设计说明
 - [召回算法文档](docs/RECALL_ALGORITHMS.md) - 召回算法详解和使用指南
 - [排序模型文档](docs/RANK_MODELS.md) - 排序模型详解
+- [模型选型指南](docs/MODEL_SELECTION.md) - 推荐系统模型选型参考
 - [协同过滤文档](docs/COLLABORATIVE_FILTERING.md) - 协同过滤算法详解
 - [可扩展性分析](docs/EXTENSIBILITY_ANALYSIS.md) - 扩展指南和最佳实践
 - [用户画像文档](docs/USER_PROFILE.md) - 用户画像使用指南
