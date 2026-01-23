@@ -81,19 +81,19 @@ MODEL_VERSION=v1.0.0 PORT=8080 python service/server.py
 # 健康检查
 curl http://localhost:8080/health
 
-# 批量预测接口
+# 批量预测接口（特征名带前缀，与 FEATURE_COLUMNS 对齐）
 curl -X POST http://localhost:8080/predict \
   -H "Content-Type: application/json" \
   -d '{
     "features_list": [
       {
-        "ctr": 0.15,
-        "cvr": 0.08,
-        "price": 99.0,
-        "age": 25.0,
-        "gender": 1.0,
-        "age_x_ctr": 3.75,
-        "gender_x_price": 99.0
+        "item_ctr": 0.15,
+        "item_cvr": 0.08,
+        "item_price": 99.0,
+        "user_age": 25.0,
+        "user_gender": 1.0,
+        "cross_age_x_ctr": 3.75,
+        "cross_gender_x_price": 99.0
       }
     ]
   }'
@@ -112,25 +112,27 @@ rpcNode := &rank.RPCNode{Model: xgbModel}
 
 ### 请求格式
 
-与 Go 端 `RPCModel.Predict` 协议对齐：
+与 Go 端 `RPCModel.Predict` 协议对齐（特征名带前缀，与 FEATURE_COLUMNS 对齐）：
 
 ```json
 {
   "features_list": [
     {
-      "ctr": 0.15,
-      "cvr": 0.08,
-      "price": 99.0,
-      "age": 25.0,
-      "gender": 1.0,
-      "age_x_ctr": 3.75,
-      "gender_x_price": 99.0
+      "item_ctr": 0.15,
+      "item_cvr": 0.08,
+      "item_price": 99.0,
+      "user_age": 25.0,
+      "user_gender": 1.0,
+      "cross_age_x_ctr": 3.75,
+      "cross_gender_x_price": 99.0
     }
   ]
 }
 ```
 
-**注意**: `gender` 值为 0=未知，1=男，2=女
+**注意**: 
+- `user_gender` 值为 0=未知，1=男，2=女
+- 特征名必须与 `feature_meta.json` 中的 `feature_columns` 完全一致
 
 ### 响应格式
 
@@ -142,15 +144,17 @@ rpcNode := &rank.RPCNode{Model: xgbModel}
 
 ## 特征配置
 
-特征列定义在 `train/features.py` 中：
+特征列定义在 `train/features.py` 中（带前缀，与 EnrichNode / RPCNode 默认不 strip 对齐）：
 
-- `ctr`: 点击率
-- `cvr`: 转化率
-- `price`: 价格
-- `age`: 用户年龄
-- `gender`: 用户性别（0=未知，1=男，2=女）
-- `age_x_ctr`: 年龄 × CTR 交叉特征
-- `gender_x_price`: 性别 × 价格交叉特征
+- `item_ctr`: 物品点击率
+- `item_cvr`: 物品转化率
+- `item_price`: 物品价格
+- `user_age`: 用户年龄
+- `user_gender`: 用户性别（0=未知，1=男，2=女）
+- `cross_age_x_ctr`: 年龄 × CTR 交叉特征
+- `cross_gender_x_price`: 性别 × 价格交叉特征
+
+**注意**：特征名必须与 `feature_meta.json` 中的 `feature_columns` 完全一致。
 
 ## 扩展指南
 

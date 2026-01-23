@@ -72,19 +72,25 @@ if normalize:
 - **`feature_scaler.json`**（如果使用了标准化）：每列的 mean 和 std
 
 ```json
-// feature_meta.json
+// feature_meta.json（总是生成）
 {
   "feature_columns": ["item_ctr", "item_cvr", "item_price", "user_age", "user_gender", "cross_age_x_ctr", "cross_gender_x_price"],
   "feature_count": 7,
-  "normalized": true,
-  "model_version": "v1.0.0"
+  "label_column": "label",
+  "model_version": "v1.0.0",
+  "normalized": true,  // false 表示未使用标准化
+  "created_at": "2024-01-15T10:30:00"
 }
 
-// feature_scaler.json
+// feature_scaler.json（仅在使用 --normalize 时生成）
 {
   "item_ctr": {"mean": 0.15, "std": 0.08},
   "item_cvr": {"mean": 0.05, "std": 0.03},
-  ...
+  "item_price": {"mean": 100.0, "std": 50.0},
+  "user_age": {"mean": 30.0, "std": 10.0},
+  "user_gender": {"mean": 1.0, "std": 0.8},
+  "cross_age_x_ctr": {"mean": 4.5, "std": 2.0},
+  "cross_gender_x_price": {"mean": 100.0, "std": 80.0}
 }
 ```
 
@@ -411,6 +417,31 @@ def test_feature_consistency():
 
 ### 完整的训练流程
 
+#### 情况 1：不使用标准化（只生成 feature_meta.json）
+
+```bash
+# 1. 训练模型（不使用标准化）
+cd python
+python train/train_xgb.py --version v1.0.0
+
+# 2. 检查生成的文件
+ls model/
+# feature_meta.json      # 特征元数据（总是生成）
+# xgb_model.json         # 模型文件
+# （没有 feature_scaler.json）
+
+# 3. 查看 feature_meta.json 内容
+cat model/feature_meta.json
+# {
+#   "feature_columns": ["item_ctr", "item_cvr", ...],
+#   "normalized": false,  # 未使用标准化
+#   "model_version": "v1.0.0",
+#   ...
+# }
+```
+
+#### 情况 2：使用标准化（生成 feature_meta.json + feature_scaler.json）
+
 ```bash
 # 1. 训练模型（使用标准化）
 cd python
@@ -418,9 +449,26 @@ python train/train_xgb.py --normalize --version v1.0.0
 
 # 2. 检查生成的文件
 ls model/
-# feature_meta.json      # 特征元数据
+# feature_meta.json      # 特征元数据（总是生成）
 # feature_scaler.json    # 标准化参数（因为用了 --normalize）
 # xgb_model.json         # 模型文件
+
+# 3. 查看 feature_meta.json 内容
+cat model/feature_meta.json
+# {
+#   "feature_columns": ["item_ctr", "item_cvr", ...],
+#   "normalized": true,  # 使用了标准化
+#   "model_version": "v1.0.0",
+#   ...
+# }
+
+# 4. 查看 feature_scaler.json 内容
+cat model/feature_scaler.json
+# {
+#   "item_ctr": {"mean": 0.15, "std": 0.08},
+#   "item_cvr": {"mean": 0.05, "std": 0.03},
+#   ...
+# }
 ```
 
 ### 完整的在线流程
@@ -463,20 +511,130 @@ p := &pipeline.Pipeline{
 loader = ModelLoader(model_path, feature_meta_path)
 loader.load()
 
-# 2. 预测时处理特征
+# 2. 检查是否使用了标准化
+print(f"模型版本: {loader.model_version}")
+print(f"是否标准化: {loader.feature_scaler is not None}")
+print(f"特征列: {loader.feature_columns}")
+
+# 3. 预测时处理特征
 def predict(features_list):
     for features in features_list:
         # 验证特征（填充缺失值）
         validated = loader._validate_features(features)
+        # 缺失的特征会被填充为 0.0
         
-        # 标准化（如果配置了）
+        # 标准化（如果 feature_scaler.json 存在）
         normalized = loader._normalize_features(validated)
+        # 如果 loader.feature_scaler 为 None，直接返回原特征
         
         # 按 feature_columns 顺序构建向量
         vector = [normalized[col] for col in loader.feature_columns]
         
         # 预测
         score = model.predict(vector)
+```
+
+### Go 端使用特征元数据（可选）
+
+Go 端可以通过 `feature` 包的工具类读取和使用这两个文件，主要用于**特征验证**和**监控**：
+
+```go
+import "github.com/rushteam/reckit/feature"
+
+// 1. 加载特征元数据
+meta, err := feature.LoadFeatureMetadata("python/model/feature_meta.json")
+if err != nil {
+    log.Printf("加载特征元数据失败（可选）: %v", err)
+} else {
+    fmt.Printf("模型版本: %s\n", meta.ModelVersion)
+    fmt.Printf("特征列: %v\n", meta.FeatureColumns)
+    fmt.Printf("是否标准化: %v\n", meta.Normalized)
+}
+
+// 2. 加载特征标准化器（如果模型使用了标准化）
+var scaler feature.FeatureScaler
+if meta != nil && meta.Normalized {
+    scaler, err = feature.LoadFeatureScaler("python/model/feature_scaler.json")
+    if err != nil {
+        log.Printf("加载特征标准化器失败: %v", err)
+    }
+}
+
+// 3. 验证特征完整性（在发送到 Python 服务前）
+if meta != nil {
+    missing := meta.GetMissingFeatures(item.Features)
+    if len(missing) > 0 {
+        // 填充缺失特征为 0.0
+        for _, col := range missing {
+            item.Features[col] = 0.0
+        }
+    }
+}
+
+// 4. 可选：在 Go 端进行标准化（不推荐，标准化应在 Python 服务中完成）
+// if scaler != nil {
+//     item.Features = scaler.Normalize(item.Features)
+// }
+```
+
+**注意**：
+- Go 端通常**只做特征验证**，标准化统一在 Python 服务中完成
+- 如果需要在 Go 端做标准化，必须确保与 Python 服务的一致性
+- 完整示例见 `examples/feature_metadata/main.go`
+
+### 文件生成示例
+
+#### 不使用标准化时
+
+```bash
+python train/train_xgb.py --version v1.0.0
+```
+
+生成的文件：
+
+```json
+// model/feature_meta.json
+{
+  "feature_columns": ["item_ctr", "item_cvr", "item_price", "user_age", "user_gender", "cross_age_x_ctr", "cross_gender_x_price"],
+  "feature_count": 7,
+  "label_column": "label",
+  "model_version": "v1.0.0",
+  "normalized": false,
+  "created_at": "2024-01-15T10:30:00"
+}
+
+// model/feature_scaler.json - 不存在
+```
+
+#### 使用标准化时
+
+```bash
+python train/train_xgb.py --normalize --version v1.0.0
+```
+
+生成的文件：
+
+```json
+// model/feature_meta.json
+{
+  "feature_columns": ["item_ctr", "item_cvr", "item_price", "user_age", "user_gender", "cross_age_x_ctr", "cross_gender_x_price"],
+  "feature_count": 7,
+  "label_column": "label",
+  "model_version": "v1.0.0",
+  "normalized": true,
+  "created_at": "2024-01-15T10:30:00"
+}
+
+// model/feature_scaler.json
+{
+  "item_ctr": {"mean": 0.15, "std": 0.08},
+  "item_cvr": {"mean": 0.05, "std": 0.03},
+  "item_price": {"mean": 100.0, "std": 50.0},
+  "user_age": {"mean": 30.0, "std": 10.0},
+  "user_gender": {"mean": 1.0, "std": 0.8},
+  "cross_age_x_ctr": {"mean": 4.5, "std": 2.0},
+  "cross_gender_x_price": {"mean": 100.0, "std": 80.0}
+}
 ```
 
 ---

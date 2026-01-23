@@ -408,13 +408,62 @@ type Client interface {
 **作用**: 
 - 将用户特征、物品特征、交叉特征组合
 - 支持批量特征获取
-- 支持特征前缀（user_、item_、cross_）
+- 支持特征前缀（user_、item_、cross_、scene_）
 
 **特性**:
 - ✅ 支持 FeatureService 模式（推荐）
 - ✅ 支持传统提取器模式
 - ✅ 自动生成交叉特征
 - ✅ 批量获取物品特征
+- ✅ 支持场景特征（scene_）
+
+#### `feature.MetadataLoader` - 特征元数据加载器接口
+**位置**: `feature/metadata_loader.go`
+
+```go
+type MetadataLoader interface {
+    Load(ctx context.Context, source string) (*FeatureMetadata, error)
+}
+```
+
+**作用**: 定义特征元数据加载器接口，支持从不同来源加载特征元数据（本地文件、HTTP 接口、S3 兼容存储等）。
+
+**已有实现**:
+- ✅ `FileMetadataLoader` - 本地文件加载器
+- ✅ `HTTPMetadataLoader` - HTTP 接口加载器
+- ✅ `S3MetadataLoader` - S3 兼容协议加载器（支持 AWS S3、阿里云 OSS、腾讯云 COS、MinIO 等）
+
+#### `feature.ScalerLoader` - 特征标准化器加载器接口
+**位置**: `feature/metadata_loader.go`
+
+```go
+type ScalerLoader interface {
+    Load(ctx context.Context, source string) (FeatureScaler, error)
+}
+```
+
+**作用**: 定义特征标准化器加载器接口，支持从不同来源加载特征标准化器（本地文件、HTTP 接口、S3 兼容存储等）。
+
+**已有实现**:
+- ✅ `FileScalerLoader` - 本地文件加载器
+- ✅ `HTTPScalerLoader` - HTTP 接口加载器
+- ✅ `S3ScalerLoader` - S3 兼容协议加载器（支持 AWS S3、阿里云 OSS、腾讯云 COS、MinIO 等）
+
+#### `feature.S3Client` - S3 兼容协议客户端接口
+**位置**: `feature/oss_loader.go`
+
+```go
+type S3Client interface {
+    GetObject(ctx context.Context, bucket, key string) (io.ReadCloser, error)
+}
+```
+
+**作用**: 定义 S3 兼容协议客户端接口，不直接依赖具体 SDK，支持依赖注入。S3 兼容协议支持 AWS S3、阿里云 OSS、腾讯云 COS、MinIO 等。
+
+**使用场景**:
+- 从对象存储加载 `feature_meta.json` 和 `feature_scaler.json`
+- 支持多种云服务商的对象存储服务
+- 统一的接口，易于在不同云服务商之间迁移
 
 ---
 
@@ -776,7 +825,7 @@ result, _ := eval.Evaluate(`label.recall_source == "hot" && item.score > 0.7`)
 | Pipeline | 3 | 2 |
 | Recall | 8 | 10+ |
 | Filter | 4 | 4 |
-| Feature | 6 | 5+ |
+| Feature | 9 | 8+ |
 | Feast | 1 | 3 |
 | Rank | 2 | 6 |
 | ReRank | 0 | 2 |

@@ -100,6 +100,24 @@ type PipelineHook interface {
     BeforeNode(ctx context.Context, rctx *core.RecommendContext, node Node, items []*core.Item) ([]*core.Item, error)
     AfterNode(ctx context.Context, rctx *core.RecommendContext, node Node, items []*core.Item, err error) ([]*core.Item, error)
 }
+
+// 特征元数据加载器接口（feature/metadata_loader.go）
+type MetadataLoader interface {
+    Load(ctx context.Context, source string) (*FeatureMetadata, error)
+}
+// 内置实现：FileMetadataLoader, HTTPMetadataLoader, S3MetadataLoader
+
+// 特征标准化器加载器接口（feature/metadata_loader.go）
+type ScalerLoader interface {
+    Load(ctx context.Context, source string) (FeatureScaler, error)
+}
+// 内置实现：FileScalerLoader, HTTPScalerLoader, S3ScalerLoader
+
+// S3 兼容协议客户端接口（feature/oss_loader.go）
+type S3Client interface {
+    GetObject(ctx context.Context, bucket, key string) (io.ReadCloser, error)
+}
+// 支持 AWS S3、阿里云 OSS、腾讯云 COS、MinIO 等
 ```
 
 ### 配置接口
@@ -227,6 +245,12 @@ github.com/rushteam/reckit/
 - `feature/service.go` - FeatureService 接口和实现
 - `feature/enrich.go` - 特征注入节点
 - `feature/store_provider.go` - 存储特征提供者
+- `feature/metadata.go` - 特征元数据和标准化器定义
+- `feature/metadata_loader.go` - 特征元数据加载器接口和文件实现
+- `feature/http_loader.go` - HTTP 接口加载器实现
+- `feature/oss_loader.go` - S3 兼容协议加载器实现（支持 AWS S3、阿里云 OSS、腾讯云 COS、MinIO 等）
+- `feature/processing.go` - 特征处理工具类（归一化、分箱、交叉特征等）
+- `feature/encoder.go` - 特征编码工具类（One-Hot、Label、Hash、Embedding 等）
 
 ### 工具模块
 
@@ -391,6 +415,7 @@ func (n *MyRankNode) Process(ctx context.Context, rctx *core.RecommendContext, i
 ### 适配器模式
 - `VectorStoreAdapter` - 适配向量服务
 - `FeatureServiceAdapter` - 适配 Feast
+- `S3Client` - 适配 S3 兼容协议（AWS S3、阿里云 OSS、腾讯云 COS、MinIO 等）
 
 ### 装饰器模式
 - `FeatureCache` - 特征缓存装饰器
@@ -449,6 +474,49 @@ result, _ := eval.Evaluate(`item.score > 0.7`)
 result, _ := eval.Evaluate(`label.recall_source.contains("ann")`)
 ```
 
+### 加载特征元数据
+
+```go
+import "github.com/rushteam/reckit/feature"
+
+// 方式 1：本地文件加载
+fileLoader := feature.NewFileMetadataLoader()
+meta, _ := fileLoader.Load(ctx, "python/model/feature_meta.json")
+
+// 方式 2：HTTP 接口加载
+httpLoader := feature.NewHTTPMetadataLoader(5 * time.Second)
+meta, _ := httpLoader.Load(ctx, "http://api.example.com/models/v1.0.0/feature_meta")
+
+// 方式 3：S3 兼容协议加载（支持 AWS S3、阿里云 OSS、腾讯云 COS、MinIO 等）
+s3Client := &MyS3Client{} // 需要实现 feature.S3Client 接口
+s3Loader := feature.NewS3MetadataLoader(s3Client, "my-bucket")
+meta, _ := s3Loader.Load(ctx, "models/v1.0.0/feature_meta.json")
+
+// 使用特征元数据
+validated := meta.ValidateFeatures(features)
+missing := meta.GetMissingFeatures(features)
+vector := meta.BuildFeatureVector(features)
+```
+
+### 加载特征标准化器
+
+```go
+// 方式 1：本地文件加载
+fileScalerLoader := feature.NewFileScalerLoader()
+scaler, _ := fileScalerLoader.Load(ctx, "python/model/feature_scaler.json")
+
+// 方式 2：HTTP 接口加载
+httpScalerLoader := feature.NewHTTPScalerLoader(5 * time.Second)
+scaler, _ := httpScalerLoader.Load(ctx, "http://api.example.com/models/v1.0.0/feature_scaler")
+
+// 方式 3：S3 兼容协议加载
+s3ScalerLoader := feature.NewS3ScalerLoader(s3Client, "my-bucket")
+scaler, _ := s3ScalerLoader.Load(ctx, "models/v1.0.0/feature_scaler.json")
+
+// 使用标准化器
+normalized := scaler.Normalize(features)
+```
+
 ## 示例代码位置
 
 - `examples/basic/` - 基础示例
@@ -457,6 +525,10 @@ result, _ := eval.Evaluate(`label.recall_source.contains("ann")`)
 - `examples/config/` - 配置化 Pipeline 示例
 - `examples/feature_service/` - 特征服务示例
 - `examples/personalization/` - 个性化推荐示例
+- `examples/feature_metadata/` - 特征元数据使用示例
+- `examples/feature_metadata_loader/` - 特征元数据加载器示例（本地文件、HTTP、S3 兼容协议）
+- `examples/feature_processing/` - 特征处理工具类示例
+- `examples/feature_version/` - 特征版本管理示例
 
 ## 相关文档
 
@@ -465,3 +537,7 @@ result, _ := eval.Evaluate(`label.recall_source.contains("ann")`)
 - `docs/RECALL_ALGORITHMS.md` - 召回算法文档
 - `docs/RANK_MODELS.md` - 排序模型文档
 - `docs/EXTENSIBILITY_ANALYSIS.md` - 可扩展性分析
+- `docs/INTERFACES_AND_IMPLEMENTATIONS.md` - 接口与实现完整分析
+- `docs/FEATURE_CONSISTENCY.md` - 特征一致性文档（训练与在线一致性）
+- `docs/FEATURE_PROCESSING.md` - 特征处理文档（归一化、编码等）
+- `docs/ENCODER_INTERFACE_DESIGN.md` - 编码器接口设计说明
