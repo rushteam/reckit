@@ -34,12 +34,18 @@ func main() {
 	userProfile.SetBucket("diversity", "strong")
 	userProfile.SetBucket("recall", "v2")
 
+	// 设置扩展属性（用户自定义属性）
+	userProfile.SetExtra("vip_level", 3)
+	userProfile.SetExtra("preferred_price_range", "100-500")
+	userProfile.SetExtra("custom_tags", []string{"tech", "gaming"})
+	userProfile.SetExtra("purchase_history_count", 150)
+
 	// 2. 创建 RecommendContext（包含用户画像）
 	rctx := &core.RecommendContext{
-		UserID:  "1",
-		Scene:   "feed",
-		User:    userProfile,
-		Labels:  make(map[string]utils.Label),
+		UserID: "1",
+		Scene:  "feed",
+		User:   userProfile,
+		Labels: make(map[string]utils.Label),
 		Realtime: map[string]any{
 			"hour": float64(time.Now().Hour()),
 		},
@@ -79,6 +85,8 @@ func main() {
 			},
 			// 用户画像驱动的排序增强
 			&userProfileDrivenRank{},
+			// 扩展属性驱动的排序增强（使用 Extras）
+			&extrasDrivenRank{},
 			// 重排（用户画像驱动）
 			&rerank.Diversity{LabelKey: "category"},
 			// 用户画像驱动的重排
@@ -126,6 +134,21 @@ func main() {
 		userProfile.UpdateInterest(category.Value, newWeight)
 		fmt.Printf("更新兴趣 %s: %.2f -> %.2f\n", category.Value, currentWeight, newWeight)
 	}
+
+	// 8. 展示扩展属性的使用
+	fmt.Println("\n=== 扩展属性使用示例 ===")
+	vipLevel, _ := userProfile.GetExtraFloat64("vip_level")
+	priceRange, _ := userProfile.GetExtraString("preferred_price_range")
+	tagsVal, _ := userProfile.GetExtra("custom_tags")
+	var tags []string
+	if tagsVal != nil {
+		tags, _ = tagsVal.([]string)
+	}
+	purchaseCount, _ := userProfile.GetExtraInt("purchase_history_count")
+	fmt.Printf("VIP 等级: %.0f\n", vipLevel)
+	fmt.Printf("价格偏好: %s\n", priceRange)
+	fmt.Printf("自定义标签: %v\n", tags)
+	fmt.Printf("购买历史数量: %d\n", purchaseCount)
 }
 
 // recallWithCategory 是带类别标签的召回源（用于演示）。
@@ -267,6 +290,55 @@ func (n *userProfileDrivenRerank) Process(
 				Value:  "strong",
 				Source: n.Name(),
 			})
+		}
+	}
+
+	return items, nil
+}
+
+// extrasDrivenRank 是扩展属性驱动的排序增强 Node（演示 Extras 的使用）。
+type extrasDrivenRank struct{}
+
+func (n *extrasDrivenRank) Name() string {
+	return "rank.extras_driven"
+}
+
+func (n *extrasDrivenRank) Kind() pipeline.Kind {
+	return pipeline.KindRank
+}
+
+func (n *extrasDrivenRank) Process(
+	ctx context.Context,
+	rctx *core.RecommendContext,
+	items []*core.Item,
+) ([]*core.Item, error) {
+	if rctx.User == nil || len(items) == 0 {
+		return items, nil
+	}
+
+	// 使用扩展属性：VIP 用户特殊处理
+	if vipLevel, ok := rctx.User.GetExtraFloat64("vip_level"); ok && vipLevel >= 3 {
+		for _, item := range items {
+			if item == nil {
+				continue
+			}
+			// VIP 用户分数提升
+			item.Score *= 1.2
+			item.PutLabel("vip_boost", utils.Label{
+				Value:  fmt.Sprintf("%.0f", vipLevel),
+				Source: n.Name(),
+			})
+		}
+	}
+
+	// 使用扩展属性：购买历史数量影响排序
+	if purchaseCount, ok := rctx.User.GetExtraInt("purchase_history_count"); ok && purchaseCount > 100 {
+		for _, item := range items {
+			if item == nil {
+				continue
+			}
+			// 高购买历史用户，偏好高价值物品
+			item.Score *= 1.1
 		}
 	}
 

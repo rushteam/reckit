@@ -7,17 +7,18 @@ import "time"
 // 一句话定义：用户画像 = 推荐 Pipeline 的"全局上下文 + 特征源 + 决策信号"
 //
 // 它不是某一个 Node，而是：
-//  - 被所有 Node 共享
-//  - 驱动 Recall / Rank / ReRank
-//  - 可以被 Label 打标、回写、持续演进
+//   - 被所有 Node 共享
+//   - 驱动 Recall / Rank / ReRank
+//   - 可以被 Label 打标、回写、持续演进
 //
 // 设计要点：
-//  维度          作用
-//  静态属性      冷启动 / 基础过滤
-//  长期兴趣      Recall / Rank 核心
-//  短期行为      实时调权
-//  实验桶        策略切换
-//  可更新        Online Learning
+//
+//	维度          作用
+//	静态属性      冷启动 / 基础过滤
+//	长期兴趣      Recall / Rank 核心
+//	短期行为      实时调权
+//	实验桶        策略切换
+//	可更新        Online Learning
 //
 // ID 类型设计：
 //   - 使用 string 类型（通用，支持所有 ID 格式）
@@ -34,7 +35,7 @@ type UserProfile struct {
 	Interests map[string]float64
 
 	// 行为统计（短期）- 实时调权
-	RecentClicks   []string // 最近点击的物品 ID
+	RecentClicks  []string // 最近点击的物品 ID
 	RecentImpress []string // 最近曝光的物品 ID
 
 	// 偏好信号
@@ -42,6 +43,11 @@ type UserProfile struct {
 
 	// 控制与实验（策略切换）
 	Buckets map[string]string // AB / 实验桶，例如 {"diversity": "strong", "recall": "v2"}
+
+	// 扩展字段（用户自定义属性）
+	// 用于存储框架未定义的用户属性，支持任意类型
+	// 例如：VIP 等级、价格偏好、自定义标签等
+	Extras map[string]any
 
 	// 元数据
 	UpdateTime time.Time // 最后更新时间
@@ -56,6 +62,7 @@ func NewUserProfile(userID string) *UserProfile {
 		RecentImpress: make([]string, 0),
 		PreferTags:    make(map[string]float64),
 		Buckets:       make(map[string]string),
+		Extras:        make(map[string]any),
 		UpdateTime:    time.Now(),
 	}
 }
@@ -141,4 +148,80 @@ func (p *UserProfile) GetInterestWeight(category string) float64 {
 		return 0
 	}
 	return p.Interests[category]
+}
+
+// GetExtra 获取扩展属性（任意类型）。
+// 用于访问用户自定义的属性，例如 VIP 等级、价格偏好等。
+func (p *UserProfile) GetExtra(key string) (any, bool) {
+	if p.Extras == nil {
+		return nil, false
+	}
+	v, ok := p.Extras[key]
+	return v, ok
+}
+
+// SetExtra 设置扩展属性（任意类型）。
+// 用于存储用户自定义的属性，例如 VIP 等级、价格偏好等。
+func (p *UserProfile) SetExtra(key string, value any) {
+	if p.Extras == nil {
+		p.Extras = make(map[string]any)
+	}
+	p.Extras[key] = value
+	p.UpdateTime = time.Now()
+}
+
+// GetExtraString 获取扩展属性（字符串类型）。
+func (p *UserProfile) GetExtraString(key string) (string, bool) {
+	v, ok := p.GetExtra(key)
+	if !ok {
+		return "", false
+	}
+	if s, ok := v.(string); ok {
+		return s, true
+	}
+	return "", false
+}
+
+// GetExtraFloat64 获取扩展属性（float64 类型）。
+// 支持 float64、float32、int、int64 类型的自动转换。
+func (p *UserProfile) GetExtraFloat64(key string) (float64, bool) {
+	v, ok := p.GetExtra(key)
+	if !ok {
+		return 0, false
+	}
+	switch val := v.(type) {
+	case float64:
+		return val, true
+	case float32:
+		return float64(val), true
+	case int:
+		return float64(val), true
+	case int64:
+		return float64(val), true
+	case int32:
+		return float64(val), true
+	}
+	return 0, false
+}
+
+// GetExtraInt 获取扩展属性（int 类型）。
+// 支持 int、int64、float64 类型的自动转换。
+func (p *UserProfile) GetExtraInt(key string) (int, bool) {
+	v, ok := p.GetExtra(key)
+	if !ok {
+		return 0, false
+	}
+	switch val := v.(type) {
+	case int:
+		return val, true
+	case int64:
+		return int(val), true
+	case int32:
+		return int(val), true
+	case float64:
+		return int(val), true
+	case float32:
+		return int(val), true
+	}
+	return 0, false
 }

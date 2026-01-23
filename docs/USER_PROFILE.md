@@ -38,7 +38,7 @@ core/
 
 ```go
 type UserProfile struct {
-    UserID int64
+    UserID string // 使用 string 类型（通用，支持所有 ID 格式）
 
     // 静态属性（冷启动 / 基础过滤）
     Gender   string
@@ -49,14 +49,18 @@ type UserProfile struct {
     Interests map[string]float64 // category -> weight
 
     // 行为统计（短期）- 实时调权
-    RecentClicks   []int64
-    RecentImpress []int64
+    RecentClicks   []string
+    RecentImpress []string
 
     // 偏好信号
     PreferTags map[string]float64
 
     // 控制与实验（策略切换）
     Buckets map[string]string // AB / 实验桶
+
+    // 扩展字段（用户自定义属性）
+    // 用于存储框架未定义的用户属性，支持任意类型
+    Extras map[string]any
 
     // 元数据
     UpdateTime time.Time
@@ -95,6 +99,16 @@ if userProfile.HasInterest("tech", 0.5) {
     // 用户对科技感兴趣
 }
 weight := userProfile.GetInterestWeight("tech")
+
+// 扩展属性（用户自定义）
+userProfile.SetExtra("vip_level", 3)
+userProfile.SetExtra("preferred_price_range", "100-500")
+userProfile.SetExtra("custom_tags", []string{"tech", "gaming"})
+
+// 获取扩展属性
+vipLevel, _ := userProfile.GetExtraFloat64("vip_level")
+priceRange, _ := userProfile.GetExtraString("preferred_price_range")
+tags, _ := userProfile.GetExtra("custom_tags").([]string)
 ```
 
 ## RecommendContext 升级
@@ -576,9 +590,98 @@ if label, ok := rctx.GetLabel("user_type"); ok && label.Value == "active" {
 - **兴趣更新**：根据行为反馈更新 `Interests`
 - **标签记录**：记录到 `Context.Labels` 供后续使用
 
+## 扩展属性（Extras）
+
+`UserProfile` 支持通过 `Extras` 字段存储用户自定义属性，无需修改框架代码即可扩展。
+
+### 基本用法
+
+```go
+// 设置扩展属性
+userProfile := core.NewUserProfile("user_123")
+userProfile.SetExtra("vip_level", 3)
+userProfile.SetExtra("preferred_price_range", "100-500")
+userProfile.SetExtra("custom_tags", []string{"tech", "gaming"})
+userProfile.SetExtra("purchase_history_count", 150)
+
+// 获取扩展属性
+vipLevel, _ := userProfile.GetExtraFloat64("vip_level")
+priceRange, _ := userProfile.GetExtraString("preferred_price_range")
+tags, _ := userProfile.GetExtra("custom_tags").([]string)
+purchaseCount, _ := userProfile.GetExtraInt("purchase_history_count")
+```
+
+### 在特征提取中使用
+
+```go
+func extractUserFeatures(user *core.UserProfile) map[string]float64 {
+    features := make(map[string]float64)
+    
+    // 核心字段
+    features["age"] = float64(user.Age)
+    if user.Gender == "male" {
+        features["gender"] = 1.0
+    }
+    
+    // 扩展字段
+    if vipLevel, ok := user.GetExtraFloat64("vip_level"); ok {
+        features["vip_level"] = vipLevel
+    }
+    
+    if purchaseCount, ok := user.GetExtraInt("purchase_history_count"); ok {
+        features["purchase_count"] = float64(purchaseCount)
+    }
+    
+    return features
+}
+```
+
+### 在自定义 Node 中使用
+
+```go
+type CustomRecallNode struct{}
+
+func (n *CustomRecallNode) Process(
+    ctx context.Context,
+    rctx *core.RecommendContext,
+    items []*core.Item,
+) ([]*core.Item, error) {
+    if rctx.User == nil {
+        return items, nil
+    }
+    
+    // 使用扩展属性
+    vipLevel, _ := rctx.User.GetExtraFloat64("vip_level")
+    if vipLevel >= 3 {
+        // VIP 用户特殊处理
+        for _, item := range items {
+            item.Score *= 1.2
+        }
+    }
+    
+    return items, nil
+}
+```
+
+### 支持的类型
+
+- `GetExtra(key)` - 获取任意类型
+- `GetExtraString(key)` - 获取字符串类型
+- `GetExtraFloat64(key)` - 获取 float64 类型（支持 int、int64、float32 自动转换）
+- `GetExtraInt(key)` - 获取 int 类型（支持 int64、float64 自动转换）
+
+### 使用场景
+
+1. **VIP 等级**：`SetExtra("vip_level", 3)`
+2. **价格偏好**：`SetExtra("preferred_price_range", "100-500")`
+3. **自定义标签**：`SetExtra("custom_tags", []string{"tech", "gaming"})`
+4. **购买历史**：`SetExtra("purchase_history_count", 150)`
+5. **其他业务属性**：任意自定义属性
+
 ## 扩展方向
 
 1. **用户画像服务化**：独立的用户画像服务
 2. **实时画像更新**：基于流式计算的实时画像
 3. **画像版本管理**：支持画像版本和 A/B 测试
 4. **画像存储优化**：支持 Redis、MySQL 等持久化存储
+5. **扩展属性**：通过 `Extras` 字段支持用户自定义属性（✅ 已实现）
