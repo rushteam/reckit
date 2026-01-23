@@ -55,10 +55,13 @@ func main() {
 
 	// ========== 方式 2：使用 HTTP 接口加载器（推荐用于生产环境）==========
 	fmt.Println("=== 方式 2：HTTP 接口加载（示例） ===")
-	httpMetaLoader := feature.NewHTTPMetadataLoader(5 * time.Second)
-	httpScalerLoader := feature.NewHTTPScalerLoader(5 * time.Second)
-
+	
 	// 示例：从 HTTP 接口加载（需要实际的服务地址）
+	// 注意：这里使用示例 URL，实际使用时需要替换为真实的服务地址
+	//
+	// httpMetaLoader := feature.NewHTTPMetadataLoader(5 * time.Second)
+	// httpScalerLoader := feature.NewHTTPScalerLoader(5 * time.Second)
+	//
 	// metaHTTP, err := httpMetaLoader.Load(ctx, "http://api.example.com/models/v1.0.0/feature_meta")
 	// if err != nil {
 	//     log.Printf("从 HTTP 加载失败: %v", err)
@@ -67,6 +70,7 @@ func main() {
 	// }
 
 	fmt.Println("（HTTP 加载示例已注释，需要实际的服务地址）")
+	fmt.Println("（取消注释上面的代码并替换 URL 即可使用）")
 	fmt.Println()
 
 	// ========== 方式 3：使用 S3 兼容协议加载器（推荐用于云环境）==========
