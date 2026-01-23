@@ -5,6 +5,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/rushteam/reckit/core"
 )
 
 // MemoryStore 是内存实现的 Store，用于测试/开发/原型。
@@ -41,10 +43,10 @@ func (m *MemoryStore) Get(ctx context.Context, key string) ([]byte, error) {
 
 	e, ok := m.data[key]
 	if !ok {
-		return nil, ErrNotFound
+		return nil, core.ErrStoreNotFound
 	}
 	if e.ttl != nil && time.Now().After(*e.ttl) {
-		return nil, ErrNotFound
+		return nil, core.ErrStoreNotFound
 	}
 	return e.value, nil
 }
@@ -134,7 +136,9 @@ func (m *MemoryStore) cleanup() {
 
 // KeyValueStore 扩展方法（MemoryStore 也实现 KeyValueStore 接口）
 
-var _ KeyValueStore = (*MemoryStore)(nil)
+// 确保 MemoryStore 实现了 core.Store 和 core.KeyValueStore 接口
+var _ core.Store = (*MemoryStore)(nil)
+var _ core.KeyValueStore = (*MemoryStore)(nil)
 
 func (m *MemoryStore) ZAdd(ctx context.Context, key string, score float64, member string) error {
 	m.mu.Lock()
@@ -193,11 +197,11 @@ func (m *MemoryStore) ZScore(ctx context.Context, key string, member string) (fl
 
 	zset, ok := m.zsets[key]
 	if !ok {
-		return 0, ErrNotFound
+		return 0, core.ErrStoreNotFound
 	}
 	score, ok := zset[member]
 	if !ok {
-		return 0, ErrNotFound
+		return 0, core.ErrStoreNotFound
 	}
 	return score, nil
 }
@@ -209,10 +213,10 @@ func (m *MemoryStore) HGet(ctx context.Context, key, field string) ([]byte, erro
 	hkey := "hash:" + key + ":" + field
 	e, ok := m.data[hkey]
 	if !ok {
-		return nil, ErrNotFound
+		return nil, core.ErrStoreNotFound
 	}
 	if e.ttl != nil && time.Now().After(*e.ttl) {
-		return nil, ErrNotFound
+		return nil, core.ErrStoreNotFound
 	}
 	return e.value, nil
 }

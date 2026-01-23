@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/rushteam/reckit/store"
+	"github.com/rushteam/reckit/core"
 )
 
-// StoreMFAdapter 是基于 Store 接口的矩阵分解存储适配器。
+// StoreMFAdapter 是基于 core.Store 接口的矩阵分解存储适配器。
 // 从 Redis/MySQL 等存储中读取用户和物品的隐向量。
 type StoreMFAdapter struct {
-	store store.Store
+	store core.Store
 
 	// KeyPrefix 是存储 key 的前缀
 	// 用户隐向量：{KeyPrefix}:user:{userID}
@@ -19,8 +19,8 @@ type StoreMFAdapter struct {
 	KeyPrefix string
 }
 
-// NewStoreMFAdapter 创建一个基于 Store 的矩阵分解适配器。
-func NewStoreMFAdapter(s store.Store, keyPrefix string) *StoreMFAdapter {
+// NewStoreMFAdapter 创建一个基于 core.Store 的矩阵分解适配器。
+func NewStoreMFAdapter(s core.Store, keyPrefix string) *StoreMFAdapter {
 	if keyPrefix == "" {
 		keyPrefix = "mf"
 	}
@@ -34,7 +34,7 @@ func (a *StoreMFAdapter) GetUserVector(ctx context.Context, userID string) ([]fl
 	key := a.KeyPrefix + ":user:" + userID
 	data, err := a.store.Get(ctx, key)
 	if err != nil {
-		if err == store.ErrNotFound {
+		if core.IsStoreNotFound(err) {
 			return []float64{}, nil
 		}
 		return nil, err
@@ -51,7 +51,7 @@ func (a *StoreMFAdapter) GetItemVector(ctx context.Context, itemID string) ([]fl
 	key := a.KeyPrefix + ":item:" + itemID
 	data, err := a.store.Get(ctx, key)
 	if err != nil {
-		if err == store.ErrNotFound {
+		if core.IsStoreNotFound(err) {
 			return []float64{}, nil
 		}
 		return nil, err
@@ -69,7 +69,7 @@ func (a *StoreMFAdapter) GetAllItemVectors(ctx context.Context) (map[string][]fl
 	itemsKey := a.KeyPrefix + ":items"
 	itemsData, err := a.store.Get(ctx, itemsKey)
 	if err != nil {
-		if err == store.ErrNotFound {
+		if core.IsStoreNotFound(err) {
 			return make(map[string][]float64), nil
 		}
 		return nil, err

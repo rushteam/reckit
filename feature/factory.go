@@ -3,7 +3,7 @@ package feature
 import (
 	"time"
 
-	"github.com/rushteam/reckit/store"
+	"github.com/rushteam/reckit/core"
 )
 
 // FeatureServiceFactory 是特征服务工厂，采用工厂模式创建不同类型的特征服务。
@@ -14,9 +14,9 @@ func NewFeatureServiceFactory() *FeatureServiceFactory {
 	return &FeatureServiceFactory{}
 }
 
-// CreateFromStore 从 Store 创建特征服务（最常用）
+// CreateFromStore 从 core.Store 创建特征服务（最常用）
 func (f *FeatureServiceFactory) CreateFromStore(
-	store store.Store,
+	store core.Store,
 	opts ...ServiceOption,
 ) FeatureService {
 	keyPrefix := KeyPrefix{
@@ -31,7 +31,7 @@ func (f *FeatureServiceFactory) CreateFromStore(
 
 // CreateWithCache 创建带缓存的特征服务
 func (f *FeatureServiceFactory) CreateWithCache(
-	store store.Store,
+	store core.Store,
 	cacheSize int,
 	cacheTTL time.Duration,
 	opts ...ServiceOption,
@@ -43,7 +43,7 @@ func (f *FeatureServiceFactory) CreateWithCache(
 
 // CreateWithMonitor 创建带监控的特征服务
 func (f *FeatureServiceFactory) CreateWithMonitor(
-	store store.Store,
+	store core.Store,
 	maxSamples int,
 	opts ...ServiceOption,
 ) FeatureService {
@@ -54,7 +54,7 @@ func (f *FeatureServiceFactory) CreateWithMonitor(
 
 // CreateWithFallback 创建带降级策略的特征服务
 func (f *FeatureServiceFactory) CreateWithFallback(
-	store store.Store,
+	store core.Store,
 	opts ...ServiceOption,
 ) FeatureService {
 	fallback := NewDefaultFallbackStrategy()
@@ -64,7 +64,7 @@ func (f *FeatureServiceFactory) CreateWithFallback(
 
 // CreateFull 创建完整的特征服务（缓存 + 监控 + 降级）
 func (f *FeatureServiceFactory) CreateFull(
-	store store.Store,
+	store core.Store,
 	cacheSize int,
 	cacheTTL time.Duration,
 	monitorMaxSamples int,

@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/rushteam/reckit/store"
+	"github.com/rushteam/reckit/core"
 )
 
-// StoreFeatureProvider 是基于 Store 的特征提供者实现，采用适配器模式。
-// 将 store.Store 适配为 FeatureProvider 接口。
+// StoreFeatureProvider 是基于 core.Store 的特征提供者实现，采用适配器模式。
+// 将 core.Store 适配为 FeatureProvider 接口。
 type StoreFeatureProvider struct {
-	store      store.Store
+	store      core.Store
 	keyPrefix  KeyPrefix
 	serializer FeatureSerializer
 }
@@ -44,8 +44,8 @@ func (j *JSONSerializer) Deserialize(data []byte) (map[string]float64, error) {
 	return features, nil
 }
 
-// NewStoreFeatureProvider 创建基于 Store 的特征提供者
-func NewStoreFeatureProvider(store store.Store, keyPrefix KeyPrefix) *StoreFeatureProvider {
+// NewStoreFeatureProvider 创建基于 core.Store 的特征提供者
+func NewStoreFeatureProvider(store core.Store, keyPrefix KeyPrefix) *StoreFeatureProvider {
 	if keyPrefix.User == "" {
 		keyPrefix.User = "user:features:"
 	}
@@ -77,7 +77,7 @@ func (p *StoreFeatureProvider) GetUserFeatures(ctx context.Context, userID strin
 	key := fmt.Sprintf("%s%s", p.keyPrefix.User, userID)
 	data, err := p.store.Get(ctx, key)
 	if err != nil {
-		if err == store.ErrNotFound {
+		if core.IsStoreNotFound(err) {
 			return nil, ErrFeatureNotFound
 		}
 		return nil, err
@@ -124,7 +124,7 @@ func (p *StoreFeatureProvider) GetItemFeatures(ctx context.Context, itemID strin
 	key := fmt.Sprintf("%s%s", p.keyPrefix.Item, itemID)
 	data, err := p.store.Get(ctx, key)
 	if err != nil {
-		if err == store.ErrNotFound {
+		if core.IsStoreNotFound(err) {
 			return nil, ErrFeatureNotFound
 		}
 		return nil, err
@@ -171,7 +171,7 @@ func (p *StoreFeatureProvider) GetRealtimeFeatures(ctx context.Context, userID, 
 	key := fmt.Sprintf("%s%s:%s", p.keyPrefix.Realtime, userID, itemID)
 	data, err := p.store.Get(ctx, key)
 	if err != nil {
-		if err == store.ErrNotFound {
+		if core.IsStoreNotFound(err) {
 			return nil, ErrFeatureNotFound
 		}
 		return nil, err

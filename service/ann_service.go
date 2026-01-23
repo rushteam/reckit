@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/rushteam/reckit/core"
 )
 
 // ANNServiceClient 是 ANN 服务的 HTTP 客户端实现。
@@ -78,11 +80,11 @@ func WithANNServiceAuth(auth *AuthConfig) ANNServiceOption {
 	}
 }
 
-// Predict 向量搜索（实现 MLService 接口）
+// Predict 实现 core.MLService 接口
 //
 // 注意：ANN 服务的 Predict 实际上是向量搜索，不是模型预测。
 // 请求中的 Instances 应该是查询向量列表。
-func (c *ANNServiceClient) Predict(ctx context.Context, req *PredictRequest) (*PredictResponse, error) {
+func (c *ANNServiceClient) Predict(ctx context.Context, req *core.MLPredictRequest) (*core.MLPredictResponse, error) {
 	// 1. 验证请求
 	if len(req.Instances) == 0 {
 		return nil, fmt.Errorf("instances (query vectors) are required")
@@ -165,7 +167,7 @@ func (c *ANNServiceClient) Predict(ctx context.Context, req *PredictRequest) (*P
 		predictions = result.Results[0].Scores
 	}
 
-	return &PredictResponse{
+	return &core.MLPredictResponse{
 		Predictions: predictions,
 		Outputs:     result, // 保存原始输出
 	}, nil
@@ -173,7 +175,7 @@ func (c *ANNServiceClient) Predict(ctx context.Context, req *PredictRequest) (*P
 
 // Search 向量搜索（专用方法，推荐使用）
 func (c *ANNServiceClient) Search(ctx context.Context, vector []float64, topK int, metric string) ([]int64, []float64, error) {
-	req := &PredictRequest{
+	req := &core.MLPredictRequest{
 		Instances: [][]float64{vector},
 		Params: map[string]interface{}{
 			"top_k":  topK,
@@ -277,5 +279,5 @@ func (c *ANNServiceClient) Close() error {
 	return nil
 }
 
-// 确保 ANNServiceClient 实现了 MLService 接口
-var _ MLService = (*ANNServiceClient)(nil)
+// 确保 ANNServiceClient 实现了 core.MLService 接口
+var _ core.MLService = (*ANNServiceClient)(nil)

@@ -5,16 +5,16 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/rushteam/reckit/store"
+	"github.com/rushteam/reckit/core"
 )
 
-// StoreAdapter 将 store.Store 适配为过滤器所需的存储接口。
+// StoreAdapter 将 core.Store 适配为过滤器所需的存储接口。
 type StoreAdapter struct {
-	store store.Store
+	store core.Store
 }
 
-// NewStoreAdapter 创建一个 Store 适配器。
-func NewStoreAdapter(s store.Store) *StoreAdapter {
+// NewStoreAdapter 创建一个 core.Store 适配器。
+func NewStoreAdapter(s core.Store) *StoreAdapter {
 	return &StoreAdapter{store: s}
 }
 

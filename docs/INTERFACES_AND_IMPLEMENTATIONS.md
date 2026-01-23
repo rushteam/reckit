@@ -111,7 +111,7 @@ type CFStore interface {
 **作用**: 定义协同过滤所需的数据存储接口。
 
 **已有实现**:
-- ✅ `StoreCFAdapter` - 将 `store.Store` 适配为 `CFStore`
+- ✅ `StoreCFAdapter` - 将 `core.Store` 适配为 `CFStore`
 
 #### `recall.VectorStore` - 向量存储接口
 **位置**: `recall/ann.go`
@@ -144,7 +144,7 @@ type ContentStore interface {
 **作用**: 定义内容推荐所需的数据存储接口。
 
 **已有实现**:
-- ✅ `StoreContentAdapter` - 将 `store.Store` 适配为 `ContentStore`
+- ✅ `StoreContentAdapter` - 将 `core.Store` 适配为 `ContentStore`
 
 #### `recall.MFStore` - 矩阵分解存储接口
 **位置**: `recall/matrix_factorization.go`
@@ -160,7 +160,7 @@ type MFStore interface {
 **作用**: 定义矩阵分解所需的数据存储接口。
 
 **已有实现**:
-- ✅ `StoreMFAdapter` - 将 `store.Store` 适配为 `MFStore`
+- ✅ `StoreMFAdapter` - 将 `core.Store` 适配为 `MFStore`
 
 ### 1.2 核心实现
 
@@ -215,7 +215,7 @@ type BlacklistStore interface {
 **作用**: 定义黑名单数据的存储接口。
 
 **已有实现**:
-- ✅ `StoreAdapter` - 将 `store.Store` 适配为各种 Filter Store
+- ✅ `StoreAdapter` - 将 `core.Store` 适配为各种 Filter Store
 
 #### `filter.UserBlockStore` - 用户拉黑存储接口
 **位置**: `filter/user_block.go`
@@ -229,7 +229,7 @@ type UserBlockStore interface {
 **作用**: 定义用户拉黑数据的存储接口。
 
 **已有实现**:
-- ✅ `StoreAdapter` - 将 `store.Store` 适配为各种 Filter Store
+- ✅ `StoreAdapter` - 将 `core.Store` 适配为各种 Filter Store
 
 #### `filter.ExposedStore` - 曝光历史存储接口
 **位置**: `filter/exposed.go`
@@ -243,7 +243,7 @@ type ExposedStore interface {
 **作用**: 定义曝光历史数据的存储接口。
 
 **已有实现**:
-- ✅ `StoreAdapter` - 将 `store.Store` 适配为各种 Filter Store
+- ✅ `StoreAdapter` - 将 `core.Store` 适配为各种 Filter Store
 
 ### 2.2 核心实现
 
@@ -307,24 +307,11 @@ type FeatureProvider interface {
 **已有实现**:
 - ✅ `StoreFeatureProvider` - 基于 Store 的特征提供者（支持 Redis）
 
-#### `feature.FeatureStore` - 特征存储接口
-**位置**: `feature/service.go`
+**注意**: `FeatureProvider` 接口支持可选的写入方法（某些实现可能支持）：
+- `SetUserFeatures(ctx, userID, features, ttl) error` - 写入用户特征（用于特征更新）
+- `SetItemFeatures(ctx, itemID, features, ttl) error` - 写入物品特征（用于特征更新）
 
-```go
-type FeatureStore interface {
-    Name() string
-    GetUserFeatures(ctx context.Context, userID string) (map[string]float64, error)
-    BatchGetUserFeatures(ctx context.Context, userIDs []string) (map[string]map[string]float64, error)
-    GetItemFeatures(ctx context.Context, itemID string) (map[string]float64, error)
-    BatchGetItemFeatures(ctx context.Context, itemIDs []string) (map[string]map[string]float64, error)
-    GetRealtimeFeatures(ctx context.Context, userID, itemID string) (map[string]float64, error)
-    BatchGetRealtimeFeatures(ctx context.Context, pairs []UserItemPair) (map[UserItemPair]map[string]float64, error)
-    SetUserFeatures(ctx context.Context, userID string, features map[string]float64, ttl time.Duration) error
-    SetItemFeatures(ctx context.Context, itemID string, features map[string]float64, ttl time.Duration) error
-}
-```
-
-**作用**: 定义特征存储的抽象接口，用于特征数据的持久化和读取。
+这些方法是可选的，不是接口的强制要求。如果实现不支持写入操作，可以忽略这些方法。
 
 #### `feature.FeatureCache` - 特征缓存接口
 **位置**: `feature/service.go`
@@ -659,8 +646,8 @@ type NodeBuilder func(map[string]interface{}) (Node, error)
 
 ### 8.1 核心接口
 
-#### `store.Store` - 存储接口
-**位置**: `store/store.go`
+#### `core.Store` - 存储接口
+**位置**: `core/store.go`
 
 ```go
 type Store interface {
@@ -674,14 +661,14 @@ type Store interface {
 }
 ```
 
-**作用**: 定义存储的抽象接口，支持多种存储后端。
+**作用**: 定义存储的抽象接口，支持多种存储后端。接口定义在领域层（`core` 包），由基础设施层（`store` 包）实现。
 
 **已有实现**:
-- ✅ `MemoryStore` - 内存存储
-- ✅ `RedisStore` - Redis 存储
+- ✅ `store.MemoryStore` - 内存存储（实现 `core.Store`）
+- ✅ `store.RedisStore` - Redis 存储（实现 `core.Store`）
 
-#### `store.KeyValueStore` - 键值存储接口
-**位置**: `store/store.go`
+#### `core.KeyValueStore` - 键值存储接口
+**位置**: `core/store.go`
 
 ```go
 type KeyValueStore interface {
@@ -695,11 +682,11 @@ type KeyValueStore interface {
 }
 ```
 
-**作用**: 扩展 Store 接口，支持有序集合和哈希表操作。
+**作用**: 扩展 Store 接口，支持有序集合和哈希表操作。接口定义在领域层（`core` 包），由基础设施层（`store` 包）实现。
 
 **已有实现**:
-- ✅ `MemoryStore` - 内存存储（实现 KeyValueStore）
-- ✅ `RedisStore` - Redis 存储（实现 KeyValueStore）
+- ✅ `store.MemoryStore` - 内存存储（实现 `core.KeyValueStore`）
+- ✅ `store.RedisStore` - Redis 存储（实现 `core.KeyValueStore`）
 
 ---
 
@@ -728,12 +715,12 @@ type ANNService interface {
 
 ### 10.1 核心接口
 
-#### `service.MLService` - 机器学习服务接口
-**位置**: `service/ml_service.go`
+#### `core.MLService` - 机器学习服务接口
+**位置**: `core/ml_service.go`
 
 ```go
 type MLService interface {
-    Predict(ctx context.Context, req *PredictRequest) (*PredictResponse, error)
+    Predict(ctx context.Context, req *MLPredictRequest) (*MLPredictResponse, error)
     Health(ctx context.Context) error
     Close() error
 }
@@ -742,9 +729,9 @@ type MLService interface {
 **作用**: 统一的机器学习服务接口，用于对接 TF Serving、TorchServe、自定义模型服务等。
 
 **已有实现**:
-- ✅ `TFServingClient` - TensorFlow Serving 客户端（REST API）
-- ✅ `TorchServeClient` - TorchServe 客户端（REST API）
-- ✅ `ANNServiceClient` - ANN 服务客户端
+- ✅ `service.TFServingClient` - TensorFlow Serving 客户端（实现 `core.MLService`）
+- ✅ `service.TorchServeClient` - TorchServe 客户端（实现 `core.MLService`）
+- ✅ `service.ANNServiceClient` - ANN 服务客户端（实现 `core.MLService`）
 
 ---
 

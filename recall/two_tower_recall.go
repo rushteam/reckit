@@ -7,7 +7,6 @@ import (
 	"github.com/rushteam/reckit/core"
 	"github.com/rushteam/reckit/feature"
 	"github.com/rushteam/reckit/pkg/utils"
-	"github.com/rushteam/reckit/service"
 )
 
 // TwoTowerRecall 是基于双塔模型的召回源实现。
@@ -53,15 +52,14 @@ type TwoTowerRecall struct {
 	// FeatureService 特征服务，用于获取用户特征
 	FeatureService feature.FeatureService
 
-	// UserTowerService 用户塔推理服务（MLService 接口）
+	// UserTowerService 用户塔推理服务（core.MLService 接口）
 	// 支持 ONNX Runtime、TorchServe、TensorFlow Serving 等
-	UserTowerService service.MLService
+	UserTowerService core.MLService
 
-	// VectorService 向量检索服务（VectorService 接口）
+	// VectorService 向量检索服务（core.VectorService 接口）
 	// 支持 Milvus、Faiss 等向量数据库
-	// 注意：使用接口类型避免循环导入，具体实现通过依赖注入
-	// 可以使用 NewVectorServiceAdapter 将 vector.ANNService 适配为此接口
-	VectorService VectorService
+	// 注意：使用领域接口（core.VectorService），由基础设施层（vector）实现
+	VectorService core.VectorService
 
 	// TopK 返回 TopK 个物品
 	TopK int
@@ -81,8 +79,8 @@ type TwoTowerRecall struct {
 // NewTwoTowerRecall 创建一个新的双塔召回源。
 func NewTwoTowerRecall(
 	featureService feature.FeatureService,
-	userTowerService service.MLService,
-	vectorService VectorService,
+	userTowerService core.MLService,
+	vectorService core.VectorService,
 	opts ...TwoTowerRecallOption,
 ) *TwoTowerRecall {
 	recall := &TwoTowerRecall{
@@ -122,12 +120,7 @@ func WithTwoTowerCollection(collection string) TwoTowerRecallOption {
 func WithTwoTowerMetric(metric string) TwoTowerRecallOption {
 	return func(r *TwoTowerRecall) {
 		// 验证距离度量方式
-		validMetrics := map[string]bool{
-			"cosine":        true,
-			"euclidean":     true,
-			"inner_product": true,
-		}
-		if validMetrics[metric] {
+		if core.ValidateVectorMetric(metric) {
 			r.Metric = metric
 		}
 	}
@@ -245,7 +238,7 @@ func (r *TwoTowerRecall) runUserTower(
 
 	// 调用 MLService 进行推理
 	// 注意：优先使用 Features（字典格式），避免特征顺序问题
-	req := &service.PredictRequest{
+	req := &core.MLPredictRequest{
 		Features: []map[string]float64{userFeatures}, // 字典格式（推荐，避免特征顺序问题）
 	}
 
@@ -326,33 +319,16 @@ func (r *TwoTowerRecall) extractEmbeddingFromOutputs(outputs interface{}) ([]flo
 	return nil, false
 }
 
-// VectorSearchRequest 向量搜索请求（避免循环导入）
-type VectorSearchRequest struct {
-	Collection string
-	Vector     []float64
-	TopK       int
-	Metric     string
-	Filter     map[string]interface{}
-	Params     map[string]interface{}
-}
-
-// VectorSearchResult 向量搜索结果（避免循环导入）
-type VectorSearchResult struct {
-	IDs       []string
-	Scores    []float64
-	Distances []float64
-}
-
 // searchVectors 向量检索，找到相似的 Item Embeddings
 func (r *TwoTowerRecall) searchVectors(
 	ctx context.Context,
 	userEmbedding []float64,
-) (*VectorSearchResult, error) {
+) (*core.VectorSearchResult, error) {
 	if r.VectorService == nil {
 		return nil, fmt.Errorf("vector service is required")
 	}
 
-	req := &VectorSearchRequest{
+	req := &core.VectorSearchRequest{
 		Collection: r.Collection,
 		Vector:     userEmbedding,
 		TopK:       r.TopK,
@@ -368,7 +344,7 @@ func (r *TwoTowerRecall) searchVectors(
 }
 
 // convertToItems 将搜索结果转换为 Item 列表
-func (r *TwoTowerRecall) convertToItems(result *VectorSearchResult) []*core.Item {
+func (r *TwoTowerRecall) convertToItems(result *core.VectorSearchResult) []*core.Item {
 	if result == nil || len(result.IDs) == 0 {
 		return []*core.Item{}
 	}
@@ -418,15 +394,6 @@ func (r *TwoTowerRecall) toFloat64(v interface{}) (float64, bool) {
 	default:
 		return 0, false
 	}
-}
-
-// VectorService 是向量检索服务的接口定义（避免循环导入）
-// 实现此接口的服务可以用于 TwoTowerRecall
-type VectorService interface {
-	// Search 向量搜索
-	Search(ctx context.Context, req *VectorSearchRequest) (*VectorSearchResult, error)
-	// Close 关闭连接
-	Close() error
 }
 
 // 确保 TwoTowerRecall 实现了 Source 接口

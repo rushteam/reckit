@@ -2,18 +2,42 @@ package feature
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/rushteam/reckit/core"
 )
 
 var (
-	// ErrFeatureNotFound 特征未找到
-	ErrFeatureNotFound = errors.New("feature: feature not found")
-	// ErrFeatureServiceUnavailable 特征服务不可用
-	ErrFeatureServiceUnavailable = errors.New("feature: service unavailable")
+	// ErrFeatureNotFound 特征未找到（使用统一的 DomainError）
+	ErrFeatureNotFound = core.NewDomainError(core.ModuleFeature, core.ErrorCodeNotFound, "feature: feature not found")
+	
+	// ErrFeatureServiceUnavailable 特征服务不可用（使用统一的 DomainError）
+	ErrFeatureServiceUnavailable = core.NewDomainError(core.ModuleFeature, core.ErrorCodeUnavailable, "feature: service unavailable")
 )
+
+// IsFeatureNotFound 检查错误是否为特征未找到
+func IsFeatureNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	domainErr := core.GetDomainError(err)
+	if domainErr != nil && domainErr.Module == core.ModuleFeature {
+		return domainErr.Code == core.ErrorCodeNotFound
+	}
+	return false
+}
+
+// IsFeatureServiceUnavailable 检查错误是否为特征服务不可用
+func IsFeatureServiceUnavailable(err error) bool {
+	if err == nil {
+		return false
+	}
+	domainErr := core.GetDomainError(err)
+	if domainErr != nil && domainErr.Module == core.ModuleFeature {
+		return domainErr.Code == core.ErrorCodeUnavailable
+	}
+	return false
+}
 
 // FeatureService 是特征服务的统一接口，提供用户特征、物品特征、实时特征的获取能力。
 // 采用策略模式，支持多种实现（Redis、HTTP、Memory等）。
@@ -55,6 +79,14 @@ type UserItemPair struct {
 // 不同的特征源（Redis、HTTP、Memory）实现此接口。
 //
 // ID 类型：使用 string（通用，支持所有 ID 格式）
+//
+// 可选方法（某些实现可能支持）：
+//   - SetUserFeatures(ctx, userID, features, ttl) error - 写入用户特征（用于特征更新）
+//   - SetItemFeatures(ctx, itemID, features, ttl) error - 写入物品特征（用于特征更新）
+//
+// 注意：这些写入方法是可选的，不是接口的强制要求。
+// 如果实现不支持写入操作，可以忽略这些方法。
+// 如果需要写入功能，可以通过类型断言检查实现是否支持这些方法。
 type FeatureProvider interface {
 	// Name 返回提供者名称
 	Name() string
@@ -76,39 +108,6 @@ type FeatureProvider interface {
 
 	// BatchGetRealtimeFeatures 批量获取实时特征
 	BatchGetRealtimeFeatures(ctx context.Context, pairs []UserItemPair) (map[UserItemPair]map[string]float64, error)
-}
-
-// FeatureStore 是特征存储的抽象接口，用于特征数据的持久化和读取。
-// 与 store.Store 不同，FeatureStore 专门用于特征数据，支持特征版本管理。
-//
-// ID 类型：使用 string（通用，支持所有 ID 格式）
-type FeatureStore interface {
-	// Name 返回存储名称
-	Name() string
-
-	// GetUserFeatures 从存储读取用户特征
-	GetUserFeatures(ctx context.Context, userID string) (map[string]float64, error)
-
-	// BatchGetUserFeatures 批量读取用户特征
-	BatchGetUserFeatures(ctx context.Context, userIDs []string) (map[string]map[string]float64, error)
-
-	// GetItemFeatures 从存储读取物品特征
-	GetItemFeatures(ctx context.Context, itemID string) (map[string]float64, error)
-
-	// BatchGetItemFeatures 批量读取物品特征
-	BatchGetItemFeatures(ctx context.Context, itemIDs []string) (map[string]map[string]float64, error)
-
-	// GetRealtimeFeatures 从存储读取实时特征
-	GetRealtimeFeatures(ctx context.Context, userID, itemID string) (map[string]float64, error)
-
-	// BatchGetRealtimeFeatures 批量读取实时特征
-	BatchGetRealtimeFeatures(ctx context.Context, pairs []UserItemPair) (map[UserItemPair]map[string]float64, error)
-
-	// SetUserFeatures 写入用户特征（可选，用于特征更新）
-	SetUserFeatures(ctx context.Context, userID string, features map[string]float64, ttl time.Duration) error
-
-	// SetItemFeatures 写入物品特征（可选，用于特征更新）
-	SetItemFeatures(ctx context.Context, itemID string, features map[string]float64, ttl time.Duration) error
 }
 
 // FeatureMonitor 是特征监控接口，用于监控特征质量、分布、缺失率等。

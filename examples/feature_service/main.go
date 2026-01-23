@@ -20,8 +20,8 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// 1. 初始化 Store
-	var s store.Store
+	// 1. 初始化 Store（使用 core.Store 接口）
+	var s core.Store
 	redisStore, err := store.NewRedisStore("localhost:6379", 0)
 	if err != nil {
 		log.Printf("Redis 连接失败，使用内存 Store: %v", err)
@@ -158,7 +158,7 @@ func main() {
 }
 
 // prepareFeatureData 准备特征数据（示例）
-func prepareFeatureData(ctx context.Context, store store.Store) {
+func prepareFeatureData(ctx context.Context, store core.Store) {
 	// 用户特征
 	userFeatures := map[string]float64{
 		"age":    25.0,

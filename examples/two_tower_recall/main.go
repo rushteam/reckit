@@ -37,6 +37,7 @@ func main() {
 	// ========== 2. 创建特征服务 ==========
 	// 方式1：使用存储特征提供者（示例，从内存存储提取）
 	// 实际使用时，应该使用 Redis、HTTP 等特征服务
+	// 注意：store.NewMemoryStore() 返回的是 core.Store 接口的实现
 	memStore := store.NewMemoryStore()
 	storeProvider := feature.NewStoreFeatureProvider(memStore, feature.KeyPrefix{})
 	featureService := feature.NewBaseFeatureService(storeProvider)
@@ -51,9 +52,10 @@ func main() {
 
 	// ========== 3. 创建用户塔推理服务 ==========
 	// 方式1：使用 TorchServe（推荐，支持 PyTorch 模型）
+	// 注意：service.NewTorchServeClient() 返回的是 core.MLService 接口的实现
 	userTowerService := service.NewTorchServeClient(
 		"http://localhost:8080", // TorchServe REST API 端点
-		"user_tower",             // 模型名称
+		"user_tower",            // 模型名称
 		service.WithTorchServeTimeout(5*time.Second),
 	)
 
@@ -74,17 +76,18 @@ func main() {
 	// 方式2：使用 Faiss（需要 CGO 绑定）
 	// faissService := vector.NewFaissService(...)
 
-	// ========== 5. 创建适配器（将 vector.ANNService 适配为 recall.VectorService）==========
-	vectorService := newVectorServiceAdapter(milvusService)
+	// ========== 5. 使用向量服务 ==========
+	// 使用包装器将 MilvusService 适配为 core.VectorService 接口
+	vectorService := vector.NewMilvusVectorService(milvusService)
 
 	// ========== 6. 创建双塔召回源 ==========
 	twoTowerRecall := recall.NewTwoTowerRecall(
 		featureService,
 		userTowerService,
 		vectorService,
-		recall.WithTwoTowerTopK(100),                    // 返回 Top 100
+		recall.WithTwoTowerTopK(100), // 返回 Top 100
 		recall.WithTwoTowerCollection("item_embeddings"), // 向量数据库集合名称
-		recall.WithTwoTowerMetric("inner_product"),      // 使用内积（适合双塔模型）
+		recall.WithTwoTowerMetric("inner_product"),       // 使用内积（适合双塔模型）
 	)
 
 	// ========== 7. 在 Pipeline 中使用 ==========
@@ -173,43 +176,6 @@ func main() {
 // 3. 距离度量：双塔模型通常使用内积（inner_product）或余弦相似度（cosine）
 // 4. 模型部署：Item Embedding 需要离线预计算并存入向量数据库
 
-// vectorServiceAdapter 将 vector.ANNService 适配为 recall.VectorService
-type vectorServiceAdapter struct {
-	service vector.ANNService
-}
-
-func newVectorServiceAdapter(service vector.ANNService) recall.VectorService {
-	return &vectorServiceAdapter{service: service}
-}
-
-func (a *vectorServiceAdapter) Search(ctx context.Context, req *recall.VectorSearchRequest) (*recall.VectorSearchResult, error) {
-	// 转换为 vector.SearchRequest
-	vectorReq := &vector.SearchRequest{
-		Collection: req.Collection,
-		Vector:     req.Vector,
-		TopK:       req.TopK,
-		Metric:     req.Metric,
-		Filter:     req.Filter,
-		Params:     req.Params,
-	}
-
-	// 调用 vector.ANNService
-	result, err := a.service.Search(ctx, vectorReq)
-	if err != nil {
-		return nil, err
-	}
-
-	// 转换为 recall.VectorSearchResult
-	return &recall.VectorSearchResult{
-		IDs:       result.IDs,
-		Scores:    result.Scores,
-		Distances: result.Distances,
-	}, nil
-}
-
-func (a *vectorServiceAdapter) Close() error {
-	if a.service != nil {
-		return a.service.Close()
-	}
-	return nil
-}
+// 注意：不再需要适配器！
+// MilvusService 直接实现了 core.VectorService 接口，
+// 可以直接传递给 recall.NewTwoTowerRecall

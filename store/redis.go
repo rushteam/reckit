@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/rushteam/reckit/core"
 )
 
 // RedisStore 是 Redis 实现的 KeyValueStore，支持所有 Redis 数据结构操作。
@@ -29,7 +30,7 @@ func (r *RedisStore) Name() string { return "redis" }
 func (r *RedisStore) Get(ctx context.Context, key string) ([]byte, error) {
 	val, err := r.client.Get(ctx, key).Bytes()
 	if err == redis.Nil {
-		return nil, ErrNotFound
+		return nil, core.ErrStoreNotFound
 	}
 	return val, err
 }
@@ -92,7 +93,7 @@ func (r *RedisStore) ZRange(ctx context.Context, key string, start, stop int64) 
 func (r *RedisStore) ZScore(ctx context.Context, key string, member string) (float64, error) {
 	score, err := r.client.ZScore(ctx, key, member).Result()
 	if err == redis.Nil {
-		return 0, ErrNotFound
+		return 0, core.ErrStoreNotFound
 	}
 	return score, err
 }
@@ -100,7 +101,7 @@ func (r *RedisStore) ZScore(ctx context.Context, key string, member string) (flo
 func (r *RedisStore) HGet(ctx context.Context, key, field string) ([]byte, error) {
 	val, err := r.client.HGet(ctx, key, field).Bytes()
 	if err == redis.Nil {
-		return nil, ErrNotFound
+		return nil, core.ErrStoreNotFound
 	}
 	return val, err
 }
@@ -124,3 +125,7 @@ func (r *RedisStore) HGetAll(ctx context.Context, key string) (map[string][]byte
 func (r *RedisStore) Close() error {
 	return r.client.Close()
 }
+
+// 确保 RedisStore 实现了 core.Store 和 core.KeyValueStore 接口
+var _ core.Store = (*RedisStore)(nil)
+var _ core.KeyValueStore = (*RedisStore)(nil)

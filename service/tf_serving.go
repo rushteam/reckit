@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/rushteam/reckit/core"
 )
 
 // TFServingClient 是 TensorFlow Serving 的客户端实现。
@@ -123,8 +125,8 @@ func WithTFServingAuth(auth *AuthConfig) TFServingOption {
 	}
 }
 
-// Predict 批量预测
-func (c *TFServingClient) Predict(ctx context.Context, req *PredictRequest) (*PredictResponse, error) {
+// Predict 实现 core.MLService 接口
+func (c *TFServingClient) Predict(ctx context.Context, req *core.MLPredictRequest) (*core.MLPredictResponse, error) {
 	// 1. 验证请求
 	if len(req.Instances) == 0 && len(req.Features) == 0 {
 		return nil, fmt.Errorf("instances or features are required")
@@ -135,7 +137,7 @@ func (c *TFServingClient) Predict(ctx context.Context, req *PredictRequest) (*Pr
 }
 
 // predictREST 使用 REST API 进行预测
-func (c *TFServingClient) predictREST(ctx context.Context, req *PredictRequest) (*PredictResponse, error) {
+func (c *TFServingClient) predictREST(ctx context.Context, req *core.MLPredictRequest) (*core.MLPredictResponse, error) {
 	// 1. 构建 URL
 	url := fmt.Sprintf("%s/v1/models/%s:predict", c.Endpoint, c.ModelName)
 	if c.ModelVersion != "" {
@@ -217,7 +219,7 @@ func (c *TFServingClient) predictREST(ctx context.Context, req *PredictRequest) 
 		}
 	}
 
-	return &PredictResponse{
+	return &core.MLPredictResponse{
 		Predictions:  predictions,
 		Outputs:      result.Outputs,
 		ModelVersion: c.ModelVersion,
@@ -282,5 +284,5 @@ func (c *TFServingClient) Close() error {
 	return nil
 }
 
-// 确保 TFServingClient 实现了 MLService 接口
-var _ MLService = (*TFServingClient)(nil)
+// 确保 TFServingClient 实现了 core.MLService 接口
+var _ core.MLService = (*TFServingClient)(nil)

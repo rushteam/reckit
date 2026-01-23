@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/rushteam/reckit/core"
 )
 
 // NewMLService 根据配置创建 MLService 实例（工厂方法）。
-func NewMLService(config *ServiceConfig) (MLService, error) {
+// 返回 core.MLService 接口。
+func NewMLService(config *ServiceConfig) (core.MLService, error) {
 	if config == nil {
 		return nil, fmt.Errorf("service config is required")
 	}
@@ -91,9 +94,9 @@ func ValidateConfig(config *ServiceConfig) error {
 }
 
 // TestConnection 测试服务连接
-func TestConnection(ctx context.Context, service MLService) error {
-	if service == nil {
+func TestConnection(ctx context.Context, svc core.MLService) error {
+	if svc == nil {
 		return fmt.Errorf("service is nil")
 	}
-	return service.Health(ctx)
+	return svc.Health(ctx)
 }

@@ -14,9 +14,13 @@ Reckit 与 TF Serving / ANN 服务的标准接口设计，提供统一的机器�
 
 ### MLService
 
+接口定义在 `core` 包：
+
 ```go
+import "github.com/rushteam/reckit/core"
+
 type MLService interface {
-    Predict(ctx context.Context, req *PredictRequest) (*PredictResponse, error)
+    Predict(ctx context.Context, req *core.MLPredictRequest) (*core.MLPredictResponse, error)
     Health(ctx context.Context) error
     Close() error
 }
@@ -33,10 +37,11 @@ type MLService interface {
 **使用示例**：
 
 ```go
+import "github.com/rushteam/reckit/core"
 import "github.com/rushteam/reckit/service"
 
 // 使用 REST API
-tfService := service.NewTFServingClient(
+var tfService core.MLService = service.NewTFServingClient(
     "http://localhost:8501",
     "my_model",
     service.WithTFServingVersion("1"),
@@ -44,7 +49,7 @@ tfService := service.NewTFServingClient(
 )
 
 // 使用 gRPC（推荐）
-tfService := service.NewTFServingClient(
+tfService = service.NewTFServingClient(
     "localhost:8500",
     "my_model",
     service.WithTFServingGRPC(),
@@ -52,7 +57,7 @@ tfService := service.NewTFServingClient(
 )
 
 // 批量预测
-resp, err := tfService.Predict(ctx, &service.PredictRequest{
+resp, err := tfService.Predict(ctx, &core.MLPredictRequest{
     Instances: [][]float64{
         {0.1, 0.2, 0.3, ...}, // 实例 1
         {0.4, 0.5, 0.6, ...}, // 实例 2
@@ -72,10 +77,11 @@ err := tfService.Health(ctx)
 **使用示例**：
 
 ```go
+import "github.com/rushteam/reckit/core"
 import "github.com/rushteam/reckit/service"
 
 // 使用 REST API
-torchService := service.NewTorchServeClient(
+var torchService core.MLService = service.NewTorchServeClient(
     "http://localhost:8080",
     "my_model",
     service.WithTorchServeVersion("1.0"),
@@ -83,7 +89,7 @@ torchService := service.NewTorchServeClient(
 )
 
 // 批量预测
-resp, err := torchService.Predict(ctx, &service.PredictRequest{
+resp, err := torchService.Predict(ctx, &core.MLPredictRequest{
     Features: []map[string]float64{
         {"feature1": 0.1, "feature2": 0.2, ...}, // 实例 1
         {"feature1": 0.3, "feature2": 0.4, ...}, // 实例 2
@@ -91,7 +97,7 @@ resp, err := torchService.Predict(ctx, &service.PredictRequest{
 })
 
 // 或使用 Instances（特征向量）
-resp, err := torchService.Predict(ctx, &service.PredictRequest{
+resp, err := torchService.Predict(ctx, &core.MLPredictRequest{
     Instances: [][]float64{
         {0.1, 0.2, 0.3, ...}, // 实例 1
         {0.4, 0.5, 0.6, ...}, // 实例 2
@@ -109,20 +115,22 @@ err := torchService.Health(ctx)
 **使用示例**：
 
 ```go
+import "github.com/rushteam/reckit/core"
 import "github.com/rushteam/reckit/service"
 
 // 创建 ANN 服务客户端
-annService := service.NewANNServiceClient(
+var annService core.MLService = service.NewANNServiceClient(
     "http://localhost:19530",
     "items",
     service.WithANNServiceTimeout(30*time.Second),
 )
 
-// 向量搜索
-ids, scores, err := annService.Search(ctx, userVector, 20, "cosine")
+// 向量搜索（使用专用方法）
+annClient := annService.(*service.ANNServiceClient)
+ids, scores, err := annClient.Search(ctx, userVector, 20, "cosine")
 
 // 或使用 Predict 接口
-resp, err := annService.Predict(ctx, &service.PredictRequest{
+resp, err := annService.Predict(ctx, &core.MLPredictRequest{
     Instances: [][]float64{userVector},
     Params: map[string]interface{}{
         "top_k":  20,
@@ -136,6 +144,7 @@ resp, err := annService.Predict(ctx, &service.PredictRequest{
 使用工厂方法根据配置创建服务实例：
 
 ```go
+import "github.com/rushteam/reckit/core"
 import "github.com/rushteam/reckit/service"
 
 // TF Serving 配置
@@ -156,7 +165,7 @@ torchConfig := &service.ServiceConfig{
     Timeout:     30,
 }
 
-// 创建服务
+// 创建服务（返回 core.MLService）
 mlService, err := service.NewMLService(config)
 torchService, err := service.NewMLService(torchConfig)
 if err != nil {
@@ -165,17 +174,21 @@ if err != nil {
 defer mlService.Close()
 
 // 使用服务
-resp, err := mlService.Predict(ctx, &service.PredictRequest{
+resp, err := mlService.Predict(ctx, &core.MLPredictRequest{
     Instances: [][]float64{features},
 })
 ```
 
 ## 请求/响应格式
 
-### PredictRequest
+### MLPredictRequest
+
+类型定义在 `core` 包：
 
 ```go
-type PredictRequest struct {
+import "github.com/rushteam/reckit/core"
+
+type MLPredictRequest struct {
     Instances     [][]float64              // 特征向量列表
     Features      []map[string]float64     // 特征字典列表（可选）
     ModelName     string                   // 模型名称（可选）
@@ -185,10 +198,12 @@ type PredictRequest struct {
 }
 ```
 
-### PredictResponse
+### MLPredictResponse
+
+类型定义在 `core` 包：
 
 ```go
-type PredictResponse struct {
+type MLPredictResponse struct {
     Predictions  []float64    // 预测结果列表
     Outputs      interface{}  // 原始输出（可选）
     ModelVersion string       // 模型版本（如果服务返回）
@@ -201,12 +216,13 @@ type PredictResponse struct {
 
 ```go
 import (
+    "github.com/rushteam/reckit/core"
     "github.com/rushteam/reckit/model"
     "github.com/rushteam/reckit/service"
 )
 
 // 创建 TF Serving 服务
-tfService := service.NewTFServingClient("http://localhost:8501", "rank_model")
+var tfService core.MLService = service.NewTFServingClient("http://localhost:8501", "rank_model")
 
 // 包装为 RankModel
 rpcModel := model.NewRPCModelFromService("tf_serving", tfService)

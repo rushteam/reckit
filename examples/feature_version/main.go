@@ -257,7 +257,7 @@ func hashString(s string) uint32 {
 }
 
 // createVersionedFeatureService 创建版本化特征服务
-func createVersionedFeatureService(store store.Store) *VersionedFeatureService {
+func createVersionedFeatureService(store core.Store) *VersionedFeatureService {
 	// 创建版本注册表
 	registry := NewFeatureVersionRegistry()
 
@@ -320,7 +320,7 @@ func createVersionedFeatureService(store store.Store) *VersionedFeatureService {
 }
 
 // prepareVersionedFeatureData 准备不同版本的特征数据
-func prepareVersionedFeatureData(ctx context.Context, s store.Store) {
+func prepareVersionedFeatureData(ctx context.Context, s core.Store) {
 	// v1 版本的用户特征（基础特征）
 	v1UserFeatures := map[string]float64{
 		"age":    25.0,
@@ -379,7 +379,7 @@ func main() {
 	fmt.Println()
 
 	// 1. 初始化 Store
-	var s store.Store
+	var s core.Store
 	redisStore, err := store.NewRedisStore("localhost:6379", 0)
 	if err != nil {
 		log.Printf("Redis 连接失败，使用内存 Store: %v", err)

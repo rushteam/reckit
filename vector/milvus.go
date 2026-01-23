@@ -3,12 +3,21 @@ package vector
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/rushteam/reckit/core"
 )
 
 // MilvusService 是 Milvus 向量数据库的 ANNService 实现。
+//
+// 使用 Milvus 原生 VARCHAR 主键支持（Milvus 2.0+）：
+//   - 直接使用 string IDs，无需转换为 int64
+//   - 无哈希冲突风险
+//   - 完全可逆（直接返回原始 ID）
+//   - 性能更好（无转换开销）
+//
+// 创建集合时会自动使用 VARCHAR 主键类型。
 type MilvusService struct {
 	Address  string
 	Username string
@@ -124,6 +133,7 @@ func (s *MilvusService) Search(ctx context.Context, req *SearchRequest) (*Search
 		filterExpr = s.buildFilterExpr(req.Filter)
 	}
 
+	// 直接返回 string IDs（使用 Milvus VARCHAR 主键，无需转换）
 	ids, scores, distances, err := s.client.Search(
 		ctx,
 		req.Collection,
@@ -137,14 +147,8 @@ func (s *MilvusService) Search(ctx context.Context, req *SearchRequest) (*Search
 		return nil, fmt.Errorf("milvus search failed: %w", err)
 	}
 
-	// 转换 int64 IDs 为 string IDs
-	strIDs := make([]string, len(ids))
-	for i, id := range ids {
-		strIDs[i] = strconv.FormatInt(id, 10)
-	}
-
 	return &SearchResult{
-		IDs:       strIDs,
+		IDs:       ids, // 直接使用 string IDs，无需转换
 		Scores:    scores,
 		Distances: distances,
 	}, nil
@@ -190,26 +194,11 @@ func (s *MilvusService) Insert(ctx context.Context, req *InsertRequest) error {
 		vectorsFloat32[i] = convertToFloat32(v)
 	}
 
-	// 转换 string IDs 为 int64 IDs (Milvus 内部通常使用 int64)
-	intIDs := make([]int64, len(req.IDs))
-	for i, id := range req.IDs {
-		// 尝试解析为 int64，如果失败则使用哈希值
-		if parsedID, err := strconv.ParseInt(id, 10, 64); err == nil {
-			intIDs[i] = parsedID
-		} else {
-			// 对于非数字 ID，使用字符串哈希值（简化处理）
-			// 实际生产环境可能需要更复杂的映射策略
-			hash := int64(0)
-			for _, c := range id {
-				hash = hash*31 + int64(c)
-			}
-			intIDs[i] = hash
-		}
-	}
-
+	// 直接使用 string IDs（使用 Milvus VARCHAR 主键，无需转换）
+	// Milvus 2.0+ 原生支持 VARCHAR 主键，可以直接使用 string ID
 	data := []map[string]interface{}{
 		{
-			"id":     intIDs,
+			"id":     req.IDs, // 直接使用 string IDs
 			"vector": vectorsFloat32,
 		},
 	}
@@ -270,9 +259,15 @@ func (s *MilvusService) buildDeleteExpr(ids []string) string {
 		return ""
 	}
 	if len(ids) == 1 {
-		return fmt.Sprintf("id == %s", ids[0])
+		// VARCHAR 主键需要使用引号
+		return fmt.Sprintf("id == '%s'", ids[0])
 	}
-	return fmt.Sprintf("id in [%s]", strings.Join(ids, ", "))
+	// VARCHAR 主键的批量删除，每个 ID 都需要引号
+	quotedIDs := make([]string, len(ids))
+	for i, id := range ids {
+		quotedIDs[i] = fmt.Sprintf("'%s'", id)
+	}
+	return fmt.Sprintf("id in [%s]", strings.Join(quotedIDs, ", "))
 }
 
 func (s *MilvusService) CreateCollection(ctx context.Context, req *CreateCollectionRequest) error {
@@ -301,11 +296,28 @@ func (s *MilvusService) CreateCollection(ctx context.Context, req *CreateCollect
 }
 
 func (s *MilvusService) buildSchema(req *CreateCollectionRequest) interface{} {
-	return map[string]interface{}{
+	// 使用 Milvus VARCHAR 主键（支持原生 string ID）
+	// Milvus 2.0+ 支持 VARCHAR 主键，无需转换为 int64
+	schema := map[string]interface{}{
 		"collection_name": req.Name,
 		"dimension":       req.Dimension,
 		"metric":          req.Metric,
+		"primary_key": map[string]interface{}{
+			"name":       "id",
+			"data_type":  "VARCHAR",
+			"max_length": 255, // VARCHAR 最大长度（1-65535）
+			"is_primary": true,
+		},
 	}
+
+	// 如果提供了额外参数，合并到 schema
+	if req.Params != nil {
+		for k, v := range req.Params {
+			schema[k] = v
+		}
+	}
+
+	return schema
 }
 
 func (s *MilvusService) DropCollection(ctx context.Context, collection string) error {
@@ -363,3 +375,52 @@ func convertToFloat32(vec []float64) []float32 {
 }
 
 var _ ANNService = (*MilvusService)(nil)
+
+// SearchCore 实现 core.VectorService 接口
+// 将 core.VectorSearchRequest 转换为内部 SearchRequest，然后调用内部实现
+func (s *MilvusService) SearchCore(ctx context.Context, req *core.VectorSearchRequest) (*core.VectorSearchResult, error) {
+	// 转换为内部 SearchRequest
+	internalReq := &SearchRequest{
+		Collection: req.Collection,
+		Vector:     req.Vector,
+		TopK:       req.TopK,
+		Metric:     req.Metric,
+		Filter:     req.Filter,
+		Params:     req.Params,
+	}
+
+	// 调用内部实现（注意：这里调用的是 MilvusService.Search，接受 *SearchRequest）
+	result, err := s.Search(ctx, internalReq)
+	if err != nil {
+		return nil, err
+	}
+
+	// 转换为 core.VectorSearchResult
+	return &core.VectorSearchResult{
+		IDs:       result.IDs,
+		Scores:    result.Scores,
+		Distances: result.Distances,
+	}, nil
+}
+
+// 实现 core.VectorService 接口
+// 注意：MilvusService 同时实现了两个接口：
+// 1. ANNService（内部接口，用于完整的向量数据库操作，Search 方法接受 *SearchRequest）
+// 2. core.VectorService（领域接口，用于召回场景，SearchCore 方法接受 *core.VectorSearchRequest）
+//
+// 为了满足 core.VectorService 接口，我们需要一个包装器
+type milvusVectorServiceWrapper struct {
+	*MilvusService
+}
+
+// Search 实现 core.VectorService 接口
+func (w *milvusVectorServiceWrapper) Search(ctx context.Context, req *core.VectorSearchRequest) (*core.VectorSearchResult, error) {
+	return w.MilvusService.SearchCore(ctx, req)
+}
+
+// NewMilvusVectorService 创建一个实现 core.VectorService 接口的包装器
+func NewMilvusVectorService(service *MilvusService) core.VectorService {
+	return &milvusVectorServiceWrapper{MilvusService: service}
+}
+
+var _ core.VectorService = (*milvusVectorServiceWrapper)(nil)

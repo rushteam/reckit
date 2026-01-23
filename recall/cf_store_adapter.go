@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/rushteam/reckit/store"
+	"github.com/rushteam/reckit/core"
 )
 
-// StoreCFAdapter 是基于 Store 接口的协同过滤存储适配器。
+// StoreCFAdapter 是基于 core.Store 接口的协同过滤存储适配器。
 // 从 Redis/MySQL 等存储中读取用户-物品交互数据。
 type StoreCFAdapter struct {
-	store store.Store
+	store core.Store
 
 	// KeyPrefix 是存储 key 的前缀
 	// 用户物品交互：{KeyPrefix}:user:{userID}
@@ -20,8 +20,8 @@ type StoreCFAdapter struct {
 	KeyPrefix string
 }
 
-// NewStoreCFAdapter 创建一个基于 Store 的协同过滤适配器。
-func NewStoreCFAdapter(s store.Store, keyPrefix string) *StoreCFAdapter {
+// NewStoreCFAdapter 创建一个基于 core.Store 的协同过滤适配器。
+func NewStoreCFAdapter(s core.Store, keyPrefix string) *StoreCFAdapter {
 	if keyPrefix == "" {
 		keyPrefix = "cf"
 	}
@@ -35,7 +35,7 @@ func (a *StoreCFAdapter) GetUserItems(ctx context.Context, userID string) (map[s
 	key := a.KeyPrefix + ":user:" + userID
 	data, err := a.store.Get(ctx, key)
 	if err != nil {
-		if err == store.ErrNotFound {
+		if core.IsStoreNotFound(err) {
 			return make(map[string]float64), nil
 		}
 		return nil, err
@@ -53,7 +53,7 @@ func (a *StoreCFAdapter) GetItemUsers(ctx context.Context, itemID string) (map[s
 	key := a.KeyPrefix + ":item:" + itemID
 	data, err := a.store.Get(ctx, key)
 	if err != nil {
-		if err == store.ErrNotFound {
+		if core.IsStoreNotFound(err) {
 			return make(map[string]float64), nil
 		}
 		return nil, err
@@ -71,7 +71,7 @@ func (a *StoreCFAdapter) GetAllUsers(ctx context.Context) ([]string, error) {
 	key := a.KeyPrefix + ":users"
 	data, err := a.store.Get(ctx, key)
 	if err != nil {
-		if err == store.ErrNotFound {
+		if core.IsStoreNotFound(err) {
 			return []string{}, nil
 		}
 		return nil, err
@@ -88,7 +88,7 @@ func (a *StoreCFAdapter) GetAllItems(ctx context.Context) ([]string, error) {
 	key := a.KeyPrefix + ":items"
 	data, err := a.store.Get(ctx, key)
 	if err != nil {
-		if err == store.ErrNotFound {
+		if core.IsStoreNotFound(err) {
 			return []string{}, nil
 		}
 		return nil, err

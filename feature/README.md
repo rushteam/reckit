@@ -6,7 +6,7 @@
 
 ### 1. 策略模式（Strategy Pattern）
 - **FeatureProvider**：不同的特征源实现（Redis、HTTP、Memory）实现此接口
-- **FeatureStore**：特征存储抽象，支持多种存储后端
+  - 某些实现可能支持写入操作（SetUserFeatures、SetItemFeatures），但这是可选的
 
 ### 2. 装饰器模式（Decorator Pattern）
 - **缓存装饰器**：`FeatureCache` 为特征服务添加缓存能力
@@ -17,7 +17,7 @@
 - **FeatureServiceFactory**：统一创建不同类型的特征服务
 
 ### 4. 适配器模式（Adapter Pattern）
-- **StoreFeatureProvider**：将 `store.Store` 适配为 `FeatureProvider` 接口
+- **StoreFeatureProvider**：将 `core.Store` 适配为 `FeatureProvider` 接口
 
 ### 5. 函数式选项模式（Functional Options Pattern）
 - **ServiceOption**：通过选项函数配置特征服务

@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/rushteam/reckit/core"
 )
 
 // TorchServeClient 是 TorchServe 的客户端实现。
@@ -108,8 +110,8 @@ func WithTorchServeHTTPClient(httpClient *http.Client) TorchServeOption {
 	}
 }
 
-// Predict 批量预测
-func (c *TorchServeClient) Predict(ctx context.Context, req *PredictRequest) (*PredictResponse, error) {
+// Predict 实现 core.MLService 接口
+func (c *TorchServeClient) Predict(ctx context.Context, req *core.MLPredictRequest) (*core.MLPredictResponse, error) {
 	// 1. 验证请求
 	if len(req.Instances) == 0 && len(req.Features) == 0 {
 		return nil, fmt.Errorf("instances or features are required")
@@ -120,7 +122,7 @@ func (c *TorchServeClient) Predict(ctx context.Context, req *PredictRequest) (*P
 }
 
 // predictREST 使用 REST API 进行预测
-func (c *TorchServeClient) predictREST(ctx context.Context, req *PredictRequest) (*PredictResponse, error) {
+func (c *TorchServeClient) predictREST(ctx context.Context, req *core.MLPredictRequest) (*core.MLPredictResponse, error) {
 	// 1. 构建 URL
 	// TorchServe 推理端点格式：/predictions/{model_name}
 	url := fmt.Sprintf("%s/predictions/%s", c.Endpoint, c.ModelName)
@@ -263,7 +265,7 @@ func (c *TorchServeClient) predictREST(ctx context.Context, req *PredictRequest)
 		}
 	}
 
-	return &PredictResponse{
+	return &core.MLPredictResponse{
 		Predictions:  predictions,
 		Outputs:      string(bodyBytes), // 保存原始响应用于调试
 		ModelVersion: c.ModelVersion,
@@ -349,5 +351,5 @@ func (c *TorchServeClient) Close() error {
 	return nil
 }
 
-// 确保 TorchServeClient 实现了 MLService 接口
-var _ MLService = (*TorchServeClient)(nil)
+// 确保 TorchServeClient 实现了 core.MLService 接口
+var _ core.MLService = (*TorchServeClient)(nil)

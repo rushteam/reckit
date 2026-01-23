@@ -6,7 +6,11 @@ Store 是 Reckit 的存储抽象接口，统一支持多种后端（Redis、MySQ
 
 ### Store（基础接口）
 
+接口定义在 `core` 包：
+
 ```go
+import "github.com/rushteam/reckit/core"
+
 type Store interface {
     Name() string
     Get(ctx context.Context, key string) ([]byte, error)
@@ -41,11 +45,14 @@ type KeyValueStore interface {
 用于测试/开发/原型，支持 TTL，进程重启后数据丢失：
 
 ```go
-memStore := store.NewMemoryStore()
+import "github.com/rushteam/reckit/core"
+import "github.com/rushteam/reckit/store"
+
+var memStore core.Store = store.NewMemoryStore()
 defer memStore.Close()
 
 // 使用 KeyValueStore 扩展功能
-if kvStore, ok := memStore.(store.KeyValueStore); ok {
+if kvStore, ok := memStore.(core.KeyValueStore); ok {
     kvStore.ZAdd(ctx, "hot:feed", 100.0, "1")
     members, _ := kvStore.ZRange(ctx, "hot:feed", 0, 9) // Top 10
 }
@@ -62,8 +69,9 @@ if err != nil {
 }
 defer redisStore.Close()
 
-// RedisStore 实现了 KeyValueStore
-kvStore := redisStore.(store.KeyValueStore)
+// RedisStore 实现了 core.KeyValueStore
+import "github.com/rushteam/reckit/core"
+kvStore := redisStore.(core.KeyValueStore)
 kvStore.ZAdd(ctx, "hot:feed", 100.0, "1")
 ```
 
@@ -85,7 +93,7 @@ hotRecall := &recall.Hot{
 使用 Hash 存储物品特征：
 
 ```go
-if kvStore, ok := store.(store.KeyValueStore); ok {
+if kvStore, ok := store.(core.KeyValueStore); ok {
     kvStore.HSet(ctx, "item:123", "ctr", []byte("0.15"))
     kvStore.HSet(ctx, "item:123", "cvr", []byte("0.08"))
     
@@ -108,4 +116,4 @@ store.Set(ctx, "pred:user:42:item:123", []byte("0.85"), 3600) // TTL 1小时
 - **MongoStore**：使用 MongoDB 存储
 - **LocalFileStore**：使用本地文件存储
 
-只需实现 `Store` 或 `KeyValueStore` 接口即可。
+只需实现 `core.Store` 或 `core.KeyValueStore` 接口即可。

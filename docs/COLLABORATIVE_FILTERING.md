@@ -206,7 +206,7 @@ cfStore.AddInteraction(userID, itemID, score)
 
 **位置**: `recall/cf_store_adapter.go`
 
-基于 `store.Store` 接口的适配器，可以从 Redis、MySQL 等存储中读取数据。
+基于 `core.Store` 接口的适配器，可以从 Redis、MySQL 等存储中读取数据。
 
 **存储格式**:
 - 用户物品交互：`{KeyPrefix}:user:{userID}` → JSON map[itemID]score

@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/rushteam/reckit/store"
+	"github.com/rushteam/reckit/core"
 )
 
-// StoreContentAdapter 是基于 Store 接口的内容推荐存储适配器。
+// StoreContentAdapter 是基于 core.Store 接口的内容推荐存储适配器。
 // 从 Redis/MySQL 等存储中读取物品特征和用户偏好。
 type StoreContentAdapter struct {
-	store store.Store
+	store core.Store
 
 	// KeyPrefix 是存储 key 的前缀
 	// 物品特征：{KeyPrefix}:item:{itemID}
@@ -19,8 +19,8 @@ type StoreContentAdapter struct {
 	KeyPrefix string
 }
 
-// NewStoreContentAdapter 创建一个基于 Store 的内容推荐适配器。
-func NewStoreContentAdapter(s store.Store, keyPrefix string) *StoreContentAdapter {
+// NewStoreContentAdapter 创建一个基于 core.Store 的内容推荐适配器。
+func NewStoreContentAdapter(s core.Store, keyPrefix string) *StoreContentAdapter {
 	if keyPrefix == "" {
 		keyPrefix = "content"
 	}
@@ -34,7 +34,7 @@ func (a *StoreContentAdapter) GetItemFeatures(ctx context.Context, itemID string
 	key := a.KeyPrefix + ":item:" + itemID
 	data, err := a.store.Get(ctx, key)
 	if err != nil {
-		if err == store.ErrNotFound {
+		if core.IsStoreNotFound(err) {
 			return make(map[string]float64), nil
 		}
 		return nil, err
@@ -52,7 +52,7 @@ func (a *StoreContentAdapter) GetUserPreferences(ctx context.Context, userID str
 	key := a.KeyPrefix + ":user:" + userID
 	data, err := a.store.Get(ctx, key)
 	if err != nil {
-		if err == store.ErrNotFound {
+		if core.IsStoreNotFound(err) {
 			return make(map[string]float64), nil
 		}
 		return nil, err
@@ -74,7 +74,7 @@ func (a *StoreContentAdapter) GetAllItems(ctx context.Context) ([]string, error)
 	key := a.KeyPrefix + ":items"
 	data, err := a.store.Get(ctx, key)
 	if err != nil {
-		if err == store.ErrNotFound {
+		if core.IsStoreNotFound(err) {
 			return []string{}, nil
 		}
 		return nil, err

@@ -16,8 +16,8 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// 1. 初始化存储
-	memStore := store.NewMemoryStore()
+	// 1. 初始化存储（使用 core.Store 接口）
+	var memStore core.Store = store.NewMemoryStore()
 	defer memStore.Close()
 
 	// 2. 准备测试数据
@@ -40,7 +40,7 @@ func main() {
 	testPipeline(ctx, recallSources)
 }
 
-func setupTestData(ctx context.Context, memStore store.Store) {
+func setupTestData(ctx context.Context, memStore core.Store) {
 	// 设置协同过滤数据
 	cfStore := recall.NewStoreCFAdapter(memStore, "cf")
 	cfInteractions := []struct {
@@ -99,7 +99,7 @@ func setupTestData(ctx context.Context, memStore store.Store) {
 	memStore.Set(ctx, "content:items", contentItemsData)
 }
 
-func createRecallSources(ctx context.Context, memStore store.Store) map[string]recall.Source {
+func createRecallSources(ctx context.Context, memStore core.Store) map[string]recall.Source {
 	_ = ctx
 	cfStore := recall.NewStoreCFAdapter(memStore, "cf")
 	mfStore := recall.NewStoreMFAdapter(memStore, "mf")

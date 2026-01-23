@@ -88,6 +88,8 @@ mfStore := recall.NewStoreMFAdapter(memStore, "mf")
 
 **核心思想**: 基于 Embedding 向量的近似最近邻检索
 
+**详细文档**: 请参考 [Embedding 能力抽象](./EMBEDDING_ABSTRACT.md)
+
 **使用示例**:
 
 ```go

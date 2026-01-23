@@ -3,6 +3,7 @@ package vector
 import (
 	"context"
 
+	"github.com/rushteam/reckit/core"
 	"github.com/rushteam/reckit/recall"
 )
 
@@ -44,13 +45,7 @@ func (a *VectorStoreAdapter) Search(ctx context.Context, vector []float64, topK 
 	return result.IDs, result.Scores, nil
 }
 
-// ErrNotSupported 表示操作不支持的错误
-var ErrNotSupported = &NotSupportedError{}
-
-type NotSupportedError struct{}
-
-func (e *NotSupportedError) Error() string {
-	return "operation not supported: use Search method instead"
-}
+// ErrNotSupported 表示操作不支持的错误（使用统一的 DomainError）
+var ErrNotSupported = core.NewDomainError(core.ModuleVector, core.ErrorCodeNotSupported, "vector: operation not supported: use Search method instead")
 
 var _ recall.VectorStore = (*VectorStoreAdapter)(nil)

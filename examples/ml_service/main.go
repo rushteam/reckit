@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/rushteam/reckit/core"
 	"github.com/rushteam/reckit/service"
 )
 
@@ -36,7 +37,8 @@ func main() {
 		{0.1, 0.2, 0.3, 0.4},
 		{0.5, 0.6, 0.7, 0.8},
 	}
-	resp, err := tfServiceREST.Predict(ctx, &service.PredictRequest{
+	// 使用 core.MLPredictRequest（符合 DDD）
+	resp, err := tfServiceREST.Predict(ctx, &core.MLPredictRequest{
 		Instances: features,
 	})
 	if err != nil {
@@ -58,7 +60,8 @@ func main() {
 	defer tfServiceGRPC.Close()
 
 	fmt.Println("\n=== 使用 gRPC 协议 ===")
-	resp, err = tfServiceGRPC.Predict(ctx, &service.PredictRequest{
+	// 使用 core.MLPredictRequest
+	resp, err = tfServiceGRPC.Predict(ctx, &core.MLPredictRequest{
 		Instances: features,
 	})
 	if err != nil {

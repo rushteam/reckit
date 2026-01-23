@@ -14,9 +14,12 @@ import (
 // 使用方式：
 //   - 方式1：直接使用 SDK（需要安装依赖）
 //   - 方式2：通过依赖注入（推荐，保持低耦合）
+//
+// 注意：使用 Milvus 原生 VARCHAR 主键支持，直接使用 string IDs，无需转换为 int64。
 type MilvusClient interface {
 	// Search 向量搜索
-	Search(ctx context.Context, collection string, vectors [][]float32, topK int64, metricType string, searchParams map[string]interface{}, filter string) ([]int64, []float64, []float64, error)
+	// 返回 string IDs（使用 Milvus VARCHAR 主键，支持原生 string ID）
+	Search(ctx context.Context, collection string, vectors [][]float32, topK int64, metricType string, searchParams map[string]interface{}, filter string) ([]string, []float64, []float64, error)
 
 	// Insert 插入向量
 	Insert(ctx context.Context, collection string, data []map[string]interface{}) error
@@ -77,9 +80,11 @@ type MilvusSDKClientAdapter struct {
 }
 
 // Search 向量搜索
-func (a *MilvusSDKClientAdapter) Search(ctx context.Context, collection string, vectors [][]float32, topK int64, metricType string, searchParams map[string]interface{}, filter string) ([]int64, []float64, []float64, error) {
+// 返回 string IDs（使用 Milvus VARCHAR 主键）
+func (a *MilvusSDKClientAdapter) Search(ctx context.Context, collection string, vectors [][]float32, topK int64, metricType string, searchParams map[string]interface{}, filter string) ([]string, []float64, []float64, error) {
 	// 实际实现（需要安装 SDK）：
 	// import "github.com/milvus-io/milvus-sdk-go/v2/client"
+	// import "github.com/milvus-io/milvus-sdk-go/v2/entity"
 	//
 	// client := a.client.(*client.Client)
 	// searchResult, err := client.Search(ctx, &client.SearchRequest{
@@ -94,13 +99,23 @@ func (a *MilvusSDKClientAdapter) Search(ctx context.Context, collection string, 
 	//     return nil, nil, nil, err
 	// }
 	//
-	// // 提取结果
-	// ids := make([]int64, 0)
+	// // 提取结果（Milvus 2.0+ 支持 VARCHAR 主键，直接返回 string IDs）
+	// ids := make([]string, 0)
 	// scores := make([]float64, 0)
 	// distances := make([]float64, 0)
 	// for _, result := range searchResult {
 	//     for i, id := range result.IDs {
-	//         ids = append(ids, id)
+	//         // 使用 VARCHAR 主键，直接返回 string ID
+	//         // 如果集合使用 VARCHAR 主键，id 就是 string 类型
+	//         var strID string
+	//         switch v := id.(type) {
+	//         case string:
+	//             strID = v
+	//         default:
+	//             // 兼容处理：如果不是 string，转换为 string
+	//             strID = fmt.Sprintf("%v", v)
+	//         }
+	//         ids = append(ids, strID)
 	//         scores = append(scores, result.Scores[i])
 	//         if len(result.Distances) > i {
 	//             distances = append(distances, result.Distances[i])

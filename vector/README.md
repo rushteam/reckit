@@ -47,6 +47,7 @@ type ANNService interface {
 3. **类型转换**：
    - Milvus 使用 `float32`，需要与 `float64` 转换
    - Milvus 使用不同的距离度量名称（L2、IP、COSINE）
+   - **使用 VARCHAR 主键**：直接使用 string IDs，无需转换为 int64（Milvus 2.0+ 支持）
 
 ## 使用示例
 
@@ -98,7 +99,7 @@ result, err := milvusService.Search(ctx, &vector.SearchRequest{
     Metric:     "cosine",
 })
 
-// result.IDs: [3, 7, 12, ...]  // 最相似的物品 ID
+// result.IDs: ["item_3", "item_7", "item_12", ...]  // 最相似的物品 ID（string 类型）
 // result.Scores: [0.95, 0.92, 0.88, ...]  // 相似度分数
 ```
 
@@ -137,7 +138,7 @@ err := milvusService.Update(ctx, &vector.UpdateRequest{
 ```go
 err := milvusService.Delete(ctx, &vector.DeleteRequest{
     Collection: "items",
-    IDs:        []int64{1, 2, 3},
+    IDs:        []string{"item_1", "item_2", "item_3"}, // 使用 string IDs
 })
 ```
 
@@ -296,6 +297,27 @@ import (
 type MilvusService struct {
     client *client.Client
     // ...
+}
+
+// 注意：使用 VARCHAR 主键，直接使用 string IDs
+// 创建集合时指定 VARCHAR 主键类型
+schema := &entity.Schema{
+    CollectionName: "items",
+    Fields: []*entity.Field{
+        {
+            Name:       "id",
+            DataType:   entity.FieldTypeVarChar,
+            MaxLength:  255,
+            IsPrimary:  true,
+        },
+        {
+            Name:     "vector",
+            DataType: entity.FieldTypeFloatVector,
+            TypeParams: map[string]string{
+                "dim": "128",
+            },
+        },
+    },
 }
 ```
 
