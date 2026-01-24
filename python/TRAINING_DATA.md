@@ -43,6 +43,23 @@ item_ctr,item_cvr,item_price,user_age,user_gender,cross_age_x_ctr,cross_gender_x
 - `user_gender=1`: 男
 - `user_gender=2`: 女
 
+### 示例数据格式与生成规则
+
+| 列名 | 含义 | 生成规则 |
+|------|------|----------|
+| `item_ctr` | 物品点击率 | `uniform(0.01, 0.5)` |
+| `item_cvr` | 物品转化率 | `uniform(0.001, 0.1)` |
+| `item_price` | 物品价格 | `uniform(10, 200)` |
+| `user_age` | 用户年龄 | `randint(18, 60)` → float |
+| `user_gender` | 用户性别 | `randint(0, 3)` → float |
+| `cross_age_x_ctr` | 年龄×CTR | `user_age * item_ctr` |
+| `cross_gender_x_price` | 性别×价格 | `user_gender * item_price` |
+| `label` | 二分类标签 | 见下方「标签生成逻辑」 |
+
+示例数据保存路径：`data/train_data.csv`。数据不存在时，`train_xgb.py` / `train_deepfm.py` 会自动生成（默认 1000 条，`seed=42` 可复现）。
+
+**Item2Vec、Word2Vec 等其它示例数据格式**见 `data/README.md`。
+
 ## 预测目标
 
 ### 问题类型

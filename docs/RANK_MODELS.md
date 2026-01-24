@@ -260,12 +260,70 @@ go run ./examples/rank_models
 | 需要可解释性 | Wide&Deep | Wide 部分可解释 |
 | 需要快速推理 | 两塔 | 向量内积计算快 |
 
+## 4. DeepFM 模型（通过 RPC 调用 PyTorch 模型）
+
+### 核心思想
+
+DeepFM 结合了 **Factorization Machine (FM)** 和 **Deep Neural Network (DNN)**：
+- **FM 部分**：处理二阶特征交互（显式交互）
+- **Deep 部分**：处理高阶非线性交互（隐式交互）
+- **联合输出**：FM + Deep + Bias
+
+### 工程特征
+
+- **实时性**：中等（需要 RPC 调用 PyTorch 服务）
+- **计算复杂度**：中等（FM + DNN）
+- **可解释性**：弱（黑盒模型）
+- **特征交互**：强（自动学习低阶和高阶交互）
+
+### 使用示例
+
+```go
+// 1. 训练 DeepFM 模型（Python）
+// cd python
+// python train/train_deepfm.py --version v1.0.0
+
+// 2. 启动 DeepFM 服务（Python）
+// uvicorn service.deepfm_server:app --host 0.0.0.0 --port 8080
+
+// 3. 在 Golang 中使用
+deepfmModel := model.NewRPCModel(
+    "deepfm",
+    "http://localhost:8080/predict",
+    5*time.Second,
+)
+
+p := &pipeline.Pipeline{
+    Nodes: []pipeline.Node{
+        &recall.Fanout{...},
+        &feature.EnrichNode{...},
+        &rank.RPCNode{Model: deepfmModel},
+    },
+}
+```
+
+### Python 训练
+
+```bash
+cd python
+pip install -r requirements.txt  # 包含 torch>=2.0.0
+
+# 训练模型
+python train/train_deepfm.py --version v1.0.0 --epochs 50 --batch-size 32
+
+# 启动服务
+uvicorn service.deepfm_server:app --host 0.0.0.0 --port 8080
+```
+
+**详细文档**：`python/train/DEEPFM_README.md`
+
+**完整示例**：`examples/deepfm/main.go`
+
 ## 扩展方向
 
 1. **DIEN（Deep Interest Evolution Network）**：DIN 的改进版，考虑兴趣演化
-2. **DeepFM**：结合 FM 和 DNN
-3. **xDeepFM**：结合 CIN 和 DNN
-4. **AutoInt**：使用自注意力机制的特征交互
+2. **xDeepFM**：结合 CIN 和 DNN
+3. **AutoInt**：使用自注意力机制的特征交互
 
 ## 注意事项
 

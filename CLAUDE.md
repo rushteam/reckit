@@ -569,6 +569,37 @@ item2vecRecall := &recall.Word2VecRecall{
 
 **Python 训练**: `python/train/train_item2vec.py --mode item2vec|word2vec`，输出 JSON。详见 `docs/WORD2VEC_ITEM2VEC.md`。
 
+### 使用 DeepFM 模型（PyTorch）
+
+```go
+import "github.com/rushteam/reckit/model"
+import "github.com/rushteam/reckit/rank"
+
+// 1. 训练 DeepFM 模型（Python）
+// cd python
+// python train/train_deepfm.py --version v1.0.0
+
+// 2. 启动 DeepFM 服务（Python）
+// uvicorn service.deepfm_server:app --host 0.0.0.0 --port 8080
+
+// 3. 在 Golang 中使用
+deepfmModel := model.NewRPCModel(
+    "deepfm",
+    "http://localhost:8080/predict",
+    5*time.Second,
+)
+
+p := &pipeline.Pipeline{
+    Nodes: []pipeline.Node{
+        &recall.Fanout{...},
+        &feature.EnrichNode{...},
+        &rank.RPCNode{Model: deepfmModel},
+    },
+}
+```
+
+**Python 训练**: `python/train/train_deepfm.py`，详见 `python/train/DEEPFM_README.md`。
+
 ### 使用 BERT 模型
 
 ```go
@@ -663,6 +694,7 @@ normalized := scaler.Normalize(features)
 - `examples/feature_processing/` - 特征处理工具类示例
 - `examples/feature_version/` - 特征版本管理示例
 - `examples/word2vec/` - Word2Vec / Item2Vec 示例（含 JSON 加载、Python 训练说明）
+- `examples/deepfm/` - DeepFM 排序示例（PyTorch 训练 + RPC 调用）
 - `examples/bert/` - BERT 模型使用示例
 
 ## 相关文档

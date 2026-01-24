@@ -1,0 +1,51 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: reckit-training
+  namespace: default
+spec:
+  # 每日凌晨 2 点执行
+  schedule: "0 2 * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: training
+            image: reckit-training:latest
+            imagePullPolicy: IfNotPresent
+            command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              cd /app
+              chmod +x scripts/run_training.sh
+              ./scripts/run_training.sh
+            env:
+            - name: S3_BUCKET
+              value: "reckit-models"
+            - name: MODEL_DIR
+              value: "/app/model"
+            volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: model
+              mountPath: /app/model
+            resources:
+              requests:
+                memory: "2Gi"
+                cpu: "1"
+              limits:
+                memory: "4Gi"
+                cpu: "2"
+          volumes:
+          - name: data
+            persistentVolumeClaim:
+              claimName: training-data-pvc
+          - name: model
+            persistentVolumeClaim:
+              claimName: model-pvc
+          restartPolicy: OnFailure

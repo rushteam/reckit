@@ -33,6 +33,9 @@
 ### 用户画像
 - [用户画像文档](./USER_PROFILE.md) - 用户画像的使用和管理
 
+### 训练与部署
+- [训练流程自动化](./TRAINING_AUTOMATION.md) - 工业级训练流程自动化指南（数据、编排、版本、发布、监控）
+
 ---
 
 ## 🔧 扩展和开发
@@ -85,4 +88,5 @@
 - **特征处理** → [FEATURE_PROCESSING.md](./FEATURE_PROCESSING.md)
 - **Embedding 召回** → [EMBEDDING_ABSTRACT.md](./EMBEDDING_ABSTRACT.md)
 - **双塔模型** → [TWO_TOWER_GUIDE.md](./TWO_TOWER_GUIDE.md)
+- **训练流程自动化** → [TRAINING_AUTOMATION.md](./TRAINING_AUTOMATION.md)
 - **未来规划** → [ROADMAP.md](./ROADMAP.md)

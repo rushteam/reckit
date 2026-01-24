@@ -1,21 +1,40 @@
 # Python ML 训练与服务
 
-本目录包含 XGBoost 模型的训练和推理服务代码，与 Go 端的 `RPCModel` 协议对齐，实现端到端的推荐系统闭环。
+本目录包含机器学习模型的训练和推理服务代码，与 Go 端的 `RPCModel` 协议对齐，实现端到端的推荐系统闭环。
+
+**支持的模型**：
+- **XGBoost**：树模型，训练快、推理快（`train/train_xgb.py` + `service/server.py`）
+- **DeepFM**：PyTorch 深度学习模型，自动学习特征交互（`train/train_deepfm.py` + `service/deepfm_server.py`）
+- **Word2Vec / Item2Vec**：文本/序列向量化（`train/train_item2vec.py`）
 
 ## 目录结构
 
 ```
 python/
-├── data/              # 训练数据（CSV）
+├── data/              # 训练数据（CSV / TXT）
+│   └── README.md      # 示例数据格式说明（train_data、behavior、corpus）
 ├── train/            # 训练脚本
 │   ├── train_xgb.py  # XGBoost 训练脚本
-│   └── features.py   # 特征配置
+│   ├── train_deepfm.py  # DeepFM PyTorch 训练脚本
+│   ├── train_item2vec.py  # Word2Vec / Item2Vec 训练脚本
+│   ├── features.py   # 特征配置
+│   └── DEEPFM_README.md  # DeepFM 使用说明
 ├── service/          # 推理服务
-│   ├── server.py     # FastAPI HTTP 服务
-│   └── model_loader.py  # 模型加载器
+│   ├── server.py     # XGBoost FastAPI HTTP 服务（支持 /reload 热更新）
+│   ├── deepfm_server.py  # DeepFM FastAPI HTTP 服务（支持 /reload 热更新）
+│   ├── model_loader.py  # XGBoost 模型加载器
+│   └── deepfm_model_loader.py  # DeepFM 模型加载器
+├── scripts/          # 训练自动化脚本
+│   ├── run_training.sh  # 训练流水线主脚本
+│   ├── evaluate.py      # 模型评估与门控
+│   ├── register_model.py  # 模型注册（上传到 S3/OSS）
+│   ├── deploy.py        # 模型部署（触发 reload）
+│   └── README.md         # 脚本使用说明
 ├── model/            # 训练好的模型（自动生成）
 │   ├── xgb_model.json      # XGBoost 模型文件
-│   ├── feature_meta.json   # 特征元数据
+│   ├── deepfm_model.pt    # DeepFM PyTorch 模型文件
+│   ├── feature_meta.json   # XGBoost 特征元数据
+│   ├── deepfm_feature_meta.json  # DeepFM 特征元数据
 │   └── feature_scaler.json # 特征标准化器（可选）
 ├── tests/            # 测试文件
 │   ├── test_model_loader.py  # 模型加载器测试
@@ -38,6 +57,8 @@ pip install -r requirements.txt
 
 ### 2. 训练模型
 
+#### XGBoost 模型
+
 ```bash
 # 基础训练
 python train/train_xgb.py
@@ -47,19 +68,23 @@ python train/train_xgb.py --version v1.0.0
 
 # 启用特征标准化
 python train/train_xgb.py --normalize
-
-# 组合使用
-python train/train_xgb.py --version v1.0.0 --normalize
 ```
 
-这会：
-- 生成示例训练数据（如果 `data/train_data.csv` 不存在）
-- 训练 XGBoost 模型
-- 保存模型到 `model/xgb_model.json`
-- 保存特征元数据到 `model/feature_meta.json`（包含模型版本）
-- 如果使用 `--normalize`，还会保存特征标准化器到 `model/feature_scaler.json`
+#### DeepFM 模型（PyTorch）
+
+```bash
+# 基础训练
+python train/train_deepfm.py
+
+# 指定模型版本和训练参数
+python train/train_deepfm.py --version v1.0.0 --epochs 100 --batch-size 64
+```
+
+**详细说明**：见 `train/DEEPFM_README.md`
 
 ### 3. 启动推理服务
+
+#### XGBoost 服务
 
 ```bash
 # 方式 1: 使用 uvicorn
@@ -67,12 +92,16 @@ uvicorn service.server:app --host 0.0.0.0 --port 8080
 
 # 方式 2: 直接运行
 python service/server.py
+```
 
-# 方式 3: 使用 Docker
-docker-compose up -d
+#### DeepFM 服务
 
-# 方式 4: 使用环境变量配置
-MODEL_VERSION=v1.0.0 PORT=8080 python service/server.py
+```bash
+# 方式 1: 使用 uvicorn
+uvicorn service.deepfm_server:app --host 0.0.0.0 --port 8080
+
+# 方式 2: 直接运行
+python service/deepfm_server.py
 ```
 
 服务启动后，可以通过以下方式测试：
@@ -80,6 +109,9 @@ MODEL_VERSION=v1.0.0 PORT=8080 python service/server.py
 ```bash
 # 健康检查
 curl http://localhost:8080/health
+
+# 模型热加载（reload，无需重启服务）
+curl -X POST http://localhost:8080/reload
 
 # 批量预测接口（特征名带前缀，与 FEATURE_COLUMNS 对齐）
 curl -X POST http://localhost:8080/predict \
@@ -164,6 +196,8 @@ rpcNode := &rank.RPCNode{Model: xgbModel}
 2. 将数据文件放到 `data/` 目录
 3. 修改 `train/train_xgb.py` 中的数据路径
 4. 重新训练模型
+
+各示例数据（`train_data.csv`、`behavior.csv`、`corpus.txt`）的格式与生成规则见 **`data/README.md`**。
 
 ### 添加新特征
 
@@ -269,11 +303,53 @@ python train/train_xgb.py --normalize
 - `test_server.py`: 服务器接口测试
 - `test_integration.py`: 端到端集成测试
 
+### ✅ 模型热加载（Reload）
+
+推理服务支持通过 `/reload` 端点热加载新模型，无需重启服务：
+
+```bash
+# 触发模型热加载
+curl -X POST http://localhost:8080/reload
+```
+
+**特性**:
+- 线程安全：使用锁保证 reload 期间预测请求等待
+- 原子性替换：新模型加载成功后才替换旧模型
+- 版本追踪：返回旧版本和新版本信息
+- 错误处理：reload 失败不影响现有服务
+
+**使用场景**:
+- 模型版本更新
+- 模型文件更新（通过 PVC 或文件同步）
+- 自动化部署流程
+
+### ✅ 训练流程自动化
+
+提供完整的训练自动化脚本（`scripts/` 目录）：
+
+- **run_training.sh**: 训练流水线主脚本（数据生成 → 训练 → 评估 → 注册）
+- **evaluate.py**: 模型评估与门控（判断新模型是否优于当前模型）
+- **register_model.py**: 模型注册（打包上传到 S3/OSS，本地记录版本）
+- **deploy.py**: 模型部署（拉取模型，触发 reload）
+
+详见 `scripts/README.md`。
+
+### ✅ Kubernetes 部署
+
+提供 K8s 配置文件（`k8s/` 目录）：
+
+- **training-cronjob.yaml**: 训练任务 CronJob（每日自动执行）
+- **inference-deployment.yaml**: 推理服务 Deployment（支持模型热加载）
+
+详见 `k8s/README.md`。
+
 ## 生产环境建议
 
 - ✅ 使用 Docker 容器化部署（已实现）
 - ✅ 添加模型版本管理（已实现）
 - ✅ 实现特征标准化 Pipeline（已实现）
 - ✅ 添加监控和日志（已实现）
-- ⏳ 实现模型热更新（待实现）
+- ✅ 实现模型热更新（已实现，通过 `/reload` 端点）
+- ✅ 训练流程自动化（已实现，`scripts/` 目录）
+- ✅ Kubernetes 部署配置（已实现，`k8s/` 目录）
 - ⏳ 使用 gRPC 替代 HTTP（性能更好，待实现）

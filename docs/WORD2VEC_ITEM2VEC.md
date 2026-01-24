@@ -94,26 +94,63 @@ python train/train_item2vec.py --mode word2vec \
 
 ### 2.3 Item2Vec 训练数据格式
 
-**CSV：每行一个用户一条序列**
+**文件**：`data/behavior.csv`（可自定义 `--data` 路径）
+
+**格式**：CSV，两列 `user_id`、`sequence`。`sequence` 为**逗号分隔的物品 ID 列表**，表示该用户的行为序列。
+
+**列说明**
+
+| 列名 | 含义 |
+|------|------|
+| `user_id` | 用户 ID，如 `u1`、`u2` |
+| `sequence` | 行为序列，逗号分隔物品 ID |
+
+**生成规则**（无数据时自动生成）：
+- 默认 500 个用户、200 个物品（`item_1` … `item_200`）
+- 每用户随机 5～50 个行为，从 `item_1`…`item_200` **有放回**抽样组成序列
+- `np.random.seed(42)` 可复现
+
+**示例**
 
 ```text
 user_id,sequence
-u1,"item_1,item_2,item_3,item_1,item_4"
-u2,"item_2,item_3,item_5"
-u3,"item_1,item_4,item_2"
+"u1","item_42,item_17,item_89,item_42,item_3,..."
+"u2","item_5,item_120,item_88,..."
+"u3","item_1,item_1,item_200,item_50,..."
 ```
 
-- `user_id`：用户 ID（列名可通过 `--user-col` 修改）
-- `sequence`：该用户的行为序列，物品 ID 用逗号分隔，顺序即行为发生顺序（列名可通过 `--sequence-col` 修改）
+- `user_id`、`sequence` 的列名可通过 `--user-col`、`--sequence-col` 修改。
+- 脚本按行读取，每行得到一个「句子」；所有句子组成语料，用 gensim `Word2Vec` 训练，物品 ID 即词。
+- 若原始数据是「逐条行为日志」（如 `user_id, item_id, timestamp`），需先离线聚合为 `user_id -> 有序 item_id 序列`，再写成上述 CSV。
 
-脚本按行读取，每行得到一个「句子」；所有句子组成语料，用 gensim `Word2Vec` 训练，物品 ID 即词。
-
-若你的原始数据是「逐条行为日志」（如 `user_id, item_id, timestamp`），需先离线聚合为 `user_id -> 有序 item_id 序列`，再写成上述 CSV 供本脚本使用。
+**完整说明**见 `python/data/README.md`。
 
 ### 2.4 Word2Vec（文本）训练数据格式
 
-- 纯文本文件，每行一段或一句，UTF-8 编码。
-- 脚本按行读取，按空格分词，每行得到一个「句子」，再训练 Word2Vec。
+**文件**：`data/corpus.txt`（可自定义 `--data` 路径）
+
+**格式**：纯文本，**每行一句**，按空格分词，UTF-8 编码。
+
+**词表**（示例数据共 16 个词）：
+`electronics smartphone tech mobile device laptop computer game sports music movie book fashion food travel`
+
+**生成规则**（无数据时自动生成）：
+- 每行随机选 3～15 个词（有放回），用空格拼接
+- 默认 2000 行，`np.random.seed(42)` 可复现
+
+**示例**
+
+```text
+electronics laptop game music fashion
+smartphone tech device sports
+book travel food electronics smartphone tech mobile
+laptop computer game
+...
+```
+
+脚本按行读取，按空格分词，每行得到一个「句子」，再训练 Word2Vec。
+
+**完整说明**见 `python/data/README.md`。
 
 ### 2.5 训练流程小结
 

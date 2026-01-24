@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reckit-inference
+  namespace: default
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: reckit-inference
+  template:
+    metadata:
+      labels:
+        app: reckit-inference
+    spec:
+      containers:
+      - name: inference
+        image: reckit-inference:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: PORT
+          value: "8080"
+        - name: HOST
+          value: "0.0.0.0"
+        - name: MODEL_VERSION
+          valueFrom:
+            configMapKeyRef:
+              name: reckit-model-config
+              key: model-version
+        volumeMounts:
+        - name: model
+          mountPath: /app/model
+          readOnly: true
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      volumes:
+      - name: model
+        persistentVolumeClaim:
+          claimName: model-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reckit-inference
+  namespace: default
+spec:
+  selector:
+    app: reckit-inference
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+  type: ClusterIP
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: reckit-model-config
+  namespace: default
+data:
+  model-version: "latest"

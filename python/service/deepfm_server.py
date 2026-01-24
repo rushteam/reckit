@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-XGBoost 模型推理服务
+DeepFM 模型推理服务
 
 使用 FastAPI 实现 HTTP 服务，与 Go 端的 RPCModel 协议对齐。
 
 启动方式:
-    uvicorn service.server:app --host 0.0.0.0 --port 8080
+    uvicorn service.deepfm_server:app --host 0.0.0.0 --port 8080
 
 或者:
-    python service.server:app
+    python service.deepfm_server:app
 """
 import logging
 import os
@@ -31,19 +31,19 @@ logger = logging.getLogger(__name__)
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-# 导入模型加载器（使用相对导入）
+# 导入模型加载器
 import importlib.util
-loader_path = os.path.join(os.path.dirname(__file__), "model_loader.py")
-spec = importlib.util.spec_from_file_location("model_loader", loader_path)
+loader_path = os.path.join(os.path.dirname(__file__), "deepfm_model_loader.py")
+spec = importlib.util.spec_from_file_location("deepfm_model_loader", loader_path)
 model_loader_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(model_loader_module)
-ModelLoader = model_loader_module.ModelLoader
+DeepFMModelLoader = model_loader_module.DeepFMModelLoader
 
-# 模型路径（相对于项目根目录）
+# 模型路径
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL_DIR = os.path.join(BASE_DIR, "model")
-MODEL_PATH = os.path.join(MODEL_DIR, "xgb_model.json")
-FEATURE_META_PATH = os.path.join(MODEL_DIR, "feature_meta.json")
+DEEPFM_MODEL_PATH = os.path.join(MODEL_DIR, "deepfm_model.pt")
+DEEPFM_FEATURE_META_PATH = os.path.join(MODEL_DIR, "deepfm_feature_meta.json")
 
 # 从环境变量读取配置
 MODEL_VERSION = os.getenv("MODEL_VERSION", None)
@@ -52,8 +52,8 @@ HOST = os.getenv("HOST", "0.0.0.0")
 
 # 创建 FastAPI 应用
 app = FastAPI(
-    title="Reckit XGBoost Model Service",
-    description="XGBoost 模型推理服务，与 Go 端 RPCModel 协议对齐",
+    title="Reckit DeepFM Model Service",
+    description="DeepFM 模型推理服务，与 Go 端 RPCModel 协议对齐",
     version="1.0.0",
 )
 
@@ -68,19 +68,19 @@ async def startup_event():
     """启动时加载模型"""
     global model_loader
     try:
-        logger.info("正在启动模型服务...")
-        logger.info(f"模型路径: {MODEL_PATH}")
-        logger.info(f"特征元数据路径: {FEATURE_META_PATH}")
+        logger.info("正在启动 DeepFM 模型服务...")
+        logger.info(f"模型路径: {DEEPFM_MODEL_PATH}")
+        logger.info(f"特征元数据路径: {DEEPFM_FEATURE_META_PATH}")
         
-        model_loader = ModelLoader(MODEL_PATH, FEATURE_META_PATH, MODEL_VERSION)
+        model_loader = DeepFMModelLoader(DEEPFM_MODEL_PATH, DEEPFM_FEATURE_META_PATH, MODEL_VERSION)
         model_loader.load()
         
-        logger.info("模型服务启动成功！")
+        logger.info("DeepFM 模型服务启动成功！")
         logger.info(f"模型版本: {model_loader.model_version or 'unknown'}")
         logger.info(f"特征数量: {model_loader.feature_count}")
     except FileNotFoundError as e:
         logger.error(f"模型文件未找到: {e}")
-        logger.error("请先运行训练脚本: python train/train_xgb.py")
+        logger.error("请先运行训练脚本: python train/train_deepfm.py")
         raise
     except Exception as e:
         logger.error(f"模型加载失败: {e}", exc_info=True)
@@ -90,7 +90,7 @@ async def startup_event():
 # 请求/响应模型（与 Go 端协议对齐）
 class PredictRequest(BaseModel):
     """批量预测请求（与 Go RPCModel 协议对齐）"""
-    features_list: list[dict[str, float]]  # 特征字典列表，例如 [{"ctr": 0.15, "cvr": 0.08, ...}, ...]
+    features_list: list[dict[str, float]]  # 特征字典列表
 
 
 class PredictResponse(BaseModel):
@@ -102,7 +102,7 @@ class PredictResponse(BaseModel):
 async def root():
     """健康检查"""
     return {
-        "service": "Reckit XGBoost Model Service",
+        "service": "Reckit DeepFM Model Service",
         "status": "running",
         "model_loaded": model_loader is not None,
         "model_version": model_loader.model_version if model_loader else None,
@@ -130,19 +130,19 @@ async def reload_model():
     
     with model_lock:
         try:
-            logger.info("开始重新加载模型...")
-            logger.info(f"模型路径: {MODEL_PATH}")
-            logger.info(f"特征元数据路径: {FEATURE_META_PATH}")
+            logger.info("开始重新加载 DeepFM 模型...")
+            logger.info(f"模型路径: {DEEPFM_MODEL_PATH}")
+            logger.info(f"特征元数据路径: {DEEPFM_FEATURE_META_PATH}")
             
             # 创建新的模型加载器
-            new_loader = ModelLoader(MODEL_PATH, FEATURE_META_PATH, MODEL_VERSION)
+            new_loader = DeepFMModelLoader(DEEPFM_MODEL_PATH, DEEPFM_FEATURE_META_PATH, MODEL_VERSION)
             new_loader.load()
             
             # 原子性替换
             old_version = model_loader.model_version if model_loader else None
             model_loader = new_loader
             
-            logger.info(f"模型重新加载成功！")
+            logger.info(f"DeepFM 模型重新加载成功！")
             logger.info(f"旧版本: {old_version or 'unknown'}")
             logger.info(f"新版本: {model_loader.model_version or 'unknown'}")
             logger.info(f"特征数量: {model_loader.feature_count}")
@@ -171,12 +171,13 @@ async def predict(request: PredictRequest):
         {
             "features_list": [
                 {
-                    "ctr": 0.15,
-                    "cvr": 0.08,
-                    "price": 99.0,
-                    "age": 25.0,
-                    "gender": 1.0,
-                    ...
+                    "item_ctr": 0.15,
+                    "item_cvr": 0.08,
+                    "item_price": 99.0,
+                    "user_age": 25.0,
+                    "user_gender": 1.0,
+                    "cross_age_x_ctr": 3.75,
+                    "cross_gender_x_price": 99.0
                 },
                 ...
             ]
@@ -212,8 +213,8 @@ async def predict(request: PredictRequest):
 if __name__ == "__main__":
     import uvicorn
     
-    logger.info("启动 XGBoost 模型推理服务...")
-    logger.info(f"模型路径: {MODEL_PATH}")
+    logger.info("启动 DeepFM 模型推理服务...")
+    logger.info(f"模型路径: {DEEPFM_MODEL_PATH}")
     logger.info(f"服务地址: http://{HOST}:{PORT}")
     logger.info(f"预测接口: http://{HOST}:{PORT}/predict")
     

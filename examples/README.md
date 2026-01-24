@@ -89,6 +89,25 @@ go run ./examples/feature_version
 go run ./examples/rpc_xgb
 ```
 
+### 7. deepfm - Python DeepFM 模型调用
+
+演示如何调用 PyTorch 训练的 DeepFM 模型进行排序。
+
+**前置条件**：
+1. 训练模型：`cd python && python train/train_deepfm.py --version v1.0.0`
+2. 启动服务：`cd python && uvicorn service.deepfm_server:app --host 0.0.0.0 --port 8080`
+
+运行：
+```bash
+# 在另一个终端
+go run ./examples/deepfm
+```
+
+**DeepFM 特点**：
+- 自动学习特征交互（FM 二阶 + DNN 高阶）
+- 适合 CTR 预估、广告打分场景
+- 无需手动构造交叉特征
+
 ## 如何运行所有示例
 
 ```bash
@@ -109,4 +128,7 @@ go run ./examples/feature_version
 
 # Python XGBoost 模型调用（需要先启动 Python 服务）
 go run ./examples/rpc_xgb
+
+# Python DeepFM 模型调用（需要先启动 Python 服务）
+go run ./examples/deepfm
 ```
