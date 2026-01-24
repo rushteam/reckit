@@ -7,6 +7,7 @@ import (
 	"github.com/rushteam/reckit/feature"
 	"github.com/rushteam/reckit/filter"
 	"github.com/rushteam/reckit/model"
+	"github.com/rushteam/reckit/pkg/conv"
 	"github.com/rushteam/reckit/pipeline"
 	"github.com/rushteam/reckit/rank"
 	"github.com/rushteam/reckit/recall"
@@ -50,19 +51,12 @@ func buildFanoutNode(config map[string]interface{}) (pipeline.Node, error) {
 		if !ok {
 			continue
 		}
-		sourceType, _ := sourceMap["type"].(string)
+		sourceType := conv.ConfigGet[string](sourceMap, "type", "")
 		switch sourceType {
 		case "hot":
-			ids := []string{}
-			if idsRaw, ok := sourceMap["ids"].([]interface{}); ok {
-				for _, id := range idsRaw {
-					// 支持字符串和数字两种格式
-					if idStr, ok := id.(string); ok {
-						ids = append(ids, idStr)
-					} else if idFloat, ok := id.(float64); ok {
-						ids = append(ids, fmt.Sprintf("%.0f", idFloat))
-					}
-				}
+			ids := conv.SliceAnyToString(sourceMap["ids"])
+			if ids == nil {
+				ids = []string{}
 			}
 			sources = append(sources, &recall.Hot{IDs: ids})
 		case "ann":
@@ -75,27 +69,20 @@ func buildFanoutNode(config map[string]interface{}) (pipeline.Node, error) {
 
 	fanout := &recall.Fanout{
 		Sources: sources,
-		Dedup:   getBool(config, "dedup", true),
+		Dedup:   conv.ConfigGet[bool](config, "dedup", true),
 	}
-
-	if timeout, ok := config["timeout"].(int); ok {
-		fanout.Timeout = time.Duration(timeout) * time.Second
+	if sec := conv.ConfigGetInt64(config, "timeout", 0); sec > 0 {
+		fanout.Timeout = time.Duration(sec) * time.Second
 	}
-	if maxConcurrent, ok := config["max_concurrent"].(int); ok {
-		fanout.MaxConcurrent = maxConcurrent
+	if n := conv.ConfigGetInt64(config, "max_concurrent", 0); n > 0 {
+		fanout.MaxConcurrent = int(n)
 	}
-	// 设置合并策略
-	if mergeStrategy, ok := config["merge_strategy"].(string); ok {
-		switch mergeStrategy {
-		case "priority":
-			fanout.MergeStrategy = &recall.PriorityMergeStrategy{}
-		case "union":
-			fanout.MergeStrategy = &recall.UnionMergeStrategy{}
-		default:
-			fanout.MergeStrategy = &recall.FirstMergeStrategy{}
-		}
-	} else {
-		// 默认策略
+	switch conv.ConfigGet[string](config, "merge_strategy", "") {
+	case "priority":
+		fanout.MergeStrategy = &recall.PriorityMergeStrategy{}
+	case "union":
+		fanout.MergeStrategy = &recall.UnionMergeStrategy{}
+	default:
 		fanout.MergeStrategy = &recall.FirstMergeStrategy{}
 	}
 
@@ -103,16 +90,9 @@ func buildFanoutNode(config map[string]interface{}) (pipeline.Node, error) {
 }
 
 func buildHotNode(config map[string]interface{}) (pipeline.Node, error) {
-	ids := []string{}
-	if idsRaw, ok := config["ids"].([]interface{}); ok {
-		for _, id := range idsRaw {
-			// 支持字符串和数字两种格式
-			if idStr, ok := id.(string); ok {
-				ids = append(ids, idStr)
-			} else if idFloat, ok := id.(float64); ok {
-				ids = append(ids, fmt.Sprintf("%.0f", idFloat))
-			}
-		}
+	ids := conv.SliceAnyToString(config["ids"])
+	if ids == nil {
+		ids = []string{}
 	}
 	return &recall.Hot{IDs: ids}, nil
 }
@@ -127,56 +107,38 @@ func buildLRNode(config map[string]interface{}) (pipeline.Node, error) {
 	if !ok {
 		return nil, fmt.Errorf("weights not found")
 	}
-
-	weights := make(map[string]float64)
-	for k, v := range weightsMap {
-		if vFloat, ok := v.(float64); ok {
-			weights[k] = vFloat
-		}
-	}
-
-	bias := getFloat(config, "bias", 0.0)
+	weights := conv.MapToFloat64(weightsMap)
+	bias := conv.ConfigGet[float64](config, "bias", 0.0)
 	lr := &model.LRModel{
 		Bias:    bias,
 		Weights: weights,
 	}
-
 	return &rank.LRNode{Model: lr}, nil
 }
 
 func buildRPCNode(config map[string]interface{}) (pipeline.Node, error) {
-	endpoint, ok := config["endpoint"].(string)
-	if !ok {
+	endpoint := conv.ConfigGet[string](config, "endpoint", "")
+	if endpoint == "" {
 		return nil, fmt.Errorf("endpoint not found")
 	}
-
 	timeout := 5 * time.Second
-	if timeoutRaw, ok := config["timeout"].(int); ok {
-		timeout = time.Duration(timeoutRaw) * time.Second
+	if sec := conv.ConfigGetInt64(config, "timeout", 5); sec > 0 {
+		timeout = time.Duration(sec) * time.Second
 	}
-
-	modelType, _ := config["model_type"].(string)
+	modelType := conv.ConfigGet[string](config, "model_type", "rpc")
 	if modelType == "" {
 		modelType = "rpc"
 	}
 	rpcModel := model.NewRPCModel(modelType, endpoint, timeout)
-
 	return &rank.RPCNode{Model: rpcModel}, nil
 }
 
 func buildDiversityNode(config map[string]interface{}) (pipeline.Node, error) {
-	labelKey, _ := config["label_key"].(string)
+	labelKey := conv.ConfigGet[string](config, "label_key", "category")
 	if labelKey == "" {
 		labelKey = "category"
 	}
 	return &rerank.Diversity{LabelKey: labelKey}, nil
-}
-
-func getBool(config map[string]interface{}, key string, defaultValue bool) bool {
-	if v, ok := config[key].(bool); ok {
-		return v
-	}
-	return defaultValue
 }
 
 func buildFilterNode(config map[string]interface{}) (pipeline.Node, error) {
@@ -191,34 +153,23 @@ func buildFilterNode(config map[string]interface{}) (pipeline.Node, error) {
 		if !ok {
 			continue
 		}
-		filterType, _ := filterMap["type"].(string)
-
+		filterType := conv.ConfigGet[string](filterMap, "type", "")
 		switch filterType {
 		case "blacklist":
-			ids := []string{}
-			if idsRaw, ok := filterMap["item_ids"].([]interface{}); ok {
-				for _, id := range idsRaw {
-					// 支持字符串和数字两种格式
-					if idStr, ok := id.(string); ok {
-						ids = append(ids, idStr)
-					} else if idFloat, ok := id.(float64); ok {
-						ids = append(ids, fmt.Sprintf("%.0f", idFloat))
-					}
-				}
+			ids := conv.SliceAnyToString(filterMap["item_ids"])
+			if ids == nil {
+				ids = []string{}
 			}
-			key, _ := filterMap["key"].(string)
+			key := conv.ConfigGet[string](filterMap, "key", "")
 			filters = append(filters, filter.NewBlacklistFilter(ids, nil, key))
 
 		case "user_block":
-			keyPrefix, _ := filterMap["key_prefix"].(string)
+			keyPrefix := conv.ConfigGet[string](filterMap, "key_prefix", "")
 			filters = append(filters, filter.NewUserBlockFilter(nil, keyPrefix))
 
 		case "exposed":
-			keyPrefix, _ := filterMap["key_prefix"].(string)
-			timeWindow := int64(0)
-			if tw, ok := filterMap["time_window"].(int); ok {
-				timeWindow = int64(tw)
-			}
+			keyPrefix := conv.ConfigGet[string](filterMap, "key_prefix", "")
+			timeWindow := conv.ConfigGetInt64(filterMap, "time_window", 0)
 			filters = append(filters, filter.NewExposedFilter(nil, keyPrefix, timeWindow))
 
 		default:
@@ -230,20 +181,9 @@ func buildFilterNode(config map[string]interface{}) (pipeline.Node, error) {
 }
 
 func buildFeatureEnrichNode(config map[string]interface{}) (pipeline.Node, error) {
-	userPrefix, _ := config["user_feature_prefix"].(string)
-	itemPrefix, _ := config["item_feature_prefix"].(string)
-	crossPrefix, _ := config["cross_feature_prefix"].(string)
-
 	return &feature.EnrichNode{
-		UserFeaturePrefix:  userPrefix,
-		ItemFeaturePrefix:  itemPrefix,
-		CrossFeaturePrefix: crossPrefix,
+		UserFeaturePrefix:  conv.ConfigGet[string](config, "user_feature_prefix", ""),
+		ItemFeaturePrefix:  conv.ConfigGet[string](config, "item_feature_prefix", ""),
+		CrossFeaturePrefix: conv.ConfigGet[string](config, "cross_feature_prefix", ""),
 	}, nil
-}
-
-func getFloat(config map[string]interface{}, key string, defaultValue float64) float64 {
-	if v, ok := config[key].(float64); ok {
-		return v
-	}
-	return defaultValue
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/rushteam/reckit/core"
 	"github.com/rushteam/reckit/feature"
+	"github.com/rushteam/reckit/pkg/conv"
 	"github.com/rushteam/reckit/pkg/utils"
 )
 
@@ -209,7 +210,7 @@ func (r *TwoTowerRecall) extractUserFeaturesFromContext(rctx *core.RecommendCont
 	// 从 UserProfile map 提取
 	if rctx.UserProfile != nil {
 		for k, v := range rctx.UserProfile {
-			if fv, ok := r.toFloat64(v); ok {
+			if fv, ok := conv.ToFloat64(v); ok {
 				features[k] = fv
 			}
 		}
@@ -218,7 +219,7 @@ func (r *TwoTowerRecall) extractUserFeaturesFromContext(rctx *core.RecommendCont
 	// 从 Realtime 提取
 	if rctx.Realtime != nil {
 		for k, v := range rctx.Realtime {
-			if fv, ok := r.toFloat64(v); ok {
+			if fv, ok := conv.ToFloat64(v); ok {
 				features["realtime_"+k] = fv
 			}
 		}
@@ -287,7 +288,7 @@ func (r *TwoTowerRecall) extractEmbeddingFromOutputs(outputs interface{}) ([]flo
 		// 是 interface{} 数组，需要转换
 		embedding := make([]float64, 0, len(val))
 		for _, item := range val {
-			if fv, ok := r.toFloat64(item); ok {
+			if fv, ok := conv.ToFloat64(item); ok {
 				embedding = append(embedding, fv)
 			}
 		}
@@ -371,29 +372,6 @@ func (r *TwoTowerRecall) convertToItems(result *core.VectorSearchResult) []*core
 	}
 
 	return items
-}
-
-// toFloat64 将值转换为 float64
-func (r *TwoTowerRecall) toFloat64(v interface{}) (float64, bool) {
-	switch val := v.(type) {
-	case float64:
-		return val, true
-	case float32:
-		return float64(val), true
-	case int:
-		return float64(val), true
-	case int64:
-		return float64(val), true
-	case int32:
-		return float64(val), true
-	case bool:
-		if val {
-			return 1.0, true
-		}
-		return 0.0, true
-	default:
-		return 0, false
-	}
 }
 
 // 确保 TwoTowerRecall 实现了 Source 接口

@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"github.com/rushteam/reckit/core"
+	"github.com/rushteam/reckit/pkg/conv"
 	"github.com/rushteam/reckit/pkg/utils"
 )
 
@@ -69,13 +70,7 @@ func (r *ContentRecall) Recall(
 			if p, ok := prefs.(map[string]float64); ok {
 				userPrefs = p
 			} else if p, ok := prefs.(map[string]interface{}); ok {
-				// 转换为 map[string]float64
-				userPrefs = make(map[string]float64, len(p))
-				for k, v := range p {
-					if fv, ok := v.(float64); ok {
-						userPrefs[k] = fv
-					}
-				}
+				userPrefs = conv.MapToFloat64(p)
 			}
 		}
 	}

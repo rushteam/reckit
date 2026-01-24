@@ -38,6 +38,7 @@
 
 - [可扩展性指南](./EXTENSIBILITY.md) - 如何扩展 Reckit 功能
 - [接口与实现完整分析](./INTERFACES_AND_IMPLEMENTATIONS.md) - 所有接口的详细定义
+- [pkg/conv 类型转换与泛型工具](../pkg/conv/README.md) - 类型转换、ConfigGet、MapToFloat64、GetExtraAs 等
 
 ---
 
@@ -75,6 +76,7 @@
 - **整体架构** → [ARCHITECTURE.md](./ARCHITECTURE.md)
 - **Pipeline 功能** → [PIPELINE_FEATURES.md](./PIPELINE_FEATURES.md)
 - **如何扩展功能** → [EXTENSIBILITY.md](./EXTENSIBILITY.md)
+- **类型转换 / 泛型工具** → [pkg/conv](../pkg/conv/README.md)
 - **接口定义** → [INTERFACES_AND_IMPLEMENTATIONS.md](./INTERFACES_AND_IMPLEMENTATIONS.md)
 - **召回算法** → [RECALL_ALGORITHMS.md](./RECALL_ALGORITHMS.md)
 - **排序模型** → [RANK_MODELS.md](./RANK_MODELS.md)

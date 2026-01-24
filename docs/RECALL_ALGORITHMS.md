@@ -9,6 +9,7 @@
 | MF / ALS | MFRecall | Recall | ✅ 已支持 | `recall/matrix_factorization.go` | `recall.mf` |
 | Embedding | EmbRecall | Recall | ✅ 已支持 | `recall/ann.go` | `recall.emb` |
 | Content | ContentRecall | Recall | ✅ 已支持 | `recall/content.go` | `recall.content` |
+| Word2Vec | Word2VecRecall | Recall | ✅ 已支持 | `recall/word2vec_recall.go` | `recall.word2vec` |
 | RPC 召回 | RPCRecall | Recall | ✅ 已支持 | `recall/rpc_recall.go` | `recall.rpc` |
 
 **所有算法均已实现并支持！** ✅
@@ -221,7 +222,85 @@ contentStore := recall.NewStoreContentAdapter(memStore, "content")
 
 **Label**: `recall.content`
 
-### 6. RPC 召回 → RPCRecall ✅
+### 6. Word2Vec → Word2VecRecall ✅
+
+**实现类**: `Word2VecRecall`
+
+**核心思想**: "将文本/序列转换为向量，通过向量相似度找到相似物品"
+
+**使用场景**:
+- 文本特征向量化：物品标题、描述、标签 → 向量
+- 序列向量化：用户行为序列（点击的物品ID序列）→ 向量
+- I2I 召回：基于物品文本相似度
+
+**使用示例**:
+
+```go
+import "github.com/rushteam/reckit/model"
+import "github.com/rushteam/reckit/recall"
+
+// 1. 创建 Word2Vec 模型（从预训练的词向量）
+wordVectors := map[string][]float64{
+    "electronics": []float64{0.1, 0.2, 0.3, 0.4},
+    "smartphone":  []float64{0.2, 0.3, 0.4, 0.5},
+    // ... 更多词向量
+}
+w2vModel := model.NewWord2VecModel(wordVectors, 128)
+
+// 2. 创建 Word2Vec 召回（基于文本）
+word2vecRecall := &recall.Word2VecRecall{
+    Model:     w2vModel,
+    Store:     word2vecStore,
+    TopK:      20,
+    Mode:      "text",      // text 或 sequence
+    TextField: "title",     // title / description / tags
+}
+
+// 3. 创建 Word2Vec 召回（基于序列）
+sequenceRecall := &recall.Word2VecRecall{
+    Model: w2vModel,
+    Store: word2vecStore,
+    TopK:  20,
+    Mode:  "sequence", // 基于用户行为序列
+}
+```
+
+**存储接口** (`Word2VecStore`):
+
+```go
+type Word2VecStore interface {
+    GetItemText(ctx context.Context, itemID string) (string, error)
+    GetItemTags(ctx context.Context, itemID string) ([]string, error)
+    GetUserSequence(ctx context.Context, userID string, maxLen int) ([]string, error)
+    GetAllItems(ctx context.Context) ([]string, error)
+}
+```
+
+**文本向量化**:
+
+```go
+// 文本 → 向量
+text := "electronics smartphone tech"
+vector := w2vModel.EncodeText(text)
+
+// 词列表 → 向量
+words := []string{"electronics", "smartphone", "tech"}
+vector := w2vModel.EncodeWords(words)
+```
+
+**序列向量化**:
+
+```go
+// 用户行为序列 → 向量
+sequence := []string{"item_1", "item_2", "item_3"}
+userVector := w2vModel.EncodeSequence(sequence)
+```
+
+**Label**: `recall.word2vec`
+
+**完整示例**: 参考 `examples/word2vec/main.go`
+
+### 7. RPC 召回 → RPCRecall ✅
 
 **实现类**: `RPCRecall`
 

@@ -607,7 +607,7 @@ userProfile.SetExtra("purchase_history_count", 150)
 // 获取扩展属性
 vipLevel, _ := userProfile.GetExtraFloat64("vip_level")
 priceRange, _ := userProfile.GetExtraString("preferred_price_range")
-tags, _ := userProfile.GetExtra("custom_tags").([]string)
+tags, _ := core.GetExtraAs[[]string](userProfile, "custom_tags")  // 泛型：精确类型匹配
 purchaseCount, _ := userProfile.GetExtraInt("purchase_history_count")
 ```
 
@@ -667,8 +667,9 @@ func (n *CustomRecallNode) Process(
 
 - `GetExtra(key)` - 获取任意类型
 - `GetExtraString(key)` - 获取字符串类型
-- `GetExtraFloat64(key)` - 获取 float64 类型（支持 int、int64、float32 自动转换）
-- `GetExtraInt(key)` - 获取 int 类型（支持 int64、float64 自动转换）
+- `GetExtraFloat64(key)` - 获取 float64 类型（支持 int、int64、float32、bool 等自动转换）
+- `GetExtraInt(key)` - 获取 int 类型（支持 int64、float64 等自动转换）
+- `core.GetExtraAs[T](userProfile, key)` - 泛型按类型 T 获取；精确类型匹配用，数值转换仍建议用 GetExtraFloat64/GetExtraInt。详见 `pkg/conv`。
 
 ### 使用场景
 

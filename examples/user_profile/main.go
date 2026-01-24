@@ -135,15 +135,11 @@ func main() {
 		fmt.Printf("更新兴趣 %s: %.2f -> %.2f\n", category.Value, currentWeight, newWeight)
 	}
 
-	// 8. 展示扩展属性的使用
+	// 8. 展示扩展属性的使用（含泛型 GetExtraAs）
 	fmt.Println("\n=== 扩展属性使用示例 ===")
 	vipLevel, _ := userProfile.GetExtraFloat64("vip_level")
 	priceRange, _ := userProfile.GetExtraString("preferred_price_range")
-	tagsVal, _ := userProfile.GetExtra("custom_tags")
-	var tags []string
-	if tagsVal != nil {
-		tags, _ = tagsVal.([]string)
-	}
+	tags, _ := core.GetExtraAs[[]string](userProfile, "custom_tags")
 	purchaseCount, _ := userProfile.GetExtraInt("purchase_history_count")
 	fmt.Printf("VIP 等级: %.0f\n", vipLevel)
 	fmt.Printf("价格偏好: %s\n", priceRange)

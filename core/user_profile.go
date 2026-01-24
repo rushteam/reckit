@@ -1,6 +1,10 @@
 package core
 
-import "time"
+import (
+	"time"
+
+	"github.com/rushteam/reckit/pkg/conv"
+)
 
 // UserProfile 是用户画像的核心抽象。
 //
@@ -176,52 +180,37 @@ func (p *UserProfile) GetExtraString(key string) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	if s, ok := v.(string); ok {
-		return s, true
-	}
-	return "", false
+	return conv.ToString(v)
 }
 
 // GetExtraFloat64 获取扩展属性（float64 类型）。
-// 支持 float64、float32、int、int64 类型的自动转换。
+// 支持 float64、float32、int、int64、int32、bool 的自动转换。
 func (p *UserProfile) GetExtraFloat64(key string) (float64, bool) {
 	v, ok := p.GetExtra(key)
 	if !ok {
 		return 0, false
 	}
-	switch val := v.(type) {
-	case float64:
-		return val, true
-	case float32:
-		return float64(val), true
-	case int:
-		return float64(val), true
-	case int64:
-		return float64(val), true
-	case int32:
-		return float64(val), true
-	}
-	return 0, false
+	return conv.ToFloat64(v)
 }
 
 // GetExtraInt 获取扩展属性（int 类型）。
-// 支持 int、int64、float64 类型的自动转换。
+// 支持 int、int64、int32、float64、float32 的自动转换。
 func (p *UserProfile) GetExtraInt(key string) (int, bool) {
 	v, ok := p.GetExtra(key)
 	if !ok {
 		return 0, false
 	}
-	switch val := v.(type) {
-	case int:
-		return val, true
-	case int64:
-		return int(val), true
-	case int32:
-		return int(val), true
-	case float64:
-		return int(val), true
-	case float32:
-		return int(val), true
+	return conv.ToInt(v)
+}
+
+// GetExtraAs 按类型 T 获取扩展属性。若 key 不存在或类型不匹配则返回 (zero, false)。
+// 精确类型匹配使用类型断言；需数值转换时请用 GetExtraFloat64 / GetExtraInt。
+func GetExtraAs[T any](p *UserProfile, key string) (T, bool) {
+	var zero T
+	v, ok := p.GetExtra(key)
+	if !ok {
+		return zero, false
 	}
-	return 0, false
+	t, ok := conv.TypeAssert[T](v)
+	return t, ok
 }

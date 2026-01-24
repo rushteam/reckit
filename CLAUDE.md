@@ -189,6 +189,7 @@ type UserProfile struct {
     RecentImpress []string
     PreferTags    map[string]float64
     Buckets       map[string]string
+    Extras        map[string]any  // 扩展字段（用户自定义属性）
     UpdateTime    time.Time
 }
 ```
@@ -212,7 +213,8 @@ github.com/rushteam/reckit/
 ├── config/            # Pipeline 配置工厂
 └── pkg/
     ├── utils/         # Label 工具
-    └── dsl/           # Label DSL 表达式引擎
+    ├── dsl/           # Label DSL 表达式引擎
+    └── conv/          # 类型转换与泛型工具（ToFloat64、ConfigGet、MapToFloat64 等）
 ```
 
 ## 关键文件位置
@@ -235,6 +237,7 @@ github.com/rushteam/reckit/
 - `recall/ann.go` - Embedding ANN 召回
 - `recall/content.go` - 内容推荐
 - `recall/matrix_factorization.go` - 矩阵分解召回
+- `recall/word2vec_recall.go` - Word2Vec 召回（基于文本/序列相似度）
 - `recall/hot.go` - 热门召回
 - `recall/user_history.go` - 用户历史召回
 
@@ -249,6 +252,7 @@ github.com/rushteam/reckit/
 - `model/model.go` - RankModel 接口
 - `model/lr.go` - LR 模型实现
 - `model/rpc.go` - RPC 模型实现
+- `model/word2vec.go` - Word2Vec 模型实现
 
 ### 特征模块
 
@@ -266,6 +270,7 @@ github.com/rushteam/reckit/
 
 - `pkg/utils/label.go` - Label 定义和合并策略
 - `pkg/dsl/eval.go` - Label DSL 表达式引擎
+- `pkg/conv/conv.go` - 类型转换与泛型工具（ToFloat64、ToInt、ToString、ConfigGet、MapToFloat64、SliceAnyToString 等）
 
 ## 使用模式
 
@@ -444,6 +449,14 @@ func (n *MyRankNode) Process(ctx context.Context, rctx *core.RecommendContext, i
 3. **接口优先**：所有策略都通过接口实现，不使用字符串配置
 4. **无硬编码**：所有默认值都从配置接口获取
 5. **线程安全**：`NodeFactory` 使用 `sync.RWMutex` 保证线程安全
+6. **类型转换工具**：使用 `pkg/conv` 进行类型转换，避免手写 switch-case
+   - `conv.ToFloat64`、`conv.ToInt`、`conv.ToString` - 支持多种类型自动转换
+   - `conv.MapToFloat64` - map[string]any -> map[string]float64
+   - `conv.SliceAnyToString` - []any -> []string（兼容 YAML/JSON）
+   - `conv.ConfigGet[T]`、`conv.ConfigGetInt64` - 从配置 map 读取值
+7. **UserProfile 扩展属性**：通过 `Extras map[string]any` 存储自定义属性
+   - `GetExtraFloat64`、`GetExtraInt`、`GetExtraString` - 带类型转换的获取方法
+   - `core.GetExtraAs[T]` - 泛型方法，用于精确类型匹配（不进行数值转换）
 
 ## 常用操作
 
@@ -482,6 +495,79 @@ eval := dsl.NewEval(item, rctx)
 result, _ := eval.Evaluate(`label.recall_source == "hot"`)
 result, _ := eval.Evaluate(`item.score > 0.7`)
 result, _ := eval.Evaluate(`label.recall_source.contains("ann")`)
+```
+
+### 使用类型转换工具（pkg/conv）
+
+```go
+import "github.com/rushteam/reckit/pkg/conv"
+
+// 类型转换（支持多种数值类型自动转换）
+v, _ := conv.ToFloat64(anyVal)  // 支持 float64/float32/int/int64/int32/bool
+n, _ := conv.ToInt(anyVal)      // 支持 int/int64/int32/float64/float32
+s, _ := conv.ToString(anyVal)
+
+// Map/Slice 转换
+weights := conv.MapToFloat64(configMap)  // map[string]any -> map[string]float64
+ids := conv.SliceAnyToString(yamlSlice)  // []any -> []string（兼容 YAML/JSON）
+
+// 配置读取（泛型）
+bias := conv.ConfigGet[float64](config, "bias", 0.0)
+timeout := conv.ConfigGetInt64(config, "timeout", 5)  // 兼容 int/float64
+labelKey := conv.ConfigGet[string](config, "label_key", "category")
+
+// 泛型类型断言
+t, ok := conv.TypeAssert[MyType](v)
+```
+
+### 使用 UserProfile 扩展属性
+
+```go
+// 设置扩展属性
+userProfile.SetExtra("vip_level", 3)
+userProfile.SetExtra("preferred_price_range", "100-500")
+userProfile.SetExtra("custom_tags", []string{"tech", "gaming"})
+
+// 获取扩展属性（类型转换）
+vipLevel, _ := userProfile.GetExtraFloat64("vip_level")
+priceRange, _ := userProfile.GetExtraString("preferred_price_range")
+purchaseCount, _ := userProfile.GetExtraInt("purchase_history_count")
+
+// 获取扩展属性（泛型，精确类型匹配）
+tags, _ := core.GetExtraAs[[]string](userProfile, "custom_tags")
+// 注意：GetExtraAs 仅做类型断言，不进行数值转换；数值转换请使用 GetExtraFloat64/GetExtraInt
+```
+
+### 使用 Word2Vec 模型
+
+```go
+import "github.com/rushteam/reckit/model"
+import "github.com/rushteam/reckit/recall"
+
+// 1. 创建 Word2Vec 模型（从预训练的词向量）
+wordVectors := map[string][]float64{
+    "item_1": []float64{0.1, 0.2, 0.3},
+    "item_2": []float64{0.4, 0.5, 0.6},
+    // ...
+}
+w2vModel := model.NewWord2VecModel(wordVectors, 128)
+
+// 2. 文本向量化
+text := "electronics smartphone tech"
+vector := w2vModel.EncodeText(text)
+
+// 3. 序列向量化（用户行为序列）
+sequence := []string{"item_1", "item_2", "item_3"}
+userVector := w2vModel.EncodeSequence(sequence)
+
+// 4. 基于 Word2Vec 的召回
+word2vecRecall := &recall.Word2VecRecall{
+    Model:    w2vModel,
+    Store:    word2vecStore,
+    TopK:     20,
+    Mode:     "sequence", // 或 "text"
+    TextField: "title",   // title / description / tags
+}
 ```
 
 ### 加载特征元数据
@@ -532,13 +618,15 @@ normalized := scaler.Normalize(features)
 - `examples/basic/` - 基础示例
 - `examples/all_recall_algorithms/` - 所有召回算法示例
 - `examples/extensibility/` - 扩展性示例（自定义策略、Hook）
-- `examples/config/` - 配置化 Pipeline 示例
+- `examples/config/` - 配置化 Pipeline 示例（使用 `pkg/conv` 进行配置解析）
+- `examples/user_profile/` - 用户画像示例（包含扩展属性 Extras 的使用）
 - `examples/feature_service/` - 特征服务示例
 - `examples/personalization/` - 个性化推荐示例
 - `examples/feature_metadata/` - 特征元数据使用示例
 - `examples/feature_metadata_loader/` - 特征元数据加载器示例（本地文件、HTTP、S3 兼容协议）
 - `examples/feature_processing/` - 特征处理工具类示例
 - `examples/feature_version/` - 特征版本管理示例
+- `examples/word2vec/` - Word2Vec 模型使用示例
 
 ## 相关文档
 
@@ -551,3 +639,5 @@ normalized := scaler.Normalize(features)
 - `docs/FEATURE_CONSISTENCY.md` - 特征一致性文档（训练与在线一致性）
 - `docs/FEATURE_PROCESSING.md` - 特征处理文档（归一化、编码等）
 - `docs/ENCODER_INTERFACE_DESIGN.md` - 编码器接口设计说明
+- `docs/USER_PROFILE.md` - 用户画像文档（包含扩展属性 Extras 的使用）
+- `pkg/conv/README.md` - 类型转换与泛型工具文档
