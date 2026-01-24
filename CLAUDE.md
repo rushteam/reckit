@@ -237,7 +237,7 @@ github.com/rushteam/reckit/
 - `recall/ann.go` - Embedding ANN 召回
 - `recall/content.go` - 内容推荐
 - `recall/matrix_factorization.go` - 矩阵分解召回
-- `recall/word2vec_recall.go` - Word2Vec 召回（基于文本/序列相似度）
+- `recall/word2vec_recall.go` - Word2Vec / Item2Vec 召回（文本模式 + 序列模式）
 - `recall/bert_recall.go` - BERT 召回（基于语义相似度）
 - `recall/hot.go` - 热门召回
 - `recall/user_history.go` - 用户历史召回
@@ -540,37 +540,34 @@ tags, _ := core.GetExtraAs[[]string](userProfile, "custom_tags")
 // 注意：GetExtraAs 仅做类型断言，不进行数值转换；数值转换请使用 GetExtraFloat64/GetExtraInt
 ```
 
-### 使用 Word2Vec 模型
+### 使用 Word2Vec / Item2Vec 模型
 
 ```go
 import "github.com/rushteam/reckit/model"
 import "github.com/rushteam/reckit/recall"
 
-// 1. 创建 Word2Vec 模型（从预训练的词向量）
-wordVectors := map[string][]float64{
-    "item_1": []float64{0.1, 0.2, 0.3},
-    "item_2": []float64{0.4, 0.5, 0.6},
-    // ...
-}
-w2vModel := model.NewWord2VecModel(wordVectors, 128)
+// 1. 创建 Word2Vec 模型（从 JSON 或 map；JSON 可由 python/train/train_item2vec.py 导出）
+raw, _ := json.Unmarshal(...) // 或内联 map
+w2vModel, _ := model.LoadWord2VecFromMap(raw)
 
-// 2. 文本向量化
-text := "electronics smartphone tech"
-vector := w2vModel.EncodeText(text)
+// 2. 文本向量化（Word2Vec）
+vector := w2vModel.EncodeText("electronics smartphone tech")
 
-// 3. 序列向量化（用户行为序列）
-sequence := []string{"item_1", "item_2", "item_3"}
-userVector := w2vModel.EncodeSequence(sequence)
+// 3. 序列向量化（Item2Vec：用户行为序列）
+userVector := w2vModel.EncodeSequence([]string{"item_1", "item_2", "item_3"})
 
-// 4. 基于 Word2Vec 的召回
+// 4. 召回：文本模式 vs Item2Vec 序列模式
 word2vecRecall := &recall.Word2VecRecall{
-    Model:    w2vModel,
-    Store:    word2vecStore,
-    TopK:     20,
-    Mode:     "sequence", // 或 "text"
-    TextField: "title",   // title / description / tags
+    Model: w2vModel, Store: store, TopK: 20,
+    Mode: "text", TextField: "title",
+}
+item2vecRecall := &recall.Word2VecRecall{
+    Model: w2vModel, Store: store, TopK: 20,
+    Mode: "sequence", // Item2Vec
 }
 ```
+
+**Python 训练**: `python/train/train_item2vec.py --mode item2vec|word2vec`，输出 JSON。详见 `docs/WORD2VEC_ITEM2VEC.md`。
 
 ### 使用 BERT 模型
 
@@ -665,7 +662,7 @@ normalized := scaler.Normalize(features)
 - `examples/feature_metadata_loader/` - 特征元数据加载器示例（本地文件、HTTP、S3 兼容协议）
 - `examples/feature_processing/` - 特征处理工具类示例
 - `examples/feature_version/` - 特征版本管理示例
-- `examples/word2vec/` - Word2Vec 模型使用示例
+- `examples/word2vec/` - Word2Vec / Item2Vec 示例（含 JSON 加载、Python 训练说明）
 - `examples/bert/` - BERT 模型使用示例
 
 ## 相关文档
@@ -673,6 +670,7 @@ normalized := scaler.Normalize(features)
 - `README.md` - 项目主文档
 - `docs/ARCHITECTURE.md` - 架构设计文档
 - `docs/RECALL_ALGORITHMS.md` - 召回算法文档
+- `docs/WORD2VEC_ITEM2VEC.md` - Word2Vec / Item2Vec 使用与 Python 训练
 - `docs/RANK_MODELS.md` - 排序模型文档
 - `docs/EXTENSIBILITY_ANALYSIS.md` - 可扩展性分析
 - `docs/INTERFACES_AND_IMPLEMENTATIONS.md` - 接口与实现完整分析

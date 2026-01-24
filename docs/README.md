@@ -16,6 +16,7 @@
 
 ### 召回（Recall）
 - [召回算法文档](./RECALL_ALGORITHMS.md) - 所有召回算法的介绍
+- [Word2Vec / Item2Vec](./WORD2VEC_ITEM2VEC.md) - 文本与物品序列向量、Python 训练、Golang 接入
 - [协同过滤](./COLLABORATIVE_FILTERING.md) - 协同过滤算法详解
 - [Embedding 能力抽象](./EMBEDDING_ABSTRACT.md) - Embedding 向量召回详解
 
@@ -76,6 +77,7 @@
 - **整体架构** → [ARCHITECTURE.md](./ARCHITECTURE.md)
 - **Pipeline 功能** → [PIPELINE_FEATURES.md](./PIPELINE_FEATURES.md)
 - **如何扩展功能** → [EXTENSIBILITY.md](./EXTENSIBILITY.md)
+- **Word2Vec / Item2Vec 与 Python 训练** → [WORD2VEC_ITEM2VEC.md](./WORD2VEC_ITEM2VEC.md)
 - **类型转换 / 泛型工具** → [pkg/conv](../pkg/conv/README.md)
 - **接口定义** → [INTERFACES_AND_IMPLEMENTATIONS.md](./INTERFACES_AND_IMPLEMENTATIONS.md)
 - **召回算法** → [RECALL_ALGORITHMS.md](./RECALL_ALGORITHMS.md)

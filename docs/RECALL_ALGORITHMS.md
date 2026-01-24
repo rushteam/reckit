@@ -223,16 +223,25 @@ contentStore := recall.NewStoreContentAdapter(memStore, "content")
 
 **Label**: `recall.content`
 
-### 6. Word2Vec → Word2VecRecall ✅
+### 6. Word2Vec / Item2Vec → Word2VecRecall ✅
 
 **实现类**: `Word2VecRecall`
 
 **核心思想**: "将文本/序列转换为向量，通过向量相似度找到相似物品"
 
+**两种模式**:
+
+| 模式 | 说明 | 用户向量 | 物品向量 |
+|------|------|----------|----------|
+| **text** (Word2Vec) | 文本词为「词」 | 最近点击物品的文本编码 | 物品标题/标签等编码 |
+| **sequence** (Item2Vec) | 物品 ID 为「词」 | 用户行为序列（物品 ID 列表）编码 | 物品 ID 向量 |
+
 **使用场景**:
-- 文本特征向量化：物品标题、描述、标签 → 向量
-- 序列向量化：用户行为序列（点击的物品ID序列）→ 向量
-- I2I 召回：基于物品文本相似度
+- 文本特征向量化：物品标题、描述、标签 → 向量（Word2Vec）
+- 序列向量化：用户行为序列（点击的物品ID序列）→ 向量（**Item2Vec**）
+- I2I 召回：基于物品文本相似度或物品序列相似度
+
+**Python 训练**: 使用 `python/train/train_item2vec.py`。Item2Vec 需用户行为序列 CSV；Word2Vec 需文本语料。输出 JSON 供 Golang `LoadWord2VecFromMap` 加载。详见 **`docs/WORD2VEC_ITEM2VEC.md`**。
 
 **使用示例**:
 
@@ -299,7 +308,9 @@ userVector := w2vModel.EncodeSequence(sequence)
 
 **Label**: `recall.word2vec`
 
-**完整示例**: 参考 `examples/word2vec/main.go`
+**完整示例**: `examples/word2vec/main.go`（含 Word2Vec 文本模式与 Item2Vec 序列模式、从 JSON 加载模型）
+
+**文档**: `docs/WORD2VEC_ITEM2VEC.md`（概念、Python 训练方法、数据格式、Golang 接入）
 
 ### 7. BERT → BERTRecall ✅
 
