@@ -10,6 +10,7 @@
 | Embedding | EmbRecall | Recall | ✅ 已支持 | `recall/ann.go` | `recall.emb` |
 | Content | ContentRecall | Recall | ✅ 已支持 | `recall/content.go` | `recall.content` |
 | Word2Vec | Word2VecRecall | Recall | ✅ 已支持 | `recall/word2vec_recall.go` | `recall.word2vec` |
+| BERT | BERTRecall | Recall | ✅ 已支持 | `recall/bert_recall.go` | `recall.bert` |
 | RPC 召回 | RPCRecall | Recall | ✅ 已支持 | `recall/rpc_recall.go` | `recall.rpc` |
 
 **所有算法均已实现并支持！** ✅
@@ -300,7 +301,96 @@ userVector := w2vModel.EncodeSequence(sequence)
 
 **完整示例**: 参考 `examples/word2vec/main.go`
 
-### 7. RPC 召回 → RPCRecall ✅
+### 7. BERT → BERTRecall ✅
+
+**实现类**: `BERTRecall`
+
+**核心思想**: "使用 BERT 将文本编码为语义向量，通过向量相似度找到语义相似的物品"
+
+**使用场景**:
+- 文本语义召回：基于物品标题、描述的语义相似度
+- 搜索推荐：用户查询与物品文本的语义匹配
+- I2I 召回：基于物品文本语义相似度
+
+**使用示例**:
+
+```go
+import "github.com/rushteam/reckit/model"
+import "github.com/rushteam/reckit/recall"
+import "github.com/rushteam/reckit/service"
+
+// 1. 创建 BERT 服务客户端（使用 TorchServe 或 TensorFlow Serving）
+torchServeClient := service.NewTorchServeClient(
+    "http://localhost:8080", // TorchServe 端点
+    "bert-base",              // 模型名称
+    service.WithTorchServeTimeout(5*time.Second),
+)
+
+// 2. 创建 BERT 模型
+bertModel := model.NewBERTModel(torchServeClient, 768).
+    WithModelName("bert-base").
+    WithMaxLength(512).
+    WithPoolingStrategy("cls") // cls / mean / max
+
+// 3. 创建 BERT 召回（基于文本）
+bertRecall := &recall.BERTRecall{
+    Model:     bertModel,
+    Store:     bertStore,
+    TopK:      20,
+    Mode:      "text",      // text 或 query
+    TextField: "title",     // title / description / tags
+    BatchSize: 32,          // 批量编码大小（提高效率）
+}
+
+// 4. 创建 BERT 召回（基于查询）
+queryRecall := &recall.BERTRecall{
+    Model:     bertModel,
+    Store:     bertStore,
+    TopK:      20,
+    Mode:      "query",     // 基于用户查询
+    TextField: "title",
+    BatchSize: 32,
+}
+```
+
+**存储接口** (`BERTStore`):
+
+```go
+type BERTStore interface {
+    GetItemText(ctx context.Context, itemID string) (string, error)
+    GetItemTags(ctx context.Context, itemID string) ([]string, error)
+    GetUserQuery(ctx context.Context, userID string) (string, error)
+    GetAllItems(ctx context.Context) ([]string, error)
+}
+```
+
+**文本编码**:
+
+```go
+// 单个文本编码
+vector, _ := bertModel.EncodeText(ctx, "electronics smartphone tech")
+
+// 批量编码（提高效率）
+vectors, _ := bertModel.EncodeTexts(ctx, []string{"text1", "text2", "text3"})
+```
+
+**语义相似度**:
+
+```go
+// 计算两个向量的余弦相似度
+similarity := bertModel.Similarity(vec1, vec2)
+```
+
+**Label**: `recall.bert`
+
+**完整示例**: 参考 `examples/bert/main.go`
+
+**注意事项**:
+- BERT 模型需要通过外部服务（TorchServe/TensorFlow Serving）进行推理
+- 支持批量编码以提高效率（BatchSize 参数）
+- 适合文本丰富的场景，语义理解能力强
+
+### 8. RPC 召回 → RPCRecall ✅
 
 **实现类**: `RPCRecall`
 

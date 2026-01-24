@@ -238,6 +238,7 @@ github.com/rushteam/reckit/
 - `recall/content.go` - 内容推荐
 - `recall/matrix_factorization.go` - 矩阵分解召回
 - `recall/word2vec_recall.go` - Word2Vec 召回（基于文本/序列相似度）
+- `recall/bert_recall.go` - BERT 召回（基于语义相似度）
 - `recall/hot.go` - 热门召回
 - `recall/user_history.go` - 用户历史召回
 
@@ -253,6 +254,7 @@ github.com/rushteam/reckit/
 - `model/lr.go` - LR 模型实现
 - `model/rpc.go` - RPC 模型实现
 - `model/word2vec.go` - Word2Vec 模型实现
+- `model/bert.go` - BERT 模型实现
 
 ### 特征模块
 
@@ -570,6 +572,43 @@ word2vecRecall := &recall.Word2VecRecall{
 }
 ```
 
+### 使用 BERT 模型
+
+```go
+import "github.com/rushteam/reckit/model"
+import "github.com/rushteam/reckit/recall"
+import "github.com/rushteam/reckit/service"
+
+// 1. 创建 BERT 服务客户端（使用 TorchServe 或 TensorFlow Serving）
+torchServeClient := service.NewTorchServeClient(
+    "http://localhost:8080", // TorchServe 端点
+    "bert-base",              // 模型名称
+    service.WithTorchServeTimeout(5*time.Second),
+)
+
+// 2. 创建 BERT 模型
+bertModel := model.NewBERTModel(torchServeClient, 768).
+    WithModelName("bert-base").
+    WithMaxLength(512).
+    WithPoolingStrategy("cls")
+
+// 3. 文本编码
+vector, _ := bertModel.EncodeText(ctx, "electronics smartphone tech")
+
+// 4. 批量编码（提高效率）
+vectors, _ := bertModel.EncodeTexts(ctx, []string{"text1", "text2", "text3"})
+
+// 5. 基于 BERT 的召回
+bertRecall := &recall.BERTRecall{
+    Model:     bertModel,
+    Store:     bertStore,
+    TopK:      20,
+    Mode:      "text",      // text 或 query
+    TextField: "title",     // title / description / tags
+    BatchSize: 32,          // 批量编码大小
+}
+```
+
 ### 加载特征元数据
 
 ```go
@@ -627,6 +666,7 @@ normalized := scaler.Normalize(features)
 - `examples/feature_processing/` - 特征处理工具类示例
 - `examples/feature_version/` - 特征版本管理示例
 - `examples/word2vec/` - Word2Vec 模型使用示例
+- `examples/bert/` - BERT 模型使用示例
 
 ## 相关文档
 
