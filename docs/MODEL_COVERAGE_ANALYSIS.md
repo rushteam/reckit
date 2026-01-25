@@ -21,11 +21,11 @@
 | **用户历史 (UserHistory)** | ✅ 已实现 | `recall/user_history.go` | 基于行为历史召回 | P0（必选） |
 | **ANN/Embedding** | ✅ 已实现 | `recall/ann.go` | 向量检索召回 | P0（与双塔配合） |
 | **RPC 召回** | ✅ 已实现 | `recall/rpc_recall.go` | 外部模型服务召回 | P2（可扩展） |
-| **YouTube DNN** | ❌ 未实现 | - | 视频/内容流召回 | P2（特定场景） |
-| **DSSM** | ❌ 未实现 | - | 搜索推荐、语义匹配 | P2（特定场景） |
-| **GraphSAGE/Node2vec** | ❌ 未实现 | - | 社交推荐、关注页 | P2（特定场景） |
+| **YouTube DNN** | ✅ 已实现 | `recall/youtube_dnn_recall.go` + Python | 视频/内容流召回 | P2（特定场景） |
+| **DSSM** | ✅ 已实现 | `recall/dssm_recall.go` + Python | 搜索推荐、语义匹配 | P2（特定场景） |
+| **GraphSAGE/Node2vec** | ✅ 已实现 | `recall/graph_recall.go` + Python | 社交推荐、关注页 | P2（特定场景） |
 
-**召回覆盖度**：**85%**（11/13 核心模型已实现）
+**召回覆盖度**：**100%**（13/13 核心模型已实现）
 
 ### 1.2 排序阶段（Rank）
 
@@ -49,9 +49,9 @@
 |------|------|----------|----------|--------|
 | **Diversity** | ✅ 已实现 | `rerank/diversity.go` | 多样性去重、作者打散 | P0（必选） |
 | **TopN** | ✅ 已实现 | `rerank/topn.go` | Top-N 截断 | P0（必选） |
-| **MMoE** | ❌ 未实现 | - | 多目标优化（CTR+时长+GMV） | P1（多目标场景） |
+| **MMoE** | ✅ 已实现 | `rerank/mmoe_node.go` + Python | 多目标优化（CTR+时长+GMV） | P1（多目标场景） |
 
-**重排覆盖度**：**67%**（2/3 核心模型已实现）
+**重排覆盖度**：**100%**（3/3 核心模型已实现）
 
 ---
 
@@ -88,14 +88,14 @@
 
 | 阶段 | 模型 | 当前状态 | 说明 |
 |------|------|----------|------|
-| 召回 | YouTube DNN | ❌ | 视频/内容流平台（如 YouTube、抖音） |
-| 召回 | DSSM | ❌ | 搜索推荐、Query-Doc 匹配 |
-| 召回 | GraphSAGE/Node2vec | ❌ | 社交推荐、关注页 |
+| 召回 | YouTube DNN | ✅ | 视频/内容流平台（如 YouTube、抖音） |
+| 召回 | DSSM | ✅ | 搜索推荐、Query-Doc 匹配 |
+| 召回 | GraphSAGE/Node2vec | ✅ | 社交推荐、关注页 |
 | 排序 | DIEN | ❌ | DIN 增强版（动态兴趣演化） |
 | 排序 | xDeepFM | ❌ | DeepFM 增强版（CIN 网络） |
-| 重排 | MMoE | ❌ | 多目标优化（CTR + 时长 + GMV） |
+| 重排 | MMoE | ✅ | 多目标优化（CTR + 时长 + GMV） |
 
-**特定场景模型覆盖度**：**0%**（0/6 未实现）
+**特定场景模型覆盖度**：**67%**（4/6 已实现）
 
 ---
 
@@ -105,8 +105,8 @@
 
 - **核心模型**：✅ **100%**（7/7）
 - **进阶模型**：✅ **100%**（6/6）
-- **特定场景模型**：❌ **0%**（0/6）
-- **总体覆盖度**：**76%**（13/19）
+- **特定场景模型**：✅ **67%**（4/6）
+- **总体覆盖度**：**89%**（17/19）
 
 ### 3.2 是否够用？
 
@@ -123,70 +123,42 @@
 - 视频推荐（B站、YouTube 基础版）
 - 广告推荐（CTR 预估）
 
-#### ⚠️ **对于特定场景：部分缺失**
+#### ✅ **对于特定场景：已覆盖**
 
-以下场景需要补充模型：
+以下场景已实现：
 
-1. **视频/内容流平台**（如 YouTube、抖音）
-   - 缺失：YouTube DNN
-   - 替代方案：可用双塔模型 + 用户历史序列
-
-2. **搜索推荐**（Query-Doc 匹配）
-   - 缺失：DSSM
-   - 替代方案：可用 BERT 召回
-
-3. **社交推荐**（关注页、好友推荐）
-   - 缺失：GraphSAGE/Node2vec
-   - 替代方案：可用协同过滤 + 双塔模型
-
-4. **多目标优化**（CTR + 时长 + GMV）
-   - 缺失：MMoE
-   - 替代方案：可用多个单目标模型加权融合
+1. **视频/内容流平台**（如 YouTube、抖音）：✅ YouTube DNN
+2. **搜索推荐**（Query-Doc 匹配）：✅ DSSM
+3. **社交推荐**（关注页、好友推荐）：✅ GraphSAGE/Node2vec
+4. **多目标优化**（CTR + 时长 + GMV）：✅ MMoE
 
 ---
 
-## 四、建议补充的模型（按优先级）
+## 四、新增模型使用说明
 
-### P1：MMoE（多目标学习）
+### MMoE（多目标重排）
 
-**原因**：
-- 工业界常见需求：需要同时优化 CTR、时长、GMV 等多个指标
-- 当前 Diversity 只能做多样性，无法做多目标优化
-- 适用场景广：电商、视频、广告等
+- **训练**：`python train/train_mmoe.py [--data-path data/mmoe_train_data.csv] [--epochs 50]`
+- **服务**：`uvicorn service.mmoe_server:app --host 0.0.0.0 --port 8081`
+- **Golang**：`rerank.MMoENode{ Endpoint: "http://localhost:8081/predict", WeightCTR: 1, WeightWatchTime: 0.01, WeightGMV: 1e-6 }`
 
-**实现方式**：
-- Python 训练（PyTorch）
-- Golang RPC 调用（与 DeepFM 类似）
+### YouTube DNN（视频/内容流召回）
 
-### P2：YouTube DNN
+- **训练**：`python train/train_youtube_dnn.py [--data data/youtube_dnn_data.csv] [--epochs 20]`
+- **服务**：`uvicorn service.youtube_dnn_server:app --host 0.0.0.0 --port 8082`
+- **Golang**：`recall.YouTubeDNNRecall{ UserEmbeddingURL: "http://localhost:8082/user_embedding", VectorService, TopK, Collection }`；需将 Item Embeddings 导入 VectorService。
 
-**原因**：
-- 视频/内容流平台常用
-- 将推荐建模为分类问题，适合大规模物品库
+### DSSM（Query-Doc 语义召回）
 
-**实现方式**：
-- Python 训练（PyTorch）
-- Golang RPC 调用或 ONNX Runtime
+- **训练**：`python train/train_dssm.py [--data data/dssm_data.csv] [--epochs 20]`
+- **服务**：`uvicorn service.dssm_server:app --host 0.0.0.0 --port 8083`
+- **Golang**：`recall.DSSMRecall{ QueryEmbeddingURL: "http://localhost:8083/query_embedding", VectorService, TopK, Collection }`；`rctx.Params["query_features"]` 提供 query 特征。
 
-### P2：DSSM
+### GraphRecall（Node2vec 社交/关注页召回）
 
-**原因**：
-- 搜索推荐场景必需
-- 语义匹配能力强
-
-**实现方式**：
-- Python 训练（PyTorch）
-- Golang RPC 调用
-
-### P3：GraphSAGE/Node2vec
-
-**原因**：
-- 社交推荐特定场景
-- 需要构建和维护图结构，复杂度高
-
-**实现方式**：
-- Python 训练（PyTorch Geometric）
-- Golang 通过 RPC 调用或预计算 Embedding
+- **训练**：`python train/train_node2vec.py [--edges data/graph_edges.csv] [--dim 64] [--epochs 10]`
+- **服务**：`uvicorn service.graph_recall_server:app --host 0.0.0.0 --port 8084`
+- **Golang**：`recall.GraphRecall{ Endpoint: "http://localhost:8084/recall", TopK: 20 }`；按 `user_id` 召回相似用户。
 
 ---
 
@@ -209,17 +181,17 @@
 - 视频推荐（基础版）✅
 - 广告推荐 ✅
 
-**对于特定场景：⚠️ 部分缺失**
+**对于特定场景：✅ 已覆盖**
 
-- 视频流平台（YouTube DNN）
-- 搜索推荐（DSSM）
-- 社交推荐（GraphSAGE）
-- 多目标优化（MMoE）
+- 视频流平台（YouTube DNN）✅
+- 搜索推荐（DSSM）✅
+- 社交推荐（GraphRecall / Node2vec）✅
+- 多目标优化（MMoE）✅
 
 ### 建议
 
-1. **当前阶段**：✅ **够用**，可支撑大部分工业级推荐系统
-2. **未来扩展**：按业务需求补充 P1/P2 模型（MMoE、YouTube DNN、DSSM）
+1. **当前阶段**：✅ **够用**，MMoE、YouTube DNN、DSSM、Node2vec 均已实现
+2. **未来扩展**：可按业务需求补充 DIEN、xDeepFM 等增强模型
 3. **架构优势**：通过 RPC 接口可快速接入新模型，无需修改核心代码
 
 ---
@@ -232,4 +204,4 @@
 > **量大快跑选双塔（召回）**  
 > **不知道选啥选 DeepFM（精排）**  
 > **历史行为多用 DIN（提升精准度）**  
-> **又要点击又要买选 MMoE（重排）** ⚠️ 待实现
+> **又要点击又要买选 MMoE（重排）** ✅ 已实现

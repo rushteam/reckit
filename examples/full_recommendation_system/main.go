@@ -559,7 +559,8 @@ func main() {
 		// 使用特征服务（推荐）
 		FeatureService: featureService,
 		
-		// 自定义提取器（作为补充）
+		// 自定义提取器（作为补充，使用新的 FeatureExtractor 接口）
+		// 注意：EnrichNode 仍支持函数类型（向后兼容），但推荐使用 FeatureExtractor
 		UserFeatureExtractor: func(rctx *core.RecommendContext) map[string]float64 {
 			user := rctx.GetUserProfile()
 			if user == nil {

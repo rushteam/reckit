@@ -5,6 +5,10 @@
 **支持的模型**：
 - **XGBoost**：树模型，训练快、推理快（`train/train_xgb.py` + `service/server.py`）
 - **DeepFM**：PyTorch 深度学习模型，自动学习特征交互（`train/train_deepfm.py` + `service/deepfm_server.py`）
+- **MMoE**：多目标重排（CTR / 时长 / GMV）（`train/train_mmoe.py` + `service/mmoe_server.py`）
+- **YouTube DNN**：视频/内容流召回用户向量（`train/train_youtube_dnn.py` + `service/youtube_dnn_server.py`）
+- **DSSM**：Query-Doc 语义召回（`train/train_dssm.py` + `service/dssm_server.py`）
+- **Node2Vec**：图嵌入、社交/关注页召回（`train/train_node2vec.py` + `service/graph_recall_server.py`）
 - **Word2Vec / Item2Vec**：文本/序列向量化（`train/train_item2vec.py`）
 
 ## 目录结构
@@ -81,6 +85,24 @@ python train/train_deepfm.py --version v1.0.0 --epochs 100 --batch-size 64
 ```
 
 **详细说明**：见 `train/DEEPFM_README.md`
+
+#### MMoE / YouTube DNN / DSSM / Node2Vec
+
+```bash
+# MMoE 多目标（CTR、watch_time、gmv）
+python train/train_mmoe.py [--data-path data/mmoe_train_data.csv] [--epochs 50]
+
+# YouTube DNN（用户特征 + 历史 -> 用户向量）
+python train/train_youtube_dnn.py [--data data/youtube_dnn_data.csv] [--epochs 20]
+
+# DSSM（Query-Doc 语义匹配）
+python train/train_dssm.py [--data data/dssm_data.csv] [--epochs 20]
+
+# Node2Vec（边表 -> 节点嵌入，社交/关注页召回）
+python train/train_node2vec.py [--edges data/graph_edges.csv] [--dim 64] [--epochs 10]
+```
+
+对应 Golang：`rerank.MMoENode`、`recall.YouTubeDNNRecall`、`recall.DSSMRecall`、`recall.GraphRecall`。详见 `docs/MODEL_COVERAGE_ANALYSIS.md`。
 
 #### 数据源：文件 / OSS Parquet / MySQL 协议
 

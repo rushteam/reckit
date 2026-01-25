@@ -13,9 +13,9 @@ import (
 // TwoTowerRecall 是基于双塔模型的召回源实现。
 //
 // 核心流程：
-//   1. 获取用户特征（通过 FeatureService）
-//   2. 运行用户塔推理（通过 MLService，如 ONNX Runtime、TorchServe）
-//   3. 向量检索（通过 ANNService，如 Milvus、Faiss）
+//  1. 获取用户特征（通过 FeatureService）
+//  2. 运行用户塔推理（通过 MLService，如 ONNX Runtime、TorchServe）
+//  3. 向量检索（通过 ANNService，如 Milvus、Faiss）
 //
 // 设计原则：
 //   - 高内聚：TwoTowerRecall 只负责协调流程，具体逻辑在各服务中
@@ -73,8 +73,9 @@ type TwoTowerRecall struct {
 	Metric string
 
 	// UserFeatureExtractor 自定义用户特征提取器（可选）
-	// 如果为 nil，则使用 FeatureService.GetUserFeatures
-	UserFeatureExtractor func(ctx context.Context, rctx *core.RecommendContext) (map[string]float64, error)
+	// 如果为 nil，则使用 FeatureService.GetUserFeatures 或默认抽取逻辑
+	// 支持传入 feature.FeatureExtractor 接口或函数类型（通过适配器）
+	UserFeatureExtractor feature.FeatureExtractor
 }
 
 // NewTwoTowerRecall 创建一个新的双塔召回源。
@@ -85,12 +86,12 @@ func NewTwoTowerRecall(
 	opts ...TwoTowerRecallOption,
 ) *TwoTowerRecall {
 	recall := &TwoTowerRecall{
-		FeatureService:    featureService,
-		UserTowerService:  userTowerService,
-		VectorService:     vectorService,
-		TopK:              100,
-		Collection:        "item_embeddings",
-		Metric:            "inner_product", // 默认使用内积
+		FeatureService:   featureService,
+		UserTowerService: userTowerService,
+		VectorService:    vectorService,
+		TopK:             100,
+		Collection:       "item_embeddings",
+		Metric:           "inner_product", // 默认使用内积
 	}
 
 	for _, opt := range opts {
@@ -128,9 +129,10 @@ func WithTwoTowerMetric(metric string) TwoTowerRecallOption {
 }
 
 // WithTwoTowerUserFeatureExtractor 设置自定义用户特征提取器
-func WithTwoTowerUserFeatureExtractor(extractor func(ctx context.Context, rctx *core.RecommendContext) (map[string]float64, error)) TwoTowerRecallOption {
+// 支持传入 feature.FeatureExtractor 接口或函数类型（自动包装为 CustomFeatureExtractor）
+func WithTwoTowerUserFeatureExtractor(extractor interface{}) TwoTowerRecallOption {
 	return func(r *TwoTowerRecall) {
-		r.UserFeatureExtractor = extractor
+		r.UserFeatureExtractor = feature.AdaptFeatureExtractor(extractor, "two_tower_custom")
 	}
 }
 
@@ -174,7 +176,7 @@ func (r *TwoTowerRecall) getUserFeatures(
 ) (map[string]float64, error) {
 	// 使用自定义提取器（如果设置）
 	if r.UserFeatureExtractor != nil {
-		return r.UserFeatureExtractor(ctx, rctx)
+		return r.UserFeatureExtractor.Extract(ctx, rctx)
 	}
 
 	// 使用 FeatureService（如果设置）
@@ -182,51 +184,13 @@ func (r *TwoTowerRecall) getUserFeatures(
 		return r.FeatureService.GetUserFeatures(ctx, rctx.UserID)
 	}
 
-	// 默认：从 RecommendContext 提取
-	return r.extractUserFeaturesFromContext(rctx), nil
+	// 默认：使用 DefaultFeatureExtractor
+	defaultExtractor := feature.NewDefaultFeatureExtractor(
+		feature.WithFeatureService(r.FeatureService),
+	)
+	return defaultExtractor.Extract(ctx, rctx)
 }
 
-// extractUserFeaturesFromContext 从 RecommendContext 提取用户特征（默认实现）
-func (r *TwoTowerRecall) extractUserFeaturesFromContext(rctx *core.RecommendContext) map[string]float64 {
-	features := make(map[string]float64)
-
-	if rctx == nil {
-		return features
-	}
-
-	// 从 UserProfile 提取
-	if rctx.User != nil {
-		features["age"] = float64(rctx.User.Age)
-		if rctx.User.Gender == "male" {
-			features["gender"] = 1.0
-		} else {
-			features["gender"] = 0.0
-		}
-		for tag, score := range rctx.User.Interests {
-			features["interest_"+tag] = score
-		}
-	}
-
-	// 从 UserProfile map 提取
-	if rctx.UserProfile != nil {
-		for k, v := range rctx.UserProfile {
-			if fv, ok := conv.ToFloat64(v); ok {
-				features[k] = fv
-			}
-		}
-	}
-
-	// 从 Realtime 提取
-	if rctx.Realtime != nil {
-		for k, v := range rctx.Realtime {
-			if fv, ok := conv.ToFloat64(v); ok {
-				features["realtime_"+k] = fv
-			}
-		}
-	}
-
-	return features
-}
 
 // runUserTower 运行用户塔推理，返回 User Embedding
 func (r *TwoTowerRecall) runUserTower(

@@ -2,6 +2,41 @@
 
 特征服务提供了统一的特征获取接口，支持用户特征、物品特征、实时特征的获取，采用高度抽象、高内聚低耦合的设计。
 
+## 特征抽取器（FeatureExtractor）
+
+作为推荐脚手架，不同模型可能需要不同的特征抽取逻辑。Reckit 提供了统一的 `FeatureExtractor` 接口，支持灵活自定义特征抽取策略。
+
+**详细文档**：见 [特征抽取器使用指南](./EXTRACTOR_GUIDE.md)
+
+**快速示例**：
+
+```go
+import "github.com/rushteam/reckit/feature"
+
+// 默认抽取器（带前缀）
+extractor := feature.NewDefaultFeatureExtractor(
+    feature.WithFeatureService(featureService),
+    feature.WithFieldPrefix("user_"),
+)
+
+// 自定义抽取器
+customExtractor := feature.NewCustomFeatureExtractor(
+    "my_extractor",
+    func(ctx context.Context, rctx *core.RecommendContext) (map[string]float64, error) {
+        // 自定义逻辑
+        return features, nil
+    },
+)
+
+// 在召回源中使用
+twoTowerRecall := recall.NewTwoTowerRecall(
+    featureService,
+    userTowerService,
+    vectorService,
+    recall.WithTwoTowerUserFeatureExtractor(extractor),
+)
+```
+
 ## 设计模式
 
 ### 1. 策略模式（Strategy Pattern）

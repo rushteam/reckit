@@ -327,7 +327,47 @@ u2i := &recall.U2IRecall{
 }
 ```
 
-### 3. 自定义策略
+### 3. 自定义特征抽取器
+
+```go
+import "github.com/rushteam/reckit/feature"
+
+// 方式 1：使用默认抽取器（带前缀）
+extractor := feature.NewDefaultFeatureExtractor(
+    feature.WithFeatureService(featureService),
+    feature.WithFieldPrefix("user_"),
+)
+
+// 方式 2：完全自定义
+customExtractor := feature.NewCustomFeatureExtractor(
+    "my_extractor",
+    func(ctx context.Context, rctx *core.RecommendContext) (map[string]float64, error) {
+        features := make(map[string]float64)
+        // 自定义逻辑：从多个源组合特征
+        if rctx.User != nil {
+            features["age"] = float64(rctx.User.Age)
+        }
+        // 从外部服务获取
+        externalFeatures, _ := externalService.GetFeatures(ctx, rctx.UserID)
+        for k, v := range externalFeatures {
+            features["external_"+k] = v
+        }
+        return features, nil
+    },
+)
+
+// 在召回源中使用
+twoTowerRecall := recall.NewTwoTowerRecall(
+    featureService,
+    userTowerService,
+    vectorService,
+    recall.WithTwoTowerUserFeatureExtractor(extractor), // 或 customExtractor
+)
+```
+
+**详细文档**：见 `feature/EXTRACTOR_GUIDE.md`
+
+### 4. 自定义策略
 
 ```go
 // 自定义合并策略
@@ -342,7 +382,7 @@ fanout := &recall.Fanout{
 }
 ```
 
-### 4. 动态注册 Node
+### 5. 动态注册 Node
 
 ```go
 factory := pipeline.NewNodeFactory()
@@ -636,6 +676,13 @@ bertRecall := &recall.BERTRecall{
     BatchSize: 32,          // 批量编码大小
 }
 ```
+
+### MMoE / YouTube DNN / DSSM / GraphRecall
+
+- **MMoE**：多目标重排（CTR + 时长 + GMV）。`python train/train_mmoe.py` → `uvicorn service.mmoe_server:app --port 8081`；Golang `rerank.MMoENode{ Endpoint: "http://localhost:8081/predict", WeightCTR, WeightWatchTime, WeightGMV }`。
+- **YouTube DNN**：视频/内容流召回。`python train/train_youtube_dnn.py` → `uvicorn service.youtube_dnn_server:app --port 8082`；Golang `recall.YouTubeDNNRecall{ UserEmbeddingURL, VectorService, TopK, Collection }`。
+- **DSSM**：Query-Doc 语义召回。`python train/train_dssm.py` → `uvicorn service.dssm_server:app --port 8083`；Golang `recall.DSSMRecall{ QueryEmbeddingURL, VectorService, TopK, Collection }`；query 特征来自 `rctx.Params["query_features"]`。
+- **GraphRecall**：Node2vec 社交/关注页召回。`python train/train_node2vec.py` → `uvicorn service.graph_recall_server:app --port 8084`；Golang `recall.GraphRecall{ Endpoint: "http://localhost:8084/recall", TopK }`。
 
 ### 加载特征元数据
 
