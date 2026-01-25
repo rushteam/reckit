@@ -108,6 +108,37 @@ go run ./examples/deepfm
 - 适合 CTR 预估、广告打分场景
 - 无需手动构造交叉特征
 
+### 8. full_recommendation_system - 完整推荐系统示例 ⭐
+
+**最完整的推荐系统示例**，展示工业级推荐系统的完整流程：
+
+- ✅ **多路召回**：UserHistory（7天点击历史）+ I2I（协同过滤）+ Content（category匹配）+ Hot（热门兜底）
+- ✅ **过滤策略**：黑名单 + 用户拉黑 + 已曝光（7天窗口）
+- ✅ **特征工程**：用户特征（age, gender, region）+ 物品特征（category, price, ctr, cvr）+ 交叉特征
+- ✅ **排序模型**：RPC XGBoost（或本地 LR 备用）
+- ✅ **重排策略**：多样性重排（按 category）
+
+**行为数据时间窗口**：
+- 浏览 (view): 1-3 天
+- 点击 (click): 7-30 天（本示例使用 7 天）
+- 点赞 (like): 30-90 天
+- 曝光过滤: 7 天
+
+运行：
+```bash
+# 方式 1: 直接运行（使用本地 LR）
+go run ./examples/full_recommendation_system
+
+# 方式 2: 使用 RPC XGBoost（需要先启动 Python 服务）
+cd python
+python train/train_xgb.py
+uvicorn service.server:app --host 0.0.0.0 --port 8080
+# 在另一个终端
+go run ./examples/full_recommendation_system
+```
+
+**详细说明**：见 `examples/full_recommendation_system/README.md`
+
 ## 如何运行所有示例
 
 ```bash
@@ -131,4 +162,7 @@ go run ./examples/rpc_xgb
 
 # Python DeepFM 模型调用（需要先启动 Python 服务）
 go run ./examples/deepfm
+
+# 完整推荐系统示例（推荐！）
+go run ./examples/full_recommendation_system
 ```
