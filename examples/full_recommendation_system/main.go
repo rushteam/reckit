@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
-	"strconv"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/rushteam/reckit/core"
@@ -47,11 +50,10 @@ func (m *MockUserHistoryStore) GetUserHistory(ctx context.Context, userID string
 }
 
 func (m *MockUserHistoryStore) GetSimilarItems(ctx context.Context, itemIDs []string, topK int) ([]string, error) {
-	// 简单的相似物品扩展：返回相关物品
 	similar := []string{}
 	for _, itemID := range itemIDs {
-		// 模拟：item_1 -> item_10, item_2 -> item_20
-		if id, err := strconv.Atoi(itemID); err == nil {
+		var id int
+		if _, err := fmt.Sscanf(itemID, "item_%d", &id); err == nil {
 			similar = append(similar, fmt.Sprintf("item_%d", id*10))
 		}
 		if len(similar) >= topK {
@@ -123,6 +125,97 @@ func (m *MockContentStore) GetAllItems(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+// MockWord2VecStore 实现 Word2VecStore 接口（物品 name/desc 文本、用户序列）
+type MockWord2VecStore struct {
+	itemTexts map[string]string   // itemID -> 文本（name + desc）
+	itemTags  map[string][]string // itemID -> 标签
+	allItems  []string
+	sequence  func(userID string) []string // 用户行为序列
+}
+
+func NewMockWord2VecStore(itemTexts map[string]string, itemTags map[string][]string, allItems []string, sequence func(userID string) []string) *MockWord2VecStore {
+	if itemTexts == nil {
+		itemTexts = make(map[string]string)
+	}
+	if itemTags == nil {
+		itemTags = make(map[string][]string)
+	}
+	return &MockWord2VecStore{
+		itemTexts: itemTexts,
+		itemTags:  itemTags,
+		allItems:  allItems,
+		sequence:  sequence,
+	}
+}
+
+func (s *MockWord2VecStore) GetItemText(_ context.Context, itemID string) (string, error) {
+	return s.itemTexts[itemID], nil
+}
+
+func (s *MockWord2VecStore) GetItemTags(_ context.Context, itemID string) ([]string, error) {
+	return s.itemTags[itemID], nil
+}
+
+func (s *MockWord2VecStore) GetUserSequence(_ context.Context, userID string, maxLen int) ([]string, error) {
+	if s.sequence == nil {
+		return nil, nil
+	}
+	seq := s.sequence(userID)
+	if len(seq) > maxLen {
+		seq = seq[len(seq)-maxLen:]
+	}
+	return seq, nil
+}
+
+func (s *MockWord2VecStore) GetAllItems(_ context.Context) ([]string, error) {
+	return s.allItems, nil
+}
+
+// loadWord2VecModel 加载 Word2Vec 模型，优先 JSON，否则内联；失败返回 nil（跳过 Word2Vec 召回）
+func loadWord2VecModel() *model.Word2VecModel {
+	candidates := []string{
+		filepath.Join("examples", "word2vec", "item2vec_vectors.json"),
+		filepath.Join("python", "model", "item2vec_vectors.json"),
+	}
+	for _, p := range candidates {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		var raw map[string]interface{}
+		if err := json.Unmarshal(data, &raw); err != nil {
+			continue
+		}
+		m, err := model.LoadWord2VecFromMap(raw)
+		if err == nil && m != nil {
+			return m
+		}
+	}
+	return embedWord2VecModel()
+}
+
+func embedWord2VecModel() *model.Word2VecModel {
+	wordVectors := map[string][]float64{
+		"electronics": {0.1, 0.2, 0.3, 0.4},
+		"smartphone":  {0.2, 0.3, 0.4, 0.5},
+		"tech":        {0.15, 0.25, 0.35, 0.45},
+		"game":        {0.2, 0.25, 0.3, 0.35},
+		"sports":      {0.18, 0.22, 0.28, 0.32},
+		"item_1":      {0.1, 0.2, 0.3, 0.4},
+		"item_2":      {0.2, 0.3, 0.4, 0.5},
+		"item_3":      {0.3, 0.4, 0.5, 0.6},
+		"item_4":      {0.4, 0.5, 0.6, 0.7},
+		"item_5":      {0.5, 0.6, 0.7, 0.8},
+		"item_6":      {0.6, 0.7, 0.8, 0.9},
+		"item_10":     {0.15, 0.25, 0.35, 0.45},
+		"item_11":     {0.25, 0.35, 0.45, 0.55},
+		"item_12":     {0.35, 0.45, 0.55, 0.65},
+		"item_13":     {0.45, 0.55, 0.65, 0.75},
+		"item_14":     {0.55, 0.65, 0.75, 0.85},
+	}
+	return model.NewWord2VecModel(wordVectors, 4)
 }
 
 // ========== 辅助函数 ==========
@@ -321,6 +414,10 @@ func (n *enrichItemFeatures) Process(
 }
 
 func main() {
+	rankModel := flag.String("rank", "lr", "排序模型: lr | xgb | deepfm")
+	enableWord2Vec := flag.Bool("word2vec", true, "是否启用 Word2Vec 召回（有模型时）")
+	flag.Parse()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -352,53 +449,97 @@ func main() {
 	featureService := feature.NewBaseFeatureService(featureProvider)
 
 	// ========== 4. 构建召回策略（多路并发） ==========
+	sources := []recall.Source{
+		// 1. 用户历史召回（点击，7 天，最高优先级）
+		&recall.UserHistory{
+			Store:               userHistoryStore,
+			KeyPrefix:           "user:history",
+			BehaviorType:        "click",
+			TimeWindow:          7 * 24 * 3600, // 7 天
+			TopK:                50,
+			EnableSimilarExtend: true,
+		},
+		// 2. I2I 协同过滤召回
+		&recall.I2IRecall{
+			Store:                cfStore,
+			TopKSimilarItems:     10,
+			TopKItems:            30,
+			SimilarityCalculator: &recall.CosineSimilarity{},
+			Config:               &core.DefaultRecallConfig{},
+		},
+		// 3. 内容召回（基于 category）
+		&recall.ContentRecall{
+			Store:            contentStore,
+			TopK:             20,
+			SimilarityMetric: "cosine",
+			UserPreferencesExtractor: func(rctx *core.RecommendContext) map[string]float64 {
+				if rctx.User != nil {
+					return rctx.User.Interests // category -> weight
+				}
+				return nil
+			},
+		},
+	}
+
+	// 4. 可选：Word2Vec 召回（物品文本/序列相似度）
+	w2vModel := loadWord2VecModel()
+	priorityWord2Vec := 4
+	if *enableWord2Vec && w2vModel != nil {
+		w2vStore := NewMockWord2VecStore(
+			map[string]string{
+				"item_1": "electronics smartphone tech",
+				"item_2": "game smartphone mobile",
+				"item_3": "electronics laptop tech",
+				"item_4": "sports game mobile",
+				"item_5": "tech computer laptop",
+				"item_6": "sports electronics",
+				"item_10": "electronics smartphone",
+				"item_11": "game sports",
+				"item_12": "tech laptop",
+				"item_13": "mobile device",
+				"item_14": "electronics tech",
+			},
+			nil,
+			[]string{"item_1", "item_2", "item_3", "item_4", "item_5", "item_6", "item_10", "item_11", "item_12", "item_13", "item_14"},
+			func(userID string) []string {
+				if userID == "user_123" {
+					return []string{"item_1", "item_2"}
+				}
+				return nil
+			},
+		)
+		sources = append(sources, &recall.Word2VecRecall{
+			Model:     w2vModel,
+			Store:     w2vStore,
+			TopK:      20,
+			Mode:      "sequence", // sequence=Item2Vec 序列；text=文本相似
+			TextField: "title",
+		})
+		fmt.Println("✅ Word2Vec 召回已启用（sequence 模式）")
+	} else if *enableWord2Vec {
+		fmt.Println("⚠️ Word2Vec 未启用：未找到模型（可放置 item2vec_vectors.json 后重试）")
+	}
+	priorityHot := priorityWord2Vec + 1
+
+	// 5. 热门召回（兜底）
+	sources = append(sources, &recall.Hot{
+		Store: memStore,
+		Key:   "hot:feed",
+	})
+
+	weights := map[string]int{
+		"recall.user_history": 1,
+		"recall.i2i":          2,
+		"recall.content":      3,
+		"recall.word2vec":     priorityWord2Vec,
+		"recall.hot":          priorityHot,
+	}
+
 	fanout := &recall.Fanout{
-		Sources: []recall.Source{
-			// 1. 用户历史召回（点击，7 天，最高优先级）
-			&recall.UserHistory{
-				Store:              userHistoryStore,
-				KeyPrefix:          "user:history",
-				BehaviorType:       "click",
-				TimeWindow:         7 * 24 * 3600, // 7 天
-				TopK:               50,
-				EnableSimilarExtend: true,
-			},
-			// 2. I2I 协同过滤召回
-			&recall.I2IRecall{
-				Store:                cfStore,
-				TopKSimilarItems:     10,
-				TopKItems:            30,
-				SimilarityCalculator: &recall.CosineSimilarity{},
-				Config:               &core.DefaultRecallConfig{},
-			},
-			// 3. 内容召回（基于 category）
-			&recall.ContentRecall{
-				Store:            contentStore,
-				TopK:             20,
-				SimilarityMetric: "cosine",
-				UserPreferencesExtractor: func(rctx *core.RecommendContext) map[string]float64 {
-					if rctx.User != nil {
-						return rctx.User.Interests // category -> weight
-					}
-					return nil
-				},
-			},
-			// 4. 热门召回（兜底）
-			&recall.Hot{
-				Store: memStore,
-				Key:   "hot:feed",
-			},
-		},
-		Dedup: true,
-		MergeStrategy: &recall.PriorityMergeStrategy{
-			PriorityWeights: map[string]int{
-				"recall.user_history": 1, // 最高优先级
-				"recall.i2i":          2,
-				"recall.content":      3,
-				"recall.hot":          4, // 最低优先级（兜底）
-			},
-		},
-		ErrorHandler: &recall.IgnoreErrorHandler{},
+		Sources:       sources,
+		Dedup:         true,
+		MergeStrategy: &recall.PriorityMergeStrategy{PriorityWeights: weights},
+		ErrorHandler:  &recall.IgnoreErrorHandler{},
 	}
 
 	// ========== 5. 构建过滤策略 ==========
@@ -470,31 +611,37 @@ func main() {
 	}
 
 	// ========== 7. 构建排序节点 ==========
-	// 方案 1: RPC XGBoost（推荐）
-	rpcModel := model.NewRPCModel(
-		"xgboost",
-		"http://localhost:8080/predict", // 实际使用时替换为真实服务地址
-		5*time.Second,
-	)
-	rankNode := &rank.RPCNode{
-		Model:              rpcModel,
-		StripFeaturePrefix: false, // 特征名带前缀，与训练一致
+	// 支持多种排序模型：lr（默认）| xgb | deepfm
+	// - lr：本地 LR，无需 Python 服务，直接运行
+	// - xgb：RPC 调用 XGBoost 服务（需先启动 python/service/server.py）
+	// - deepfm：RPC 调用 DeepFM 服务（需先启动 python/service/deepfm_server.py）
+	var rankNode pipeline.Node
+	switch strings.ToLower(*rankModel) {
+	case "xgb", "xgboost":
+		rpcModel := model.NewRPCModel("xgboost", "http://localhost:8080/predict", 5*time.Second)
+		rankNode = &rank.RPCNode{Model: rpcModel, StripFeaturePrefix: false}
+		fmt.Printf("✅ 排序模型: XGBoost (RPC http://localhost:8080)\n")
+	case "deepfm":
+		rpcModel := model.NewRPCModel("deepfm", "http://localhost:8080/predict", 10*time.Second)
+		rankNode = &rank.RPCNode{Model: rpcModel, StripFeaturePrefix: false}
+		fmt.Printf("✅ 排序模型: DeepFM (RPC http://localhost:8080)\n")
+	default:
+		lrModel := &model.LRModel{
+			Bias: 0.1,
+			Weights: map[string]float64{
+				"user_age":              0.5,
+				"user_gender":           0.3,
+				"item_category":         1.2,
+				"item_ctr":              1.5,
+				"item_cvr":              0.8,
+				"cross_age_x_category":  0.2,
+				"cross_gender_x_price":  0.1,
+				"cross_region_x_category": 0.1,
+			},
+		}
+		rankNode = &rank.LRNode{Model: lrModel}
+		fmt.Printf("✅ 排序模型: LR (本地)\n")
 	}
-
-	// 方案 2: 本地 LR（用于演示，如果 RPC 服务不可用）
-	// 如果 RPC 服务不可用，可以取消注释使用本地 LR：
-	// lrModel := &model.LRModel{
-	//     Bias: 0.1,
-	//     Weights: map[string]float64{
-	//         "user_age":           0.5,
-	//         "user_gender":        0.3,
-	//         "item_category":      1.2,
-	//         "item_ctr":           1.5,
-	//         "item_cvr":           0.8,
-	//         "cross_age_x_category": 0.2,
-	//     },
-	// }
-	// rankNode := &rank.LRNode{Model: lrModel}
 
 	// ========== 8. 构建 Pipeline ==========
 	p := &pipeline.Pipeline{

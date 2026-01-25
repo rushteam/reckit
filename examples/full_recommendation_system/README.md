@@ -2,10 +2,10 @@
 
 本示例展示了一个**完整的推荐系统 Pipeline**，涵盖：
 
-- ✅ **多路召回**：UserHistory + I2I + Content + Hot
+- ✅ **多路召回**：UserHistory + I2I + Content + **Word2Vec（可选）** + Hot
 - ✅ **过滤策略**：黑名单 + 用户拉黑 + 已曝光
 - ✅ **特征工程**：用户特征 + 物品特征 + 交叉特征
-- ✅ **排序模型**：RPC XGBoost（或本地 LR）
+- ✅ **排序模型**：**LR | XGBoost | DeepFM**（多选一，默认 LR）
 - ✅ **重排策略**：多样性重排
 
 ## 功能说明
@@ -17,7 +17,8 @@
 | **UserHistory** | 7 天 | 50 | 1（最高） | 基于用户最近点击历史 |
 | **I2IRecall** | - | 30 | 2 | 基于物品相似度（协同过滤） |
 | **ContentRecall** | - | 20 | 3 | 基于 category 匹配 |
-| **Hot** | - | 20 | 4（最低） | 热门物品兜底 |
+| **Word2Vec** | - | 20 | 4 | 可选；Item2Vec 序列 / 文本相似度 |
+| **Hot** | - | 20 | 5（最低） | 热门物品兜底 |
 
 ### 2. 过滤策略
 
@@ -44,10 +45,15 @@
 - `cross_gender_x_price`: 性别 × 价格
 - `cross_region_x_category`: 地区 × 类别
 
-### 4. 排序模型
+### 4. 排序模型（多选一）
 
-- **RPC XGBoost**（推荐）：通过 HTTP 调用 Python XGBoost 服务
-- **本地 LR**（备用）：如果 RPC 服务不可用，使用本地 LR 模型
+| 模型 | 说明 | 依赖 |
+|------|------|------|
+| **LR**（默认） | 本地逻辑回归，无需外部服务 | 无 |
+| **XGBoost** | RPC 调用 Python XGBoost 服务 | `python/train/train_xgb.py` + `service/server.py` |
+| **DeepFM** | RPC 调用 PyTorch DeepFM 服务 | `python/train/train_deepfm.py` + `service/deepfm_server.py` |
+
+通过 `-rank=lr|xgb|deepfm` 切换。
 
 ### 5. 重排策略
 
@@ -55,38 +61,50 @@
 
 ## 运行方式
 
-### 方式 1: 直接运行（使用本地 LR）
+### 命令行参数
 
 ```bash
-cd examples/full_recommendation_system
-go run main.go
+go run ./examples/full_recommendation_system [选项]
 ```
 
-### 方式 2: 使用 RPC XGBoost 服务
+| 参数 | 默认 | 说明 |
+|------|------|------|
+| `-rank` | `lr` | 排序模型：`lr` \| `xgb` \| `deepfm` |
+| `-word2vec` | `true` | 是否启用 Word2Vec 召回（有模型时） |
 
-1. **启动 XGBoost 服务**：
+### 方式 1: 直接运行（默认 LR + Word2Vec）
 
 ```bash
-cd python
-python train/train_xgb.py  # 训练模型
-uvicorn service.server:app --host 0.0.0.0 --port 8080  # 启动服务
+go run ./examples/full_recommendation_system
 ```
 
-2. **修改代码**：确保 `main.go` 中的 RPC 地址正确：
+无需 Python 服务；Word2Vec 使用内联模型（无 JSON 时）。
 
-```go
-rpcModel := model.NewRPCModel(
-    "xgboost",
-    "http://localhost:8080/predict", // 确保地址正确
-    5*time.Second,
-)
-```
-
-3. **运行示例**：
+### 方式 2: 使用 XGBoost 排序
 
 ```bash
-go run main.go
+cd python && python train/train_xgb.py && uvicorn service.server:app --host 0.0.0.0 --port 8080
+# 另一终端
+go run ./examples/full_recommendation_system -rank=xgb
 ```
+
+### 方式 3: 使用 DeepFM 排序
+
+```bash
+cd python && python train/train_deepfm.py && uvicorn service.deepfm_server:app --host 0.0.0.0 --port 8080
+# 另一终端
+go run ./examples/full_recommendation_system -rank=deepfm
+```
+
+### 方式 4: 关闭 Word2Vec 召回
+
+```bash
+go run ./examples/full_recommendation_system -word2vec=false
+```
+
+### 方式 5: 使用 Item2Vec 模型文件（增强 Word2Vec）
+
+将 `python/model/item2vec_vectors.json` 或 `examples/word2vec/item2vec_vectors.json` 放在对应路径，示例会优先加载。
 
 ## 数据流说明
 
@@ -99,6 +117,7 @@ Fanout（多路并发召回）
   ├─ UserHistory (点击历史，7天) → [item_1, item_2, item_3]
   ├─ I2IRecall (物品相似度) → [item_10, item_20, ...]
   ├─ ContentRecall (category匹配) → [item_5, item_6, ...]
+  ├─ Word2Vec (可选，序列/文本相似) → [item_3, item_5, ...]
   └─ Hot (热门) → [item_10, item_11, ...]
   ↓
 合并去重（优先级策略）
@@ -204,24 +223,29 @@ item:features:item_1   -> {"item_category": 1.0, "item_price": 99.0, ...}
 - **UserHistory (click)**: 7 天
 - **曝光过滤**: 7 天
 
+## 何时需要 Word2Vec？
+
+| 场景 | 是否需要 | 说明 |
+|------|----------|------|
+| **仅有 category / 协同过滤** | 可选 | Content + I2I 已覆盖类目与协同，Word2Vec 可作补充 |
+| **物品有 name、desc 等文本** | 建议 | 文本模式：用标题/描述编码，做语义相似召回 |
+| **有用户行为序列（点击流）** | 建议 | 序列模式（Item2Vec）：用序列编码，做「看过类似序列」的 I2I |
+| **冷启动、小众类目** | 建议 | 文本/序列相似可缓解稀疏，弥补 CF 不足 |
+
+**本示例**：默认开启 Word2Vec（`-word2vec=true`），使用 **sequence 模式**（Item2Vec）；若提供 `item2vec_vectors.json` 则优先加载。不需要时可 `-word2vec=false` 关闭。
+
 ## 扩展建议
 
 ### 1. 添加更多召回源
 
+本示例已包含 Word2Vec（可选）。可继续添加 Embedding 等：
+
 ```go
 fanout.Sources = append(fanout.Sources,
-    // Embedding 召回
     &recall.EmbRecall{
         Store:  vectorAdapter,
         TopK:   30,
         Metric: "cosine",
-    },
-    // Word2Vec 召回
-    &recall.Word2VecRecall{
-        Model:  word2vecModel,
-        Store:  word2vecStore,
-        TopK:   20,
-        Mode:   "text",
     },
 )
 ```
@@ -233,17 +257,7 @@ enrichNode.FeatureService = featureService // 已支持实时特征
 // 实时特征从 realtime:features:{userID}:{itemID} 获取
 ```
 
-### 3. 使用 DeepFM 排序
-
-```go
-rpcModel := model.NewRPCModel(
-    "deepfm",
-    "http://deepfm-service:8080/predict",
-    10*time.Second,
-)
-```
-
-### 4. 添加自定义过滤
+### 3. 添加自定义过滤
 
 ```go
 filterNode.Filters = append(filterNode.Filters,
