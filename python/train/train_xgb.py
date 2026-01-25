@@ -260,7 +260,7 @@ def train_model(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="训练 XGBoost 模型")
-    parser.add_argument("--data-source", default="file", choices=("file", "oss", "mysql", "doris"), help="数据源: file | oss | mysql | doris（doris 为 mysql 的向后兼容别名）")
+    parser.add_argument("--data-source", default="file", choices=("file", "oss", "mysql", "doris"), help="数据源: file | oss | mysql | doris")
     parser.add_argument("--data-path", default=None, help="数据路径（file: 本地 CSV；oss: s3:// 或 oss:// Parquet）")
     parser.add_argument("--version", type=str, help="模型版本（可选，默认使用时间戳）")
     parser.add_argument("--normalize", action="store_true", help="是否进行特征标准化")
@@ -270,7 +270,7 @@ if __name__ == "__main__":
     parser.add_argument("--oss-secret-key", default=None, help="OSS/S3 secret key（或 env OSS_SECRET_ACCESS_KEY）")
     parser.add_argument("--oss-region", default=None, help="OSS/S3 region（或 env AWS_REGION）")
     # MySQL 协议（MySQL / Doris / TiDB）
-    parser.add_argument("--doris-query", default=None, help="MySQL 协议 SQL 查询（与 --doris-table 二选一，参数名保留用于向后兼容）")
+    parser.add_argument("--doris-query", default=None, help="MySQL 协议 SQL 查询（与 --doris-table 二选一）")
     parser.add_argument("--doris-table", default=None, help="MySQL 协议表名（与 --doris-query 二选一）")
     parser.add_argument("--doris-database", default="default", help="MySQL 协议库名")
     parser.add_argument("--doris-host", default=None, help="MySQL 协议数据库地址（或 env MYSQL_HOST / DORIS_HOST）")

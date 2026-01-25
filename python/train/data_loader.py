@@ -194,7 +194,7 @@ def get_loader(
     - file:  path 必填，本地 CSV 路径。
     - oss:   path 必填，如 s3://bucket/key.parquet；可选 endpoint_url, access_key, secret_key, region。
     - mysql: query 或 table 必填；可选 database, host, port, user, password（支持 MySQL、Doris、TiDB 等）。
-    - doris: 同 mysql（向后兼容别名）。
+    - doris: 同 mysql。
     """
     s = (source or "").strip().lower()
     if s == "file":
@@ -212,7 +212,7 @@ def get_loader(
             region=region,
             **kwargs,
         )
-    if s == "mysql" or s == "doris":  # doris 作为向后兼容别名
+    if s == "mysql" or s == "doris":  # doris 作为别名
         return MysqlDataLoader(
             query=query,
             table=table,

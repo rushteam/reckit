@@ -89,7 +89,7 @@ type Label struct {
 	Source string `json:"source"` // recall / rank / rerank / rule / postprocess ...
 }
 
-// MergeLabel 用于合并同名 Label，使用默认策略（向后兼容）。
+// MergeLabel 用于合并同名 Label，使用默认策略。
 // 如果需要自定义合并逻辑，请使用 Item.SetLabelMergeStrategy。
 func MergeLabel(existing Label, incoming Label) Label {
 	strategy := &DefaultLabelMergeStrategy{}

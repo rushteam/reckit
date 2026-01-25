@@ -154,8 +154,8 @@ type RecommendContext struct {
     DeviceID string
     Scene    string
     
-    User        *UserProfile        // 强类型用户画像（推荐使用）
-    UserProfile map[string]any     // 向后兼容的 map 形式
+    User        *UserProfile        // 强类型用户画像
+    UserProfile map[string]any     // Map 形式用户画像
     Labels      map[string]utils.Label  // 用户级标签
     Realtime    map[string]any
     Params      map[string]any

@@ -19,7 +19,7 @@ type FeatureExtractor interface {
 
 从 `RecommendContext` 中提取特征，支持：
 - 从 `UserProfile`（强类型）提取：`age`, `gender`, `interest_<tag>`
-- 从 `UserProfileMap` 提取：所有可转换为 `float64` 的值
+- 从 `UserProfile` (map 形式) 提取：所有可转换为 `float64` 的值
 - 从 `Realtime` 提取：所有可转换为 `float64` 的值（添加 `realtime_` 前缀）
 
 **使用示例**：
@@ -204,78 +204,22 @@ twoTowerRecall := recall.NewTwoTowerRecall(
     vectorService,
     recall.WithTwoTowerUserFeatureExtractor(customExtractor),
 )
-
-// 方式 3：向后兼容（函数类型自动适配）
-twoTowerRecall := recall.NewTwoTowerRecall(
-    featureService,
-    userTowerService,
-    vectorService,
-    recall.WithTwoTowerUserFeatureExtractor(func(ctx context.Context, rctx *core.RecommendContext) (map[string]float64, error) {
-        // 函数类型会自动包装为 CustomFeatureExtractor
-        return features, nil
-    }),
-)
 ```
 
-### YouTubeDNNRecall
+## 特征抽取器适配
+
+`WithTwoTowerUserFeatureExtractor` 等函数支持传入 `FeatureExtractor` 接口或符合签名的函数。
 
 ```go
-// 用户特征抽取器
-userExtractor := feature.NewDefaultFeatureExtractor(
-    feature.WithFeatureService(featureService),
-    feature.WithFieldPrefix("user_"),
-)
-
-// 历史行为抽取器
-historyExtractor := feature.NewHistoryExtractor(
-    feature.WithMaxLength(50),
-)
-
-youtubeDNNRecall := &recall.YouTubeDNNRecall{
-    FeatureService:      featureService,
-    UserEmbeddingURL:    "http://localhost:8082/user_embedding",
-    UserFeatureExtractor: userExtractor,
-    HistoryExtractor:     historyExtractor,
-    VectorService:        vectorService,
-    TopK:                 100,
-    Collection:           "youtube_dnn_items",
-}
-```
-
-### DSSMRecall
-
-```go
-// Query 特征抽取器
-queryExtractor := feature.NewQueryFeatureExtractor(
-    feature.WithQueryFeaturesKey("query_features"),
-    feature.WithTextFeatureBuilder(func(queryText string) map[string]float64 {
-        // 文本特征化
-        return features
-    }),
-)
-
-dssmRecall := &recall.DSSMRecall{
-    QueryEmbeddingURL:    "http://localhost:8083/query_embedding",
-    QueryFeatureExtractor: queryExtractor,
-    VectorService:         vectorService,
-    TopK:                  100,
-    Collection:            "dssm_docs",
-}
-```
-
-## 向后兼容
-
-为了保持向后兼容，`WithTwoTowerUserFeatureExtractor` 等函数支持传入函数类型，会自动适配为 `CustomFeatureExtractor`：
-
-```go
-// 旧代码（仍然有效）
-recall.WithTwoTowerUserFeatureExtractor(func(ctx context.Context, rctx *core.RecommendContext) (map[string]float64, error) {
-    // ...
-})
-
-// 新代码（推荐）
+// 推荐方式
 extractor := feature.NewDefaultFeatureExtractor(...)
 recall.WithTwoTowerUserFeatureExtractor(extractor)
+
+// 函数方式
+recall.WithTwoTowerUserFeatureExtractor(func(ctx context.Context, rctx *core.RecommendContext) (map[string]float64, error) {
+    // ...
+    return features, nil
+})
 ```
 
 ## 最佳实践
@@ -284,7 +228,6 @@ recall.WithTwoTowerUserFeatureExtractor(extractor)
 2. **字段命名一致性**：使用 `WithFieldPrefix` 保持字段命名与训练时一致（如 `user_age`, `item_ctr`）。
 3. **组合多个源**：使用 `CompositeFeatureExtractor` 从多个源组合特征。
 4. **自定义逻辑**：对于复杂场景，使用 `CustomFeatureExtractor` 完全自定义。
-5. **向后兼容**：函数类型会自动适配，无需立即修改现有代码。
 
 ## 相关文档
 

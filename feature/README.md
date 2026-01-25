@@ -209,7 +209,7 @@ enrichNode := &feature.EnrichNode{
     CrossFeaturePrefix: "cross_",
 }
 
-// 传统模式（向后兼容）
+// 传统模式
 enrichNode := &feature.EnrichNode{
     UserFeatureExtractor: customUserExtractor,  // 自定义提取器
     ItemFeatureExtractor: customItemExtractor,
@@ -418,7 +418,7 @@ enrichNode := &feature.EnrichNode{
     CrossFeaturePrefix: "cross_",
 }
 
-// 旧方式：仍然支持（向后兼容）
+// 方式 2：使用自定义提取器
 enrichNode := &feature.EnrichNode{
     UserFeatureExtractor: customExtractor,
     UserFeaturePrefix:  "user_",

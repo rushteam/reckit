@@ -3,22 +3,16 @@ package core
 import "github.com/rushteam/reckit/pkg/utils"
 
 // RecommendContext 承载用户/场景/实时信息，贯穿整个 Pipeline 透传。
-//
-// 关键升级：
-//   - UserID: 使用 string 类型（通用，支持所有 ID 格式）
-//   - UserProfile: 强类型用户画像（推荐使用）
-//   - UserProfileMap: 向后兼容的 map 形式（保留）
-//   - Labels: 用户级标签，可驱动整个 Pipeline 行为
 type RecommendContext struct {
 	UserID   string // 使用 string 类型（通用，支持所有 ID 格式）
 	DeviceID string
 	Scene    string
 
-	// UserProfile 是强类型用户画像（推荐使用）
+	// User 是强类型用户画像
 	User *UserProfile
 
-	// UserProfileMap 是向后兼容的 map 形式（保留，用于快速原型）
-	// 如果 User 不为空，优先使用 User；否则使用 UserProfileMap
+	// UserProfile 是 map 形式，用于快速原型或动态属性
+	// 如果 User 不为空，优先使用 User；否则使用 UserProfile
 	UserProfile map[string]any
 
 	// Labels 是用户级标签，可驱动整个 Pipeline 行为
@@ -29,13 +23,13 @@ type RecommendContext struct {
 	Params   map[string]any
 }
 
-// GetUserProfile 获取用户画像（兼容方法）。
-// 优先返回强类型 UserProfile，如果为空则从 UserProfileMap 构建。
+// GetUserProfile 获取用户画像。
+// 优先返回强类型 UserProfile，如果为空则从 UserProfile map 构建。
 func (rctx *RecommendContext) GetUserProfile() *UserProfile {
 	if rctx.User != nil {
 		return rctx.User
 	}
-	// 从 UserProfileMap 构建（向后兼容）
+	// 从 UserProfile 构建
 	if rctx.UserProfile != nil {
 		user := NewUserProfile(rctx.UserID)
 		// 提取静态属性

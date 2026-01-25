@@ -117,13 +117,6 @@ python -m unittest discover -s tests -p "test_*.py" -v
 - `.dockerignore`
 - `CHANGELOG.md` (本文件)
 
-## 向后兼容性
-
-所有改进都保持向后兼容：
-- 现有 API 接口不变
-- 协议格式不变
-- 默认行为不变（标准化和版本管理是可选的）
-
 ## 下一步建议
 
 - [ ] 实现模型热更新（无需重启服务）

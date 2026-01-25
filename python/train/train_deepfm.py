@@ -381,7 +381,7 @@ def train_model(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="训练 DeepFM 模型")
-    parser.add_argument("--data-source", default="file", choices=("file", "oss", "mysql", "doris"), help="数据源: file | oss | mysql | doris（doris 为 mysql 的向后兼容别名）")
+    parser.add_argument("--data-source", default="file", choices=("file", "oss", "mysql", "doris"), help="数据源: file | oss | mysql | doris")
     parser.add_argument("--data-path", default=None, help="数据路径（file: 本地 CSV；oss: s3:// 或 oss:// Parquet）")
     parser.add_argument("--version", type=str, help="模型版本（可选，默认使用时间戳）")
     parser.add_argument("--epochs", type=int, default=50, help="训练轮数（默认 50）")
@@ -390,7 +390,7 @@ if __name__ == "__main__":
     parser.add_argument("--oss-access-key", default=None, help="OSS/S3 access key")
     parser.add_argument("--oss-secret-key", default=None, help="OSS/S3 secret key")
     parser.add_argument("--oss-region", default=None, help="OSS/S3 region")
-    parser.add_argument("--doris-query", default=None, help="MySQL 协议 SQL 查询（参数名保留用于向后兼容）")
+    parser.add_argument("--doris-query", default=None, help="MySQL 协议 SQL 查询")
     parser.add_argument("--doris-table", default=None, help="MySQL 协议表名")
     parser.add_argument("--doris-database", default="default", help="MySQL 协议库名")
     parser.add_argument("--doris-host", default=None, help="MySQL 协议数据库地址")

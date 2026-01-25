@@ -560,20 +560,19 @@ func main() {
 		FeatureService: featureService,
 		
 		// 自定义提取器（作为补充，使用新的 FeatureExtractor 接口）
-		// 注意：EnrichNode 仍支持函数类型（向后兼容），但推荐使用 FeatureExtractor
+// 仍然支持函数类型，但推荐使用 FeatureExtractor
 		UserFeatureExtractor: func(rctx *core.RecommendContext) map[string]float64 {
-			user := rctx.GetUserProfile()
-			if user == nil {
+			if rctx.User == nil {
 				return nil
 			}
 			features := map[string]float64{
-				"user_age":    float64(user.Age),
-				"user_gender": encodeGender(user.Gender),
-				"user_region": encodeRegion(user.Location),
+				"user_age":    float64(rctx.User.Age),
+				"user_gender": encodeGender(rctx.User.Gender),
+				"user_region": encodeRegion(rctx.User.Location),
 			}
 			// 从 Interests 提取 category 偏好
-			if user.Interests != nil {
-				for category, weight := range user.Interests {
+			if rctx.User.Interests != nil {
+				for category, weight := range rctx.User.Interests {
 					features["user_interest_"+category] = weight
 				}
 			}

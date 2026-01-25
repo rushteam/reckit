@@ -34,7 +34,7 @@ type ScalerParams struct {
 	Std float64 `json:"std"`
 }
 
-// LoadFeatureMetadata 从文件加载特征元数据（便捷函数，向后兼容）
+// LoadFeatureMetadata 从文件加载特征元数据
 //
 // 内部使用 FileMetadataLoader 实现。
 //
@@ -71,7 +71,7 @@ func LoadFeatureMetadataFromFile(path string) (*FeatureMetadata, error) {
 	return &meta, nil
 }
 
-// LoadFeatureScaler 从文件加载特征标准化器（便捷函数，向后兼容）
+// LoadFeatureScaler 从文件加载特征标准化器
 //
 // 内部使用 FileScalerLoader 实现。
 //

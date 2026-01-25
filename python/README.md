@@ -121,7 +121,7 @@ python train/train_xgb.py --data-source oss --data-path oss://bucket/train.parqu
 python train/train_xgb.py --data-source mysql --doris-query "SELECT * FROM db.table" \
   --doris-host 127.0.0.1 --doris-port 3306 --doris-user root --doris-password xxx
 
-# Doris（向后兼容，同 mysql）
+# Doris (同 mysql)
 python train/train_xgb.py --data-source doris --doris-query "SELECT * FROM db.table" \
   --doris-host 127.0.0.1 --doris-port 9030 --doris-user root --doris-password xxx
 ```

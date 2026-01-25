@@ -296,6 +296,10 @@ func main() {
             Location:  "beijing",
             Interests: map[string]float64{"tech": 0.8, "game": 0.6},
         },
+        UserProfile: map[string]any{
+            "age":    25.0,
+            "gender": "male",
+        },
         Realtime: map[string]any{
             "hour":   time.Now().Hour(),
             "device": "mobile",

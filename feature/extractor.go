@@ -8,32 +8,6 @@ import (
 )
 
 // FeatureExtractor 是特征抽取器的统一接口，采用策略模式。
-//
-// 作为推荐脚手架，不同模型可能需要不同的特征抽取逻辑：
-//   - 双塔模型：需要用户特征（age, gender, interests）
-//   - YouTube DNN：需要用户特征 + 历史行为（user_age, user_gender, history_item_ids）
-//   - DSSM：需要 Query 特征（query_features）
-//   - 其他模型：可能有自定义需求
-//
-// 通过实现此接口，用户可以完全自定义特征抽取逻辑，无需修改库代码。
-//
-// 使用示例：
-//
-//	// 自定义抽取器
-//	customExtractor := feature.NewCustomExtractor(func(ctx context.Context, rctx *core.RecommendContext) (map[string]float64, error) {
-//	    // 自定义逻辑：从多个源组合特征
-//	    features := make(map[string]float64)
-//	    // ... 自定义抽取逻辑
-//	    return features, nil
-//	})
-//
-//	// 在召回源中使用
-//	twoTowerRecall := recall.NewTwoTowerRecall(
-//	    featureService,
-//	    userTowerService,
-//	    vectorService,
-//	    recall.WithTwoTowerUserFeatureExtractor(customExtractor.Extract),
-//	)
 type FeatureExtractor interface {
 	// Extract 从 RecommendContext 中提取特征
 	// 返回特征字典，key 为特征名，value 为特征值
@@ -47,12 +21,12 @@ type FeatureExtractor interface {
 //
 // 抽取策略（优先级顺序）：
 //   1. 从 UserProfile（强类型）提取：age, gender, interests
-//   2. 从 UserProfileMap 提取：所有可转换为 float64 的值
+//   2. 从 UserProfile (map 形式) 提取：所有可转换为 float64 的值
 //   3. 从 Realtime 提取：所有可转换为 float64 的值（添加 "realtime_" 前缀）
 //
 // 字段命名：
 //   - UserProfile 字段：age, gender, interest_<tag>
-//   - UserProfileMap 字段：保持原 key
+//   - UserProfile (map) 字段：保持原 key
 //   - Realtime 字段：realtime_<key>
 type DefaultFeatureExtractor struct {
 	// FeatureService 特征服务（可选，如果设置则优先使用）
@@ -139,7 +113,7 @@ func (e *DefaultFeatureExtractor) extractFromContext(rctx *core.RecommendContext
 		}
 	}
 
-	// 从 UserProfileMap 提取
+	// 从 UserProfile (map 形式) 提取
 	if rctx.UserProfile != nil {
 		for k, v := range rctx.UserProfile {
 			if fv, ok := conv.ToFloat64(v); ok {
@@ -197,12 +171,6 @@ func (e *CustomFeatureExtractor) Extract(ctx context.Context, rctx *core.Recomme
 }
 
 // CompositeFeatureExtractor 是组合特征抽取器，支持从多个源组合特征。
-//
-// 使用场景：
-//   - 从 FeatureService 获取基础特征
-//   - 从 Context 获取实时特征
-//   - 从外部服务获取补充特征
-//   - 组合并返回
 type CompositeFeatureExtractor struct {
 	name      string
 	extractors []FeatureExtractor
@@ -254,11 +222,6 @@ func defaultMergeFeatures(featuresList []map[string]float64) map[string]float64 
 }
 
 // QueryFeatureExtractor 是 Query 特征抽取器（用于 DSSM 等场景）。
-//
-// 从 RecommendContext 中提取 Query 相关特征，支持：
-//   - 从 Params["query_features"] 获取
-//   - 从 Params["query"] 文本构建特征
-//   - 自定义抽取逻辑
 type QueryFeatureExtractor struct {
 	// QueryFeaturesKey Params 中的 query_features key
 	QueryFeaturesKey string
@@ -333,8 +296,6 @@ func (e *QueryFeatureExtractor) Extract(ctx context.Context, rctx *core.Recommen
 }
 
 // HistoryExtractor 是历史行为抽取器（用于 YouTube DNN 等场景）。
-//
-// 从 RecommendContext 中提取用户历史行为序列（如最近点击的物品 ID 列表）。
 type HistoryExtractor struct {
 	// HistoryKey UserProfile 或 Params 中的历史 key
 	HistoryKey string
@@ -401,7 +362,7 @@ func (e *HistoryExtractor) Extract(rctx *core.RecommendContext) []string {
 		return hist
 	}
 
-	// 从 UserProfile 或 Params 获取
+	// 从 UserProfile (map) 获取
 	if rctx.UserProfile != nil {
 		if hist, ok := rctx.UserProfile[e.HistoryKey].([]string); ok {
 			if e.MaxLength > 0 && len(hist) > e.MaxLength {
@@ -411,6 +372,7 @@ func (e *HistoryExtractor) Extract(rctx *core.RecommendContext) []string {
 		}
 	}
 
+	// 从 Params 获取
 	if rctx.Params != nil {
 		if hist, ok := rctx.Params[e.HistoryKey].([]string); ok {
 			if e.MaxLength > 0 && len(hist) > e.MaxLength {
@@ -428,8 +390,6 @@ func (e *HistoryExtractor) Extract(rctx *core.RecommendContext) []string {
 // 支持类型：
 //   - feature.FeatureExtractor 接口：直接返回
 //   - func(ctx context.Context, rctx *core.RecommendContext) (map[string]float64, error)：包装为 CustomFeatureExtractor
-//
-// 用于向后兼容：允许传入函数类型，自动转换为接口。
 func AdaptFeatureExtractor(extractor interface{}, name string) FeatureExtractor {
 	if extractor == nil {
 		return nil

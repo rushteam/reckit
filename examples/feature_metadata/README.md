@@ -59,7 +59,7 @@ if err != nil {
 
 ### 方式 3：S3 兼容协议加载（推荐用于云环境）
 
-**S3 兼容协议支持 AWS S3、阿里云 OSS、腾讯云 COS、MinIO 等**，使用统一的接口，兼容性更好。
+**S3 兼容协议支持 AWS S3、阿里云 OSS、腾讯云 COS、MinIO 等**，使用统一的接口。
 
 ```go
 import (
@@ -75,7 +75,6 @@ type MyS3Client struct {
 
 func (c *MyS3Client) GetObject(ctx context.Context, bucket, key string) (io.ReadCloser, error) {
     // 实现 S3 兼容协议调用
-    // 可以使用 github.com/aws/aws-sdk-go/service/s3
 }
 
 ctx := context.Background()
@@ -102,7 +101,7 @@ if err != nil {
 - ✅ **易于迁移**：可以在不同云服务商之间轻松切换
 - ✅ **生态丰富**：S3 兼容协议的 SDK 和工具更丰富
 
-### 便捷函数（向后兼容）
+### 便捷函数
 
 ```go
 // 便捷函数，内部使用 FileMetadataLoader
@@ -169,7 +168,7 @@ validationNode := &featureValidationNode{meta: meta}
 pipeline.Nodes = append(pipeline.Nodes, validationNode)
 ```
 
-### 场景 2：特征标准化（不推荐）
+### 场景 2：特征标准化
 
 **注意**：当前架构中，标准化统一在 Python 服务中完成。如果需要在 Go 端做标准化，需要确保与 Python 服务的一致性。
 
@@ -193,14 +192,6 @@ meta, _ := feature.LoadFeatureMetadata("python/model/feature_meta.json")
 missing := meta.GetMissingFeatures(features)
 if len(missing) > 0 {
     log.Warnf("缺失特征: %v", missing)
-}
-
-// 检查特征值范围（需要额外的统计逻辑）
-for _, col := range meta.FeatureColumns {
-    if v, ok := features[col]; ok {
-        // 检查是否在合理范围内
-        // ...
-    }
 }
 ```
 
@@ -228,39 +219,34 @@ go run main.go
 ### 加载器接口
 
 #### MetadataLoader
-
 - `Load(ctx context.Context, source string) (*FeatureMetadata, error)` - 加载特征元数据
 
 **实现**：
 - `FileMetadataLoader` - 本地文件加载器
 - `HTTPMetadataLoader` - HTTP 接口加载器
-- `OSSMetadataLoader` - OSS 文件加载器
+- `S3MetadataLoader` - S3 兼容协议加载器
 
 #### ScalerLoader
-
 - `Load(ctx context.Context, source string) (FeatureScaler, error)` - 加载特征标准化器
 
 **实现**：
 - `FileScalerLoader` - 本地文件加载器
 - `HTTPScalerLoader` - HTTP 接口加载器
-- `OSSScalerLoader` - OSS 文件加载器
+- `S3ScalerLoader` - S3 兼容协议加载器
 
 ### FeatureMetadata
-
-- `LoadFeatureMetadata(path string) (*FeatureMetadata, error)` - 便捷函数，加载特征元数据（向后兼容）
+- `LoadFeatureMetadata(path string) (*FeatureMetadata, error)` - 便捷函数，加载特征元数据
 - `ValidateFeatures(features map[string]float64) map[string]float64` - 验证特征，填充缺失值
 - `GetMissingFeatures(features map[string]float64) []string` - 获取缺失的特征列
 - `BuildFeatureVector(features map[string]float64) []float64` - 按顺序构建特征向量
 - `ProcessFeatures(features map[string]float64, scaler FeatureScaler) map[string]float64` - 完整处理流程
 
 ### FeatureScaler
-
-- `LoadFeatureScaler(path string) (FeatureScaler, error)` - 便捷函数，加载特征标准化器（向后兼容）
+- `LoadFeatureScaler(path string) (FeatureScaler, error)` - 便捷函数，加载特征标准化器
 - `Normalize(features map[string]float64) map[string]float64` - 标准化特征
 - `NormalizeValue(featureName string, value float64) float64` - 标准化单个特征值
 
 ### S3Client 接口
-
 如果需要使用 S3 兼容协议加载器，需要实现 `S3Client` 接口：
 
 ```go
@@ -268,5 +254,3 @@ type S3Client interface {
     GetObject(ctx context.Context, bucket, key string) (io.ReadCloser, error)
 }
 ```
-
-**注意**：`NewOSSMetadataLoader` 和 `NewOSSScalerLoader` 已废弃，请使用 `NewS3MetadataLoader` 和 `NewS3ScalerLoader`。S3 兼容协议可以同时支持 AWS S3、阿里云 OSS、腾讯云 COS、MinIO 等。

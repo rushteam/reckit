@@ -111,20 +111,22 @@ priceRange, _ := userProfile.GetExtraString("preferred_price_range")
 tags, _ := userProfile.GetExtra("custom_tags").([]string)
 ```
 
-## RecommendContext 升级
+## RecommendContext
 
-### 新结构
+`RecommendContext` 是推荐请求的上下文，支持强类型对象和 map 形式。
+
+### 结构
 
 ```go
 type RecommendContext struct {
-    UserID   int64
+    UserID   string // 使用 string 类型（通用，支持所有 ID 格式）
     DeviceID string
     Scene    string
 
-    // UserProfile 是强类型用户画像（推荐使用）
+    // User 是强类型用户画像
     User *UserProfile
 
-    // UserProfileMap 是向后兼容的 map 形式（保留）
+    // UserProfile 是 map 形式，用于快速原型或动态属性
     UserProfile map[string]any
 
     // Labels 是用户级标签，可驱动整个 Pipeline 行为
@@ -135,13 +137,33 @@ type RecommendContext struct {
 }
 ```
 
-### 兼容方法
+### 使用方式
+
+1. **强类型 UserProfile**（推荐）：
+   ```go
+   rctx := &core.RecommendContext{
+       User: core.NewUserProfile(userID),
+   }
+   ```
+
+2. **Map 形式 UserProfile**：
+   ```go
+   rctx := &core.RecommendContext{
+       UserProfile: map[string]any{
+           "age": 25,
+           "gender": "male",
+       },
+   }
+   ```
+
+3. **统一获取方法**：
+   ```go
+   userProfile := rctx.GetUserProfile() // 自动适配两种形式
+   ```
+
+### 用户级 Label 操作
 
 ```go
-// 获取用户画像（兼容方法）
-userProfile := rctx.GetUserProfile()
-
-// 用户级 Label 操作
 rctx.PutLabel("user_type", utils.Label{Value: "active", Source: "system"})
 label, ok := rctx.GetLabel("user_type")
 ```
@@ -271,98 +293,6 @@ recallVersion := rctx.User.GetBucket("recall")
 rankStrategy := rctx.User.GetBucket("rank")
 ```
 
-### 在 Node 中使用
-
-#### Recall Node：根据实验桶选择召回策略
-
-```go
-type recallWithBucket struct{}
-
-func (r *recallWithBucket) Recall(
-    ctx context.Context,
-    rctx *core.RecommendContext,
-) ([]*core.Item, error) {
-    // 根据实验桶选择召回策略
-    recallVersion := rctx.User.GetBucket("recall")
-    
-    var items []*core.Item
-    switch recallVersion {
-    case "v2":
-        // 使用新版本召回：更多个性化
-        items = personalizedRecall()
-    case "v1":
-        // 使用旧版本召回：热门召回
-        items = hotRecall()
-    default:
-        // 默认策略
-        items = defaultRecall()
-    }
-    
-    return items, nil
-}
-```
-
-#### Rank Node：根据实验桶选择排序策略
-
-```go
-type rankWithBucket struct{}
-
-func (r *rankWithBucket) Process(
-    ctx context.Context,
-    rctx *core.RecommendContext,
-    items []*core.Item,
-) ([]*core.Item, error) {
-    // 根据实验桶选择排序策略
-    rankStrategy := rctx.User.GetBucket("rank")
-    
-    for _, item := range items {
-        switch rankStrategy {
-        case "deep_model":
-            // 使用深度模型排序
-            item.Score = deepModelPredict(item)
-        case "lr_model":
-            // 使用 LR 模型排序
-            item.Score = lrModelPredict(item)
-        default:
-            // 默认排序
-            item.Score = defaultScore(item)
-        }
-    }
-    
-    return items, nil
-}
-```
-
-#### ReRank Node：根据实验桶调整多样性
-
-```go
-type rerankWithBucket struct{}
-
-func (r *rerankWithBucket) Process(
-    ctx context.Context,
-    rctx *core.RecommendContext,
-    items []*core.Item,
-) ([]*core.Item, error) {
-    // 根据实验桶调整多样性
-    diversityStrategy := rctx.User.GetBucket("diversity")
-    
-    switch diversityStrategy {
-    case "strong":
-        // 强多样性：降低相似物品的分数
-        for _, item := range items {
-            item.Score *= 0.7
-        }
-    case "weak":
-        // 弱多样性：保持原分数
-        // 不做调整
-    default:
-        // 默认策略
-    }
-    
-    return items, nil
-}
-```
-
 ### 使用场景
 
 #### 1. A/B 测试：不同用户使用不同策略版本
@@ -402,94 +332,6 @@ if userProfile.GetInterestWeight("active") > 0.8 {
 }
 ```
 
-#### 3. 灰度发布：逐步切换策略
-
-```go
-// 灰度发布：10% 用户使用新模型
-if userID % 100 < 10 {
-    userProfile.SetBucket("rank", "new_model")   // 10% 用户使用新模型
-} else {
-    userProfile.SetBucket("rank", "old_model")   // 90% 用户使用旧模型
-}
-
-// 逐步扩大灰度范围
-// 第一阶段：1% 用户
-// 第二阶段：10% 用户
-// 第三阶段：50% 用户
-// 第四阶段：100% 用户
-```
-
-#### 4. 多实验并行：同时进行多个 A/B 测试
-
-```go
-// 同时进行多个实验
-userProfile.SetBucket("recall", "v2")        // 召回实验
-userProfile.SetBucket("rank", "deep_model")  // 排序实验
-userProfile.SetBucket("diversity", "strong") // 多样性实验
-
-// 在各自的 Node 中独立判断
-// Recall Node: 根据 "recall" 实验桶选择策略
-// Rank Node: 根据 "rank" 实验桶选择策略
-// ReRank Node: 根据 "diversity" 实验桶选择策略
-```
-
-### 完整示例
-
-完整示例请参考：`examples/bucket_usage/main.go`
-
-运行示例：
-```bash
-go run ./examples/bucket_usage
-```
-
-输出示例：
-```
-=== 实验桶使用示例 ===
-多样性策略: strong
-召回策略: v2
-排序策略: deep_model
-重排策略: diversity_v1
-使用召回策略 v2：个性化召回
-使用强多样性策略
-
-=== 推荐结果 ===
-1. 物品 1 (分数: 0.6300)
-   - 策略: recall_v2|rank_deep_model|rerank_diversity_strong
-2. 物品 2 (分数: 0.6300)
-   - 策略: recall_v2|rank_deep_model|rerank_diversity_strong
-3. 物品 3 (分数: 0.6300)
-   - 策略: recall_v2|rank_deep_model|rerank_diversity_strong
-```
-
-### 最佳实践
-
-1. **实验桶命名规范**
-   - 使用有意义的 key：`recall`、`rank`、`diversity` 等
-   - value 使用版本号或策略名称：`v1`、`v2`、`strong`、`weak` 等
-
-2. **实验桶设置时机**
-   - 在用户画像构建时设置（离线/实时）
-   - 在请求入口处根据用户特征设置
-   - 支持从外部实验平台获取并设置
-
-3. **实验桶使用原则**
-   - 每个 Node 独立判断自己的实验桶
-   - 避免实验桶之间的相互影响
-   - 记录实验桶信息到 Label 中，便于分析
-
-4. **实验桶持久化**
-   - 可以将实验桶信息存储到用户画像存储中
-   - 支持实验桶的版本管理和回滚
-   - 记录实验桶变更历史
-
-### 总结
-
-- **SetBucket(key, value)**：设置实验桶，key 为实验名称，value 为实验组/策略版本
-- **GetBucket(key)**：获取实验桶值，返回对应的策略版本
-- **主要用途**：A/B 测试、策略切换、灰度发布、多实验并行
-- **使用位置**：在 Recall、Rank、ReRank 等 Node 中使用
-- **优势**：灵活控制不同用户使用不同策略，便于进行实验和迭代
-
 ## Label 回写和 Online Learning
 
 ### 用户点击回写
@@ -520,72 +362,19 @@ if category, ok := items[0].Labels["category"]; ok {
 }
 ```
 
-## 使用示例
-
-完整示例请参考：`examples/user_profile/main.go`
-
-运行示例：
-```bash
-go run ./examples/user_profile
-```
-
-## 向后兼容
-
-为了保持向后兼容，`RecommendContext` 同时支持：
-
-1. **强类型 UserProfile**（推荐）：
-   ```go
-   rctx := &core.RecommendContext{
-       User: core.NewUserProfile(userID),
-   }
-   ```
-
-2. **Map 形式 UserProfileMap**（兼容）：
-   ```go
-   rctx := &core.RecommendContext{
-       UserProfile: map[string]any{
-           "age": 25,
-           "gender": "male",
-       },
-   }
-   ```
-
-3. **兼容方法**：
-   ```go
-   userProfile := rctx.GetUserProfile() // 自动兼容两种形式
-   ```
-
-## 用户级 Labels
-
-`RecommendContext.Labels` 支持用户级标签，可驱动整个 Pipeline 行为：
-
-```go
-// 设置用户级标签
-rctx.PutLabel("user_type", utils.Label{Value: "active", Source: "system"})
-rctx.PutLabel("price_sensitive", utils.Label{Value: "false", Source: "system"})
-
-// 在 Node 中使用
-if label, ok := rctx.GetLabel("user_type"); ok && label.Value == "active" {
-    // 活跃用户特殊处理
-}
-```
-
 ## 工程实践
 
 ### 1. 用户画像构建
-
 - **离线构建**：基于历史行为统计长期兴趣
 - **实时更新**：基于实时行为更新短期行为
 - **Online Learning**：根据反馈持续更新兴趣权重
 
 ### 2. 用户画像使用
-
 - **Recall 阶段**：根据兴趣过滤和加权
 - **Rank 阶段**：根据兴趣调整排序分数
 - **ReRank 阶段**：根据实验桶调整策略
 
 ### 3. Label 回写
-
 - **行为回写**：点击、曝光等行为记录到 `RecentClicks`、`RecentImpress`
 - **兴趣更新**：根据行为反馈更新 `Interests`
 - **标签记录**：记录到 `Context.Labels` 供后续使用
@@ -611,78 +400,10 @@ tags, _ := core.GetExtraAs[[]string](userProfile, "custom_tags")  // 泛型：�
 purchaseCount, _ := userProfile.GetExtraInt("purchase_history_count")
 ```
 
-### 在特征提取中使用
-
-```go
-func extractUserFeatures(user *core.UserProfile) map[string]float64 {
-    features := make(map[string]float64)
-    
-    // 核心字段
-    features["age"] = float64(user.Age)
-    if user.Gender == "male" {
-        features["gender"] = 1.0
-    }
-    
-    // 扩展字段
-    if vipLevel, ok := user.GetExtraFloat64("vip_level"); ok {
-        features["vip_level"] = vipLevel
-    }
-    
-    if purchaseCount, ok := user.GetExtraInt("purchase_history_count"); ok {
-        features["purchase_count"] = float64(purchaseCount)
-    }
-    
-    return features
-}
-```
-
-### 在自定义 Node 中使用
-
-```go
-type CustomRecallNode struct{}
-
-func (n *CustomRecallNode) Process(
-    ctx context.Context,
-    rctx *core.RecommendContext,
-    items []*core.Item,
-) ([]*core.Item, error) {
-    if rctx.User == nil {
-        return items, nil
-    }
-    
-    // 使用扩展属性
-    vipLevel, _ := rctx.User.GetExtraFloat64("vip_level")
-    if vipLevel >= 3 {
-        // VIP 用户特殊处理
-        for _, item := range items {
-            item.Score *= 1.2
-        }
-    }
-    
-    return items, nil
-}
-```
-
-### 支持的类型
-
-- `GetExtra(key)` - 获取任意类型
-- `GetExtraString(key)` - 获取字符串类型
-- `GetExtraFloat64(key)` - 获取 float64 类型（支持 int、int64、float32、bool 等自动转换）
-- `GetExtraInt(key)` - 获取 int 类型（支持 int64、float64 等自动转换）
-- `core.GetExtraAs[T](userProfile, key)` - 泛型按类型 T 获取；精确类型匹配用，数值转换仍建议用 GetExtraFloat64/GetExtraInt。详见 `pkg/conv`。
-
-### 使用场景
-
-1. **VIP 等级**：`SetExtra("vip_level", 3)`
-2. **价格偏好**：`SetExtra("preferred_price_range", "100-500")`
-3. **自定义标签**：`SetExtra("custom_tags", []string{"tech", "gaming"})`
-4. **购买历史**：`SetExtra("purchase_history_count", 150)`
-5. **其他业务属性**：任意自定义属性
-
-## 扩展方向
+### 扩展方向
 
 1. **用户画像服务化**：独立的用户画像服务
 2. **实时画像更新**：基于流式计算的实时画像
 3. **画像版本管理**：支持画像版本和 A/B 测试
 4. **画像存储优化**：支持 Redis、MySQL 等持久化存储
-5. **扩展属性**：通过 `Extras` 字段支持用户自定义属性（✅ 已实现）
+5. **扩展属性**：通过 `Extras` 字段支持用户自定义属性

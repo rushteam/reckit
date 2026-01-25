@@ -162,7 +162,7 @@ func (e *Eval) buildInput() map[string]interface{} {
 	}
 }
 
-// 为了向后兼容，提供辅助函数来转换旧语法到 CEL 语法
+// 提供辅助函数来转换旧语法到 CEL 语法
 // 例如：label.recall_source contains "hot" -> label.recall_source.contains("hot")
 func ConvertToCELSyntax(expr string) string {
 	// 简单的转换规则
