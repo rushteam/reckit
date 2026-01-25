@@ -82,6 +82,30 @@ python train/train_deepfm.py --version v1.0.0 --epochs 100 --batch-size 64
 
 **详细说明**：见 `train/DEEPFM_README.md`
 
+#### 数据源：文件 / OSS Parquet / MySQL 协议
+
+训练脚本支持多种数据源（`--data-source file|oss|mysql|doris`）：
+
+```bash
+# 本地 CSV（默认）
+python train/train_xgb.py --data-source file --data-path data/train_data.csv
+
+# OSS Parquet（S3、阿里云 OSS、腾讯云 COS、MinIO）
+python train/train_xgb.py --data-source oss --data-path s3://bucket/train.parquet
+python train/train_xgb.py --data-source oss --data-path oss://bucket/train.parquet \
+  --oss-endpoint https://oss-cn-hangzhou.aliyuncs.com
+
+# MySQL 协议（MySQL / Doris / TiDB）
+python train/train_xgb.py --data-source mysql --doris-query "SELECT * FROM db.table" \
+  --doris-host 127.0.0.1 --doris-port 3306 --doris-user root --doris-password xxx
+
+# Doris（向后兼容，同 mysql）
+python train/train_xgb.py --data-source doris --doris-query "SELECT * FROM db.table" \
+  --doris-host 127.0.0.1 --doris-port 9030 --doris-user root --doris-password xxx
+```
+
+**依赖**：OSS 需 `pyarrow`、`s3fs`；MySQL 协议需 `pymysql`。详见 `train/DATA_LOADER.md`。
+
 ### 3. 启动推理服务
 
 #### XGBoost 服务

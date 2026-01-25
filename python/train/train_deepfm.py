@@ -49,6 +49,13 @@ MODEL_DIR = features.MODEL_DIR
 # DeepFM 模型路径
 DEEPFM_MODEL_PATH = os.path.join(MODEL_DIR, "deepfm_model.pt")
 
+# 导入数据加载器
+_data_loader_path = os.path.join(os.path.dirname(__file__), "data_loader.py")
+_data_loader_spec = importlib.util.spec_from_file_location("data_loader", _data_loader_path)
+_data_loader_mod = importlib.util.module_from_spec(_data_loader_spec)
+_data_loader_spec.loader.exec_module(_data_loader_mod)
+load_training_df = _data_loader_mod.load_training_df
+
 
 class DeepFMDataset(Dataset):
     """DeepFM 数据集"""
@@ -182,25 +189,52 @@ def generate_sample_data(output_path: str, n_samples: int = 1000):
     return df
 
 
-def train_model(data_path: str, model_version: str = None, epochs: int = 50, batch_size: int = 32):
-    """
-    训练 DeepFM 模型
-    
-    Args:
-        data_path: 训练数据路径
-        model_version: 模型版本（可选）
-        epochs: 训练轮数
-        batch_size: 批次大小
-    """
-    print(f"读取数据: {data_path}")
-    
-    # 读取数据
-    if not os.path.exists(data_path):
-        print(f"数据文件不存在，生成示例数据...")
-        df = generate_sample_data(data_path)
+def train_model(
+    data_source: str,
+    data_path: str | None = None,
+    model_version: str | None = None,
+    epochs: int = 50,
+    batch_size: int = 32,
+    oss_endpoint: str | None = None,
+    oss_access_key: str | None = None,
+    oss_secret_key: str | None = None,
+    oss_region: str | None = None,
+    doris_query: str | None = None,
+    doris_table: str | None = None,
+    doris_database: str = "default",
+    doris_host: str | None = None,
+    doris_port: int | None = None,
+    doris_user: str | None = None,
+    doris_password: str | None = None,
+):
+    """训练 DeepFM 模型。数据源: file | oss | mysql | doris，同 train_xgb。"""
+    print(f"数据源: {data_source}, 路径: {data_path or '(query/table)'}")
+
+    if data_source.strip().lower() == "file":
+        if not data_path:
+            raise ValueError("file 数据源需要 --data-path")
+        if not os.path.exists(data_path):
+            print("数据文件不存在，生成示例数据...")
+            df = generate_sample_data(data_path)
+        else:
+            df = load_training_df("file", path=data_path)
     else:
-        df = pd.read_csv(data_path)
-    
+        df = load_training_df(
+            data_source,
+            path=data_path,
+            query=doris_query,
+            table=doris_table,
+            database=doris_database,
+            host=doris_host,
+            port=doris_port,
+            user=doris_user,
+            password=doris_password,
+            endpoint_url=oss_endpoint,
+            access_key=oss_access_key,
+            secret_key=oss_secret_key,
+            region=oss_region,
+        )
+
     print(f"数据形状: {df.shape}")
     print(f"特征列: {FEATURE_COLUMNS}")
     
@@ -347,22 +381,49 @@ def train_model(data_path: str, model_version: str = None, epochs: int = 50, bat
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="训练 DeepFM 模型")
+    parser.add_argument("--data-source", default="file", choices=("file", "oss", "mysql", "doris"), help="数据源: file | oss | mysql | doris（doris 为 mysql 的向后兼容别名）")
+    parser.add_argument("--data-path", default=None, help="数据路径（file: 本地 CSV；oss: s3:// 或 oss:// Parquet）")
     parser.add_argument("--version", type=str, help="模型版本（可选，默认使用时间戳）")
     parser.add_argument("--epochs", type=int, default=50, help="训练轮数（默认 50）")
     parser.add_argument("--batch-size", type=int, default=32, help="批次大小（默认 32）")
+    parser.add_argument("--oss-endpoint", default=None, help="OSS/S3 endpoint")
+    parser.add_argument("--oss-access-key", default=None, help="OSS/S3 access key")
+    parser.add_argument("--oss-secret-key", default=None, help="OSS/S3 secret key")
+    parser.add_argument("--oss-region", default=None, help="OSS/S3 region")
+    parser.add_argument("--doris-query", default=None, help="MySQL 协议 SQL 查询（参数名保留用于向后兼容）")
+    parser.add_argument("--doris-table", default=None, help="MySQL 协议表名")
+    parser.add_argument("--doris-database", default="default", help="MySQL 协议库名")
+    parser.add_argument("--doris-host", default=None, help="MySQL 协议数据库地址")
+    parser.add_argument("--doris-port", type=int, default=None, help="MySQL 协议查询端口（MySQL 默认 3306，Doris 默认 9030）")
+    parser.add_argument("--doris-user", default=None, help="MySQL 协议用户")
+    parser.add_argument("--doris-password", default=None, help="MySQL 协议密码")
     args = parser.parse_args()
-    
-    # 数据路径
+
     data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
     os.makedirs(data_dir, exist_ok=True)
-    data_path = os.path.join(data_dir, "train_data.csv")
-    
+    data_path = args.data_path or os.path.join(data_dir, "train_data.csv")
+    if args.data_source == "file" and not args.data_path:
+        args.data_path = data_path
+    path_for_train = args.data_path if args.data_path else data_path
+
     try:
         model, feature_meta = train_model(
-            data_path,
+            data_source=args.data_source,
+            data_path=path_for_train,
             model_version=args.version,
             epochs=args.epochs,
-            batch_size=args.batch_size
+            batch_size=args.batch_size,
+            oss_endpoint=args.oss_endpoint,
+            oss_access_key=args.oss_access_key,
+            oss_secret_key=args.oss_secret_key,
+            oss_region=args.oss_region,
+            doris_query=args.doris_query,
+            doris_table=args.doris_table,
+            doris_database=args.doris_database,
+            doris_host=args.doris_host,
+            doris_port=args.doris_port,
+            doris_user=args.doris_user,
+            doris_password=args.doris_password,
         )
         print("\n训练完成！")
         print(f"模型版本: {feature_meta['model_version']}")

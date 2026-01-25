@@ -3,10 +3,21 @@
 XGBoost 模型训练脚本
 
 用法:
+    # 本地 CSV（默认）
     python train/train_xgb.py [--version VERSION] [--normalize]
+    python train/train_xgb.py --data-source file --data-path data/train_data.csv
+
+    # OSS Parquet（S3/阿里云 OSS/腾讯云 COS/MinIO）
+    python train/train_xgb.py --data-source oss --data-path s3://bucket/train.parquet
+    python train/train_xgb.py --data-source oss --data-path oss://bucket/train.parquet \\
+        --oss-endpoint https://oss-cn-hangzhou.aliyuncs.com
+
+    # MySQL 协议（MySQL / Doris / TiDB）
+    python train/train_xgb.py --data-source mysql --doris-query "SELECT * FROM db.table" \\
+        --doris-host 127.0.0.1 --doris-port 3306 --doris-user root --doris-password xxx
 
 功能:
-    1. 读取示例训练数据
+    1. 读取训练数据（文件 / OSS Parquet / MySQL 协议）
     2. 切分训练集/验证集
     3. 训练 XGBoost 模型
     4. 保存模型和特征元数据（支持版本管理）
@@ -39,6 +50,14 @@ FEATURE_META_PATH = features.FEATURE_META_PATH
 LABEL_COLUMN = features.LABEL_COLUMN
 MODEL_DIR = features.MODEL_DIR
 MODEL_PATH = features.MODEL_PATH
+
+# 导入数据加载器
+_data_loader_path = os.path.join(os.path.dirname(__file__), "data_loader.py")
+_data_loader_spec = importlib.util.spec_from_file_location("data_loader", _data_loader_path)
+_data_loader = importlib.util.module_from_spec(_data_loader_spec)
+_data_loader_spec.loader.exec_module(_data_loader)
+load_training_df = _data_loader.load_training_df
+get_loader = _data_loader.get_loader
 
 
 def generate_sample_data(output_path: str, n_samples: int = 1000):
@@ -77,24 +96,64 @@ def generate_sample_data(output_path: str, n_samples: int = 1000):
     return df
 
 
-def train_model(data_path: str, model_version: str = None, normalize: bool = False):
+def train_model(
+    data_source: str,
+    data_path: str | None = None,
+    model_version: str | None = None,
+    normalize: bool = False,
+    # OSS
+    oss_endpoint: str | None = None,
+    oss_access_key: str | None = None,
+    oss_secret_key: str | None = None,
+    oss_region: str | None = None,
+    # Doris
+    doris_query: str | None = None,
+    doris_table: str | None = None,
+    doris_database: str = "default",
+    doris_host: str | None = None,
+    doris_port: int | None = None,
+    doris_user: str | None = None,
+    doris_password: str | None = None,
+):
     """
     训练 XGBoost 模型
-    
+
     Args:
-        data_path: 训练数据路径
-        model_version: 模型版本（可选，默认使用时间戳）
-        normalize: 是否进行特征标准化
+        data_source: 数据源 file | oss | mysql | doris
+        data_path: 数据路径（file: 本地 CSV；oss: s3:// 或 oss:// Parquet）
+        model_version: 模型版本（可选）
+        normalize: 是否特征标准化
+        oss_*: OSS 相关（endpoint、ak、sk、region）
+        doris_*: MySQL 协议相关（query/table、database、host、port、user、password，支持 MySQL/Doris/TiDB）
     """
-    print(f"读取数据: {data_path}")
-    
+    print(f"数据源: {data_source}, 路径: {data_path or '(query/table)'}")
+
     # 读取数据
-    if not os.path.exists(data_path):
-        print(f"数据文件不存在，生成示例数据...")
-        df = generate_sample_data(data_path)
+    if data_source.strip().lower() == "file":
+        if not data_path:
+            raise ValueError("file 数据源需要 --data-path")
+        if not os.path.exists(data_path):
+            print("数据文件不存在，生成示例数据...")
+            df = generate_sample_data(data_path)
+        else:
+            df = load_training_df("file", path=data_path)
     else:
-        df = pd.read_csv(data_path)
-    
+        df = load_training_df(
+            data_source,
+            path=data_path,
+            query=doris_query,
+            table=doris_table,
+            database=doris_database,
+            host=doris_host,
+            port=doris_port,
+            user=doris_user,
+            password=doris_password,
+            endpoint_url=oss_endpoint,
+            access_key=oss_access_key,
+            secret_key=oss_secret_key,
+            region=oss_region,
+        )
+
     print(f"数据形状: {df.shape}")
     print(f"特征列: {FEATURE_COLUMNS}")
     
@@ -201,20 +260,49 @@ def train_model(data_path: str, model_version: str = None, normalize: bool = Fal
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="训练 XGBoost 模型")
+    parser.add_argument("--data-source", default="file", choices=("file", "oss", "mysql", "doris"), help="数据源: file | oss | mysql | doris（doris 为 mysql 的向后兼容别名）")
+    parser.add_argument("--data-path", default=None, help="数据路径（file: 本地 CSV；oss: s3:// 或 oss:// Parquet）")
     parser.add_argument("--version", type=str, help="模型版本（可选，默认使用时间戳）")
     parser.add_argument("--normalize", action="store_true", help="是否进行特征标准化")
+    # OSS
+    parser.add_argument("--oss-endpoint", default=None, help="OSS/S3 endpoint（如 https://oss-cn-hangzhou.aliyuncs.com）")
+    parser.add_argument("--oss-access-key", default=None, help="OSS/S3 access key（或 env OSS_ACCESS_KEY_ID）")
+    parser.add_argument("--oss-secret-key", default=None, help="OSS/S3 secret key（或 env OSS_SECRET_ACCESS_KEY）")
+    parser.add_argument("--oss-region", default=None, help="OSS/S3 region（或 env AWS_REGION）")
+    # MySQL 协议（MySQL / Doris / TiDB）
+    parser.add_argument("--doris-query", default=None, help="MySQL 协议 SQL 查询（与 --doris-table 二选一，参数名保留用于向后兼容）")
+    parser.add_argument("--doris-table", default=None, help="MySQL 协议表名（与 --doris-query 二选一）")
+    parser.add_argument("--doris-database", default="default", help="MySQL 协议库名")
+    parser.add_argument("--doris-host", default=None, help="MySQL 协议数据库地址（或 env MYSQL_HOST / DORIS_HOST）")
+    parser.add_argument("--doris-port", type=int, default=None, help="MySQL 协议查询端口（MySQL 默认 3306，Doris 默认 9030）")
+    parser.add_argument("--doris-user", default=None, help="MySQL 协议用户（或 env MYSQL_USER / DORIS_USER）")
+    parser.add_argument("--doris-password", default=None, help="MySQL 协议密码（或 env MYSQL_PASSWORD / DORIS_PASSWORD）")
     args = parser.parse_args()
-    
-    # 数据路径
+
     data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
     os.makedirs(data_dir, exist_ok=True)
-    data_path = os.path.join(data_dir, "train_data.csv")
-    
+    data_path = args.data_path or os.path.join(data_dir, "train_data.csv")
+    if args.data_source == "file" and not args.data_path:
+        args.data_path = data_path
+    path_for_train = args.data_path if args.data_path else data_path
+
     try:
         model, feature_meta = train_model(
-            data_path,
+            data_source=args.data_source,
+            data_path=path_for_train,
             model_version=args.version,
-            normalize=args.normalize
+            normalize=args.normalize,
+            oss_endpoint=args.oss_endpoint,
+            oss_access_key=args.oss_access_key,
+            oss_secret_key=args.oss_secret_key,
+            oss_region=args.oss_region,
+            doris_query=args.doris_query,
+            doris_table=args.doris_table,
+            doris_database=args.doris_database,
+            doris_host=args.doris_host,
+            doris_port=args.doris_port,
+            doris_user=args.doris_user,
+            doris_password=args.doris_password,
         )
         print("\n训练完成！")
         print(f"模型版本: {feature_meta['model_version']}")
