@@ -35,6 +35,7 @@
 
 ### 训练与部署
 - [训练流程自动化](./TRAINING_AUTOMATION.md) - 工业级训练流程自动化指南（数据、编排、版本、发布、监控）
+- [Python 生产工业级补充建议](./PYTHON_PRODUCTION_GUIDE.md) - 推理服务与训练的可观测性、安全、可靠性、CI/CD 等补充建议
 
 ---
 
@@ -89,4 +90,5 @@
 - **Embedding 召回** → [EMBEDDING_ABSTRACT.md](./EMBEDDING_ABSTRACT.md)
 - **双塔模型** → [TWO_TOWER_GUIDE.md](./TWO_TOWER_GUIDE.md)
 - **训练流程自动化** → [TRAINING_AUTOMATION.md](./TRAINING_AUTOMATION.md)
+- **Python 生产工业级补充建议** → [PYTHON_PRODUCTION_GUIDE.md](./PYTHON_PRODUCTION_GUIDE.md)
 - **未来规划** → [ROADMAP.md](./ROADMAP.md)

@@ -111,21 +111,18 @@ python train/train_xgb.py --data-source doris --doris-query "SELECT * FROM db.ta
 #### XGBoost 服务
 
 ```bash
-# 方式 1: 使用 uvicorn
-uvicorn service.server:app --host 0.0.0.0 --port 8080
+# 方式 1: 使用 uvicorn（推荐加 --timeout-keep-alive 30 便于优雅退出）
+uvicorn service.server:app --host 0.0.0.0 --port 8080 --timeout-keep-alive 30
 
 # 方式 2: 直接运行
-python service/server.py
+python -m service.server
 ```
 
 #### DeepFM 服务
 
 ```bash
-# 方式 1: 使用 uvicorn
-uvicorn service.deepfm_server:app --host 0.0.0.0 --port 8080
-
-# 方式 2: 直接运行
-python service/deepfm_server.py
+uvicorn service.deepfm_server:app --host 0.0.0.0 --port 8080 --timeout-keep-alive 30
+python -m service.deepfm_server
 ```
 
 服务启动后，可以通过以下方式测试：
@@ -134,8 +131,17 @@ python service/deepfm_server.py
 # 健康检查
 curl http://localhost:8080/health
 
+# Prometheus 指标
+curl http://localhost:8080/metrics
+
 # 模型热加载（reload，无需重启服务）
 curl -X POST http://localhost:8080/reload
+
+# 若配置了 RELOAD_API_KEY，需带 X-API-Key 头
+curl -X POST http://localhost:8080/reload -H "X-API-Key: your-secret"
+```
+
+请求会自动带上 `X-Request-ID`（若客户端未传则服务端生成），便于日志与链路关联。
 
 # 批量预测接口（特征名带前缀，与 FEATURE_COLUMNS 对齐）
 curl -X POST http://localhost:8080/predict \
@@ -377,3 +383,5 @@ curl -X POST http://localhost:8080/reload
 - ✅ 训练流程自动化（已实现，`scripts/` 目录）
 - ✅ Kubernetes 部署配置（已实现，`k8s/` 目录）
 - ⏳ 使用 gRPC 替代 HTTP（性能更好，待实现）
+
+**工业级补充建议**：可观测性（结构化日志、request_id、Prometheus /metrics）、安全（/reload 鉴权、输入校验、限流）、可靠性（优雅退出、readiness/liveness 分离）、CI/CD（lint、test、镜像构建）等，详见 [docs/PYTHON_PRODUCTION_GUIDE.md](../docs/PYTHON_PRODUCTION_GUIDE.md)。
