@@ -70,7 +70,7 @@
   - `core.VectorUpdateRequest`
   - `core.VectorDeleteRequest`
   - `core.VectorCreateCollectionRequest`
-- 将 `vector.ANNService` 改为类型别名：`type ANNService = core.VectorDatabaseService` ✅ 已完成
+- 移除 `vector.ANNService`，统一使用 `core.VectorDatabaseService`
 - 更新所有实现（`ext/vector/milvus`、`store.MemoryVectorService`）
 
 **影响**：
@@ -95,7 +95,7 @@ core/
 ### vector 包（基础设施层）
 ```
 vector/
-  └── ann_service.go  // 类型别名：type ANNService = core.VectorDatabaseService
+  └── (已删除)  // vector.ANNService 已移除，统一使用 core.VectorDatabaseService
 ```
 
 ### service 包（基础设施层）
@@ -257,7 +257,7 @@ import "github.com/rushteam/reckit/feature"
 var fs core.FeatureService = featureService
 ```
 
-### 从 `vector.ANNService` 迁移 ✅ 已完成
+### 从 `vector.ANNService` 迁移
 
 **之前**：
 ```go
@@ -276,7 +276,7 @@ err := dbService.CreateCollection(ctx, &core.VectorCreateCollectionRequest{...})
 **向后兼容**：
 ```go
 import milvus "github.com/rushteam/reckit/ext/vector/milvus"
-var dbService core.VectorDatabaseService = milvusService // 类型别名，仍可使用
+var dbService core.VectorDatabaseService = milvusService // 领域接口
 ```
 
 ### 从 `service.ANNServiceClient` 迁移
@@ -302,7 +302,7 @@ var vs core.VectorService = vectorService
 ## 注意事项
 
 1. **接口定义位置**：所有领域接口都在 `core` 包
-2. **类型别名**：`vector.ANNService` 已移除，使用 `core.VectorDatabaseService`
+2. **统一接口**：移除 `vector.ANNService`，统一使用 `core.VectorDatabaseService`
 3. **请求类型**：所有请求类型都在 `core` 包（`core.VectorInsertRequest` 等）
 4. **实现位置**：基础设施层实现领域接口，不定义新接口
 

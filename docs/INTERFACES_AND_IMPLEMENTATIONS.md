@@ -694,20 +694,39 @@ type KeyValueStore interface {
 
 ### 9.1 核心接口
 
-#### `core.VectorDatabaseService` - 向量检索服务接口
-**位置**: `vector/ann_service.go`
+#### `core.VectorDatabaseService` - 向量数据库服务接口
+**位置**: `core/vector_database_service.go`
 
 ```go
-type ANNService interface {
-    Search(ctx context.Context, vector []float64, topK int, metric string) ([]string, []float64, error)
+type VectorDatabaseService interface {
+    // 嵌入 VectorService（召回场景接口）
+    VectorService
+
+    // Insert 插入向量
+    Insert(ctx context.Context, req *VectorInsertRequest) error
+
+    // Update 更新向量
+    Update(ctx context.Context, req *VectorUpdateRequest) error
+
+    // Delete 删除向量
+    Delete(ctx context.Context, req *VectorDeleteRequest) error
+
+    // CreateCollection 创建集合
+    CreateCollection(ctx context.Context, req *VectorCreateCollectionRequest) error
+
+    // DropCollection 删除集合
+    DropCollection(ctx context.Context, collection string) error
+
+    // HasCollection 检查集合是否存在
+    HasCollection(ctx context.Context, collection string) (bool, error)
 }
 ```
 
-**作用**: 定义向量检索服务的接口。
+**作用**: 定义完整的向量数据库服务接口，支持向量检索和管理操作。
 
 **已有实现**:
-- ✅ `MilvusClient` - Milvus 向量数据库客户端
-- ✅ `ANNServiceClient` - 外部 ANN 服务客户端
+- ✅ `ext/vector/milvus.MilvusService` - Milvus 向量数据库实现
+- ✅ `store.MemoryVectorService` - 内存向量服务实现
 
 ---
 
@@ -731,7 +750,6 @@ type MLService interface {
 **已有实现**:
 - ✅ `service.TFServingClient` - TensorFlow Serving 客户端（实现 `core.MLService`）
 - ✅ `service.TorchServeClient` - TorchServe 客户端（实现 `core.MLService`）
-- ✅ `service.ANNServiceClient` - ANN 服务客户端（实现 `core.MLService`）
 
 ---
 

@@ -54,8 +54,7 @@ type VectorDatabaseService interface {
     HasCollection(ctx context.Context, collection string) (bool, error)
 }
 
-// vector/ann_service.go - 删除，改为类型别名
-type ANNService = core.VectorDatabaseService
+// vector/ann_service.go - 删除，统一使用 core.VectorDatabaseService
 ```
 
 **理由**：
@@ -235,11 +234,11 @@ rank.SortStrategy (排序策略接口)
 
 ### 中优先级（建议修复）
 
-4. **将 `core.VectorDatabaseService` 的请求类型移到 `core`** ✅ 已完成
+4. **将 `core.VectorDatabaseService` 的请求类型移到 `core`**
    - 领域概念应该在 core
    - 影响：接口定义位置
 
-5. **重命名 `vector.ANNService` 为 `core.VectorDatabaseService`** ✅ 已完成
+5. **重命名 `vector.ANNService` 为 `core.VectorDatabaseService`**
    - 更清晰的命名
    - 影响：可读性
 
@@ -261,7 +260,7 @@ rank.SortStrategy (排序策略接口)
 ### 方案2：完整重构
 
 1. 执行方案1的所有改动
-2. 将 `vector.ANNService` 改为 `core.VectorDatabaseService` ✅ 已完成
+2. 将 `vector.ANNService` 改为 `core.VectorDatabaseService`
 3. 将所有请求类型移到 `core` 包
 
 ---
@@ -282,7 +281,7 @@ core/
 ### vector 包（基础设施层）
 ```
 vector/
-  └── ann_service.go  // 删除，改为类型别名：type ANNService = core.VectorDatabaseService
+  └── ann_service.go  // 删除，统一使用 core.VectorDatabaseService
 ```
 
 ### service 包（基础设施层）

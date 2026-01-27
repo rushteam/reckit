@@ -715,8 +715,6 @@ var vectorService core.VectorService = milvusService
 
 // 作为 core.VectorDatabaseService 使用（数据管理场景）
 var dbService core.VectorDatabaseService = milvusService
-// 或使用类型别名（向后兼容）
-var dbService core.VectorDatabaseService = milvusService
 ```
 
 **或自行实现**：参考扩展包实现，自行实现 `core.VectorService` 或 `core.VectorDatabaseService` 接口。

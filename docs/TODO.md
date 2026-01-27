@@ -147,7 +147,7 @@ type FeedbackCollector interface {
 - ✅ **Milvus ID 转换冲突** - 已改为使用 Milvus 原生 string ID 支持
 - ✅ **错误处理不一致** - 已统一使用 `core.DomainError`
 - ✅ **接口定义位置不符合 DDD** - 已将所有接口提升到 `core` 包
-- ✅ **类型系统优化** - 已移除所有类型别名，统一使用 `core` 包接口
+- ✅ **类型系统优化** - 已移除不必要的类型别名，保留向后兼容的别名
 
 ---
 
