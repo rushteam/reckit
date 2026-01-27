@@ -662,7 +662,7 @@ store, err := redisstore.NewRedisStore("localhost:6379", 0)
 if err != nil {
     log.Fatal(err)
 }
-defer store.Close()
+defer store.Close(ctx)
 
 // 作为 core.Store 使用
 var s core.Store = store

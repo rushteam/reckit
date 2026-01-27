@@ -171,9 +171,9 @@ func (s *MilvusService) Search(ctx context.Context, req *core.VectorSearchReques
 
 			// 提取分数 (v2.5.x 中 Scores 包含了距离信息)
 			if i < len(resultSet.Scores) {
-				score := float64(resultSet.Scores[i])
-				item.Score = score
-				item.Distance = score
+				distance := float64(resultSet.Scores[i])
+				item.Score = 1.0 - distance  // 转换为相似度分数 (假设余弦距离)
+				item.Distance = distance
 			}
 			items = append(items, item)
 		}
@@ -402,9 +402,8 @@ func (s *MilvusService) HasCollection(ctx context.Context, collection string) (b
 	return exists, nil
 }
 
-func (s *MilvusService) Close() error {
+func (s *MilvusService) Close(ctx context.Context) error {
 	if s.client != nil {
-		ctx := context.Background()
 		return s.client.Close(ctx)
 	}
 	return nil

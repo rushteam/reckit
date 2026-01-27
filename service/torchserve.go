@@ -345,7 +345,7 @@ func (c *TorchServeClient) Health(ctx context.Context) error {
 }
 
 // Close 关闭连接
-func (c *TorchServeClient) Close() error {
+func (c *TorchServeClient) Close(ctx context.Context) error {
 	// HTTP 客户端不需要显式关闭
 	// 如果需要，可以在这里关闭连接池等资源
 	return nil

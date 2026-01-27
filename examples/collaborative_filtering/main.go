@@ -17,7 +17,7 @@ func main() {
 
 	// 1. 创建内存存储和协同过滤适配器
 	memStore := store.NewMemoryStore()
-	defer memStore.Close()
+	defer memStore.Close(ctx)
 	cfStore := recall.NewStoreCFAdapter(memStore, "cf")
 
 	// 2. 模拟用户-物品交互数据

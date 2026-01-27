@@ -18,7 +18,7 @@ func main() {
 
 	// 1. 初始化存储（使用 core.Store 接口）
 	var memStore core.Store = store.NewMemoryStore()
-	defer memStore.Close()
+	defer memStore.Close(ctx)
 
 	// 2. 准备测试数据
 	setupTestData(ctx, memStore)

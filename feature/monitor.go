@@ -155,6 +155,7 @@ func (m *MemoryFeatureMonitor) GetFeatureStats(ctx context.Context, featureName 
 }
 
 // Close 关闭监控，停止更新协程
-func (m *MemoryFeatureMonitor) Close() {
+func (m *MemoryFeatureMonitor) Close(ctx context.Context) error {
 	close(m.stopUpdate)
+	return nil
 }

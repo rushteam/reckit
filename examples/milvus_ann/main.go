@@ -28,7 +28,7 @@ func main() {
 		fmt.Printf("创建 Milvus 服务失败: %v\n", err)
 		return
 	}
-	defer milvusService.Close()
+	defer milvusService.Close(ctx)
 
 	// ========== 2. 创建集合 ==========
 	fmt.Println("\n=== 创建集合 ===")

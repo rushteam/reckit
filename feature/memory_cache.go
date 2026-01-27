@@ -213,6 +213,7 @@ func (c *MemoryFeatureCache) Clear(ctx context.Context) {
 }
 
 // Close 关闭缓存，停止清理协程
-func (c *MemoryFeatureCache) Close() {
+func (c *MemoryFeatureCache) Close(ctx context.Context) error {
 	close(c.stopCleanup)
+	return nil
 }

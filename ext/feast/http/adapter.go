@@ -324,8 +324,8 @@ func (a *FeatureServiceAdapter) BatchGetRealtimeFeatures(ctx context.Context, pa
 }
 
 // Close 关闭特征服务
-func (a *FeatureServiceAdapter) Close() error {
-	return a.client.Close()
+func (a *FeatureServiceAdapter) Close(ctx context.Context) error {
+	return a.client.Close(ctx)
 }
 
 // convertToFloat64 将 interface{} 转换为 float64

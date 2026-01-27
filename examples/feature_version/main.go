@@ -219,9 +219,9 @@ func (v *VersionedFeatureService) BatchGetRealtimeFeatures(
 }
 
 // Close 关闭服务
-func (v *VersionedFeatureService) Close() error {
+func (v *VersionedFeatureService) Close(ctx context.Context) error {
 	for _, service := range v.services {
-		if err := service.Close(); err != nil {
+		if err := service.Close(ctx); err != nil {
 			return err
 		}
 	}
@@ -387,14 +387,14 @@ func main() {
 	} else {
 		s = redisStore
 	}
-	defer s.Close()
+	defer s.Close(ctx)
 
 	// 2. 准备不同版本的特征数据
 	prepareVersionedFeatureData(ctx, s)
 
 	// 3. 创建版本化特征服务
 	versionedService := createVersionedFeatureService(s)
-	defer versionedService.Close()
+	defer versionedService.Close(ctx)
 
 	// 4. 演示版本选择
 	fmt.Println("\n=== 版本选择演示 ===")

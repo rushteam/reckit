@@ -26,7 +26,7 @@ type MLService interface {
 	Health(ctx context.Context) error
 
 	// Close 关闭连接
-	Close() error
+	Close(ctx context.Context) error
 }
 
 // MLPredictRequest 预测请求

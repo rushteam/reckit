@@ -46,7 +46,7 @@ func main() {
 	// 初始化 Store（这里用 MemoryStore 演示，生产环境可用 RedisStore）
 	// 使用 core.Store 接口（符合 DDD）
 	var memStore core.Store = store.NewMemoryStore()
-	defer memStore.Close()
+	defer memStore.Close(ctx)
 
 	// 演示：将热门物品写入 Store（使用有序集合，按热度分数排序）
 	// 生产环境通常由离线任务定期更新

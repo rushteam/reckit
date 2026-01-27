@@ -23,7 +23,7 @@ func main() {
 		service.WithTFServingVersion("1"),
 		service.WithTFServingTimeout(30*time.Second),
 	)
-	defer tfServiceREST.Close()
+	defer tfServiceREST.Close(ctx)
 
 	// 健康检查
 	if err := tfServiceREST.Health(ctx); err != nil {
@@ -57,7 +57,7 @@ func main() {
 		service.WithTFServingGRPC(),
 		service.WithTFServingVersion("1"),
 	)
-	defer tfServiceGRPC.Close()
+	defer tfServiceGRPC.Close(ctx)
 
 	fmt.Println("\n=== 使用 gRPC 协议 ===")
 	// 使用 core.MLPredictRequest
@@ -86,7 +86,7 @@ func main() {
 	if err != nil {
 		fmt.Printf("创建服务失败: %v\n", err)
 	} else {
-		defer mlService.Close()
+		defer mlService.Close(ctx)
 		fmt.Println("使用工厂方法创建服务成功")
 
 		// 测试连接

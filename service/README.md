@@ -164,7 +164,7 @@ torchService, err := service.NewMLService(torchConfig)
 if err != nil {
     // 处理错误
 }
-defer mlService.Close()
+defer mlService.Close(ctx)
 
 // 使用服务
 resp, err := mlService.Predict(ctx, &core.MLPredictRequest{

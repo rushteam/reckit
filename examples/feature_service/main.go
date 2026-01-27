@@ -29,7 +29,7 @@ func main() {
 	} else {
 		s = redisStore
 	}
-	defer s.Close()
+	defer s.Close(ctx)
 
 	// 2. 准备特征数据（示例：实际场景中由离线任务或实时任务更新）
 	prepareFeatureData(ctx, s)
@@ -42,7 +42,7 @@ func main() {
 		5*time.Minute, // 缓存 TTL
 		1000,          // 监控样本数
 	)
-	defer featureService.Close()
+	defer featureService.Close(ctx)
 
 	// 4. 创建特征注入节点（使用特征服务）
 	enrichNode := &feature.EnrichNode{

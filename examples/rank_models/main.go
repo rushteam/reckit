@@ -44,7 +44,7 @@ func main() {
 	}
 
 	memStore := store.NewMemoryStore()
-	defer memStore.Close()
+	defer memStore.Close(ctx)
 
 	// 特征注入节点
 	enrichNode := &feature.EnrichNode{

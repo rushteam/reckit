@@ -104,7 +104,7 @@ func main() {
 
 	// 初始化 Store
 	memStore := store.NewMemoryStore()
-	defer memStore.Close()
+	defer memStore.Close(ctx)
 
 	// 1. 使用自定义合并策略
 	fmt.Println("=== 示例 1: 自定义合并策略 ===")

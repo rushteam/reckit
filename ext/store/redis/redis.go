@@ -126,7 +126,7 @@ func (r *RedisStore) HGetAll(ctx context.Context, key string) (map[string][]byte
 	return result, nil
 }
 
-func (r *RedisStore) Close() error {
+func (r *RedisStore) Close(ctx context.Context) error {
 	return r.client.Close()
 }
 

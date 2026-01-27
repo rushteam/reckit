@@ -57,7 +57,7 @@ func main() {
 
 	// 3. 创建 Pipeline（用户画像驱动）
 	memStore := store.NewMemoryStore()
-	defer memStore.Close()
+	defer memStore.Close(ctx)
 
 	// 创建带类别标签的热门召回
 	hotRecall := &recallWithCategory{}

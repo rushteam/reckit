@@ -423,7 +423,7 @@ func main() {
 
 	// ========== 1. 初始化 Store ==========
 	memStore := store.NewMemoryStore()
-	defer memStore.Close()
+	defer memStore.Close(ctx)
 
 	// 设置测试数据
 	if err := setupTestData(ctx, memStore); err != nil {

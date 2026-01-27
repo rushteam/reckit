@@ -41,7 +41,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("创建 Feast 客户端失败: %v", err)
 	}
-	defer feastClient.Close()
+	defer feastClient.Close(ctx)
 
 	// 2. 创建特征映射配置
 	mapping := &feasthttp.FeatureMapping{

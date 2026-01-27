@@ -355,7 +355,7 @@ func (s *BaseFeatureService) BatchGetRealtimeFeatures(ctx context.Context, pairs
 // 确保 BaseFeatureService 实现了 core.FeatureService 接口
 var _ core.FeatureService = (*BaseFeatureService)(nil)
 
-func (s *BaseFeatureService) Close() error {
+func (s *BaseFeatureService) Close(ctx context.Context) error {
 	// 清理资源
 	if s.cache != nil {
 		s.cache.Clear(context.Background())

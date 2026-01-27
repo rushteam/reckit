@@ -129,7 +129,7 @@ func (m *MemoryVectorService) Search(ctx context.Context, req *core.VectorSearch
 }
 
 // Close 实现 core.VectorService 接口
-func (m *MemoryVectorService) Close() error {
+func (m *MemoryVectorService) Close(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.collections = make(map[string]*collection)

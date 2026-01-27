@@ -29,7 +29,7 @@ func main() {
 	if err != nil {
 		panic(fmt.Sprintf("创建反馈收集器失败: %v", err))
 	}
-	defer collector.Close()
+	defer collector.Close(ctx)
 
 	// 2. 创建 Pipeline Hook
 	feedbackHook := feedback.NewFeedbackHook(collector)

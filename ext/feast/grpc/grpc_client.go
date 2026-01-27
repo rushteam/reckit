@@ -173,7 +173,7 @@ func (c *GrpcClient) GetFeatureService(ctx context.Context) (*http.FeatureServic
 	}, nil
 }
 
-func (c *GrpcClient) Close() error {
+func (c *GrpcClient) Close(ctx context.Context) error {
 	c.client = nil
 	return nil
 }

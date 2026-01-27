@@ -38,7 +38,7 @@ type Store interface {
 	BatchSet(ctx context.Context, kvs map[string][]byte, ttl ...int) error
 
 	// Close 关闭连接/释放资源
-	Close() error
+	Close(ctx context.Context) error
 }
 
 // KeyValueStore 是 Store 的扩展接口，支持更丰富的 KV 操作。

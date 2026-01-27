@@ -40,7 +40,7 @@ type FeatureService interface {
 	BatchGetRealtimeFeatures(ctx context.Context, pairs []FeatureUserItemPair) (map[FeatureUserItemPair]map[string]float64, error)
 
 	// Close 关闭特征服务，释放资源
-	Close() error
+	Close(ctx context.Context) error
 }
 
 // FeatureUserItemPair 用户-物品对，用于实时特征查询

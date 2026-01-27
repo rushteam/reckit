@@ -113,7 +113,7 @@ func (m *MemoryStore) BatchSet(ctx context.Context, kvs map[string][]byte, ttl .
 	return nil
 }
 
-func (m *MemoryStore) Close() error {
+func (m *MemoryStore) Close(ctx context.Context) error {
 	if m.clean != nil {
 		m.clean.Stop()
 	}

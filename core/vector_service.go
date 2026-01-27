@@ -26,7 +26,7 @@ type VectorService interface {
 	Search(ctx context.Context, req *VectorSearchRequest) (*VectorSearchResult, error)
 
 	// Close 关闭连接
-	Close() error
+	Close(ctx context.Context) error
 }
 
 // VectorSearchRequest 向量搜索请求
