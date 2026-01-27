@@ -310,22 +310,14 @@ func (r *TwoTowerRecall) searchVectors(
 
 // convertToItems 将搜索结果转换为 Item 列表
 func (r *TwoTowerRecall) convertToItems(result *core.VectorSearchResult) []*core.Item {
-	if result == nil || len(result.IDs) == 0 {
+	if result == nil || len(result.Items) == 0 {
 		return []*core.Item{}
 	}
 
-	items := make([]*core.Item, 0, len(result.IDs))
-	for i, itemID := range result.IDs {
-		item := core.NewItem(itemID)
-
-		// 设置相似度分数
-		if i < len(result.Scores) {
-			item.Score = result.Scores[i]
-		} else if i < len(result.Distances) {
-			// 如果只有距离，转换为相似度分数（距离越小，相似度越高）
-			// 对于内积，距离 = 1 - score，所以 score = 1 - distance
-			item.Score = 1.0 - result.Distances[i]
-		}
+	items := make([]*core.Item, 0, len(result.Items))
+	for _, resItem := range result.Items {
+		item := core.NewItem(resItem.ID)
+		item.Score = resItem.Score
 
 		// 添加召回来源标签
 		item.PutLabel("recall_source", utils.Label{Value: "two_tower", Source: "recall"})

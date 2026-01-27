@@ -29,7 +29,7 @@ func (a *VectorStoreAdapter) ListVectors(ctx context.Context) (map[string][]floa
 	return nil, ErrNotSupported
 }
 
-func (a *VectorStoreAdapter) Search(ctx context.Context, vector []float64, topK int, metric string) ([]string, []float64, error) {
+func (a *VectorStoreAdapter) Search(ctx context.Context, vector []float64, topK int, metric string) ([]core.VectorSearchItem, error) {
 	req := &core.VectorSearchRequest{
 		Collection: a.collection,
 		Vector:     vector,
@@ -39,10 +39,10 @@ func (a *VectorStoreAdapter) Search(ctx context.Context, vector []float64, topK 
 
 	result, err := a.service.Search(ctx, req)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	return result.IDs, result.Scores, nil
+	return result.Items, nil
 }
 
 // ErrNotSupported 表示操作不支持的错误（使用统一的 DomainError）

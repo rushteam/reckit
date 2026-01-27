@@ -50,16 +50,22 @@ type VectorSearchRequest struct {
 	Params map[string]interface{}
 }
 
+// VectorSearchItem 单个向量搜索结果项
+type VectorSearchItem struct {
+	// ID 物品 ID
+	ID string
+
+	// Score 相似度分数
+	Score float64
+
+	// Distance 距离
+	Distance float64
+}
+
 // VectorSearchResult 向量搜索结果
 type VectorSearchResult struct {
-	// IDs 物品 ID 列表（按相似度排序）
-	IDs []string
-
-	// Scores 相似度分数列表
-	Scores []float64
-
-	// Distances 距离列表
-	Distances []float64
+	// Items 搜索结果项列表（按相似度排序）
+	Items []VectorSearchItem
 }
 
 // ValidateMetric 验证距离度量类型

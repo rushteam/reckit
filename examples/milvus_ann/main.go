@@ -9,6 +9,8 @@ import (
 	"github.com/rushteam/reckit/pipeline"
 	"github.com/rushteam/reckit/recall"
 	"github.com/rushteam/reckit/vector"
+
+	milvus "github.com/rushteam/reckit/ext/vector/milvus"
 )
 
 func main() {
@@ -17,12 +19,16 @@ func main() {
 
 	// ========== 1. 创建 Milvus 服务 ==========
 	fmt.Println("=== 创建 Milvus 服务 ===")
-	milvusService := vector.NewMilvusService(
+	milvusService, err := milvus.NewMilvusService(
 		"localhost:19530",
-		vector.WithMilvusAuth("root", "Milvus"),
-		vector.WithMilvusDatabase("recommend"),
-		vector.WithMilvusTimeout(30),
+		milvus.WithMilvusAuth("root", "Milvus"),
+		milvus.WithMilvusDatabase("recommend"),
+		milvus.WithMilvusTimeout(30),
 	)
+	if err != nil {
+		fmt.Printf("创建 Milvus 服务失败: %v\n", err)
+		return
+	}
 	defer milvusService.Close()
 
 	// ========== 2. 创建集合 ==========
@@ -84,15 +90,14 @@ func main() {
 	if err != nil {
 		fmt.Printf("向量搜索失败: %v\n", err)
 	} else {
-		fmt.Printf("搜索到 %d 个结果:\n", len(searchResult.IDs))
-		for i, id := range searchResult.IDs {
-			fmt.Printf("  %d. 物品 %s (相似度: %.4f)\n", i+1, id, searchResult.Scores[i])
+		fmt.Printf("搜索到 %d 个结果:\n", len(searchResult.Items))
+		for i, item := range searchResult.Items {
+			fmt.Printf("  %d. 物品 %s (相似度: %.4f)\n", i+1, item.ID, item.Score)
 		}
 	}
 
 	// ========== 5. 与 recall.ANN 集成 ==========
 	fmt.Println("\n=== 与 recall.ANN 集成 ===")
-	adapter := vector.NewVectorStoreAdapter(milvusService, collectionName)
 
 	// 创建推荐上下文
 	rctx := &core.RecommendContext{
@@ -103,12 +108,13 @@ func main() {
 		},
 	}
 
-	// 使用 ANN 召回
+	// 使用 ANN 召回（直接使用 core.VectorService）
 	ann := &recall.ANN{
-		Store:         adapter,
-		TopK:          10,
-		Metric:        "cosine",
-		UserEmbedding: userVector,
+		VectorService: milvusService, // 直接使用 Milvus 服务（实现了 core.VectorService）
+		Collection:    collectionName,
+		TopK:           10,
+		Metric:         "cosine",
+		UserEmbedding:  userVector,
 	}
 
 	items, err := ann.Recall(ctx, rctx)

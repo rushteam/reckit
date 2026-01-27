@@ -60,8 +60,13 @@ func buildFanoutNode(config map[string]interface{}) (pipeline.Node, error) {
 			}
 			sources = append(sources, &recall.Hot{IDs: ids})
 		case "ann":
-			// ANN 需要 VectorStore，这里简化处理
-			// sources = append(sources, &recall.ANN{...})
+			// ANN 需要 core.VectorService，这里简化处理
+			// sources = append(sources, &recall.ANN{
+			//     VectorService: vectorService,
+			//     Collection:    "items",
+			//     TopK:          20,
+			//     Metric:        "cosine",
+			// })
 		default:
 			return nil, fmt.Errorf("unknown source type: %s", sourceType)
 		}

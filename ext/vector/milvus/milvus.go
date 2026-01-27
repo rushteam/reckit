@@ -146,9 +146,7 @@ func (s *MilvusService) Search(ctx context.Context, req *core.VectorSearchReques
 	}
 
 	// 提取结果
-	ids := make([]string, 0)
-	scores := make([]float64, 0)
-	distances := make([]float64, 0)
+	items := make([]core.VectorSearchItem, 0)
 
 	for _, resultSet := range searchResults {
 		if resultSet.Err != nil {
@@ -167,21 +165,23 @@ func (s *MilvusService) Search(ctx context.Context, req *core.VectorSearchReques
 			default:
 				strID = fmt.Sprintf("%v", v)
 			}
-			ids = append(ids, strID)
+
+			item := core.VectorSearchItem{
+				ID: strID,
+			}
 
 			// 提取分数 (v2.5.x 中 Scores 包含了距离信息)
 			if i < len(resultSet.Scores) {
 				score := float64(resultSet.Scores[i])
-				scores = append(scores, score)
-				distances = append(distances, score)
+				item.Score = score
+				item.Distance = score
 			}
+			items = append(items, item)
 		}
 	}
 
 	return &core.VectorSearchResult{
-		IDs:       ids,
-		Scores:    scores,
-		Distances: distances,
+		Items: items,
 	}, nil
 }
 

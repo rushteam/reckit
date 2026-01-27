@@ -161,17 +161,13 @@ func (r *YouTubeDNNRecall) fetchUserEmbedding(ctx context.Context, userFeat map[
 }
 
 func (r *YouTubeDNNRecall) convertToItems(result *core.VectorSearchResult) []*core.Item {
-	if result == nil || len(result.IDs) == 0 {
+	if result == nil || len(result.Items) == 0 {
 		return []*core.Item{}
 	}
-	items := make([]*core.Item, 0, len(result.IDs))
-	for i, id := range result.IDs {
-		it := core.NewItem(id)
-		if i < len(result.Scores) {
-			it.Score = result.Scores[i]
-		} else if i < len(result.Distances) {
-			it.Score = 1.0 - result.Distances[i]
-		}
+	items := make([]*core.Item, 0, len(result.Items))
+	for _, resItem := range result.Items {
+		it := core.NewItem(resItem.ID)
+		it.Score = resItem.Score
 		it.PutLabel("recall_source", utils.Label{Value: "youtube_dnn", Source: "recall"})
 		it.PutLabel("recall_type", utils.Label{Value: "vector_search", Source: "recall"})
 		items = append(items, it)
