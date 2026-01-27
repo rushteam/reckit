@@ -46,10 +46,6 @@ func NewMLService(config *ServiceConfig) (core.MLService, error) {
 		}
 		return NewANNServiceClient(config.Endpoint, config.ModelName, opts...), nil
 
-	case ServiceTypeCustom:
-		// TODO: 实现自定义服务客户端
-		return nil, fmt.Errorf("custom service not implemented")
-
 	case ServiceTypeTorchServe:
 		opts := []TorchServeOption{
 			WithTorchServeTimeout(timeout),

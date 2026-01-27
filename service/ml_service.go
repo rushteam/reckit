@@ -12,10 +12,9 @@ package service
 type ServiceType string
 
 const (
-	ServiceTypeTFServing ServiceType = "tf_serving"  // TensorFlow Serving
+	ServiceTypeTFServing  ServiceType = "tf_serving"  // TensorFlow Serving
 	ServiceTypeTorchServe ServiceType = "torch_serve" // TorchServe
-	ServiceTypeCustom    ServiceType = "custom"      // 自定义服务
-	ServiceTypeANN       ServiceType = "ann"          // ANN 服务
+	ServiceTypeANN        ServiceType = "ann"         // ANN 服务
 )
 
 // ServiceConfig 服务配置
