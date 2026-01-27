@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/milvus-io/milvus-sdk-go/v2/client"
-	"github.com/milvus-io/milvus-sdk-go/v2/entity"
+	"github.com/milvus-io/milvus/client/v2"
+	"github.com/milvus-io/milvus/client/v2/entity"
 )
 
 // MilvusClient 是 Milvus SDK 客户端的接口抽象。
@@ -30,13 +30,14 @@ type DefaultMilvusClientFactory struct{}
 
 // NewClient 创建 Milvus SDK 客户端
 func (f *DefaultMilvusClientFactory) NewClient(ctx context.Context, address, username, password, database string, timeout time.Duration) (MilvusClient, error) {
-	config := client.Config{
+	// 使用新 SDK 的客户端创建方式
+	config := &client.ClientConfig{
 		Address:  address,
 		Username: username,
 		Password: password,
 		DBName:   database,
 	}
-	milvusClient, err := client.NewClient(ctx, config)
+	milvusClient, err := client.New(ctx, config)
 	if err != nil {
 		return nil, fmt.Errorf("create milvus client: %w", err)
 	}
@@ -45,7 +46,7 @@ func (f *DefaultMilvusClientFactory) NewClient(ctx context.Context, address, use
 
 // MilvusSDKClientAdapter 是 Milvus SDK 客户端的适配器。
 type MilvusSDKClientAdapter struct {
-	client client.Client
+	client *client.Client
 }
 
 // Search 执行向量搜索
@@ -69,41 +70,36 @@ func (a *MilvusSDKClientAdapter) Search(ctx context.Context, collection string, 
 		entityVectors[i] = entity.FloatVector(v)
 	}
 
-	// 构建搜索参数
-	searchParam := entity.NewSearchParam().
-		WithTopK(int(topK)).
-		WithMetricType(metric)
+	// 构建搜索选项
+	// 新 SDK 使用 SearchOption 模式
+	searchOption := client.NewSearchOption(collection, int(topK), entityVectors).
+		WithMetricType(metric).
+		WithOutputFields([]string{"id"})
+
+	// 添加过滤表达式
+	if filter != "" {
+		searchOption = searchOption.WithFilter(filter)
+	}
 
 	// 添加自定义搜索参数
 	if searchParams != nil {
 		if nprobe, ok := searchParams["nprobe"].(int); ok {
-			searchParam = searchParam.WithNProbe(nprobe)
+			searchOption = searchOption.WithNProbe(nprobe)
 		}
 		if ef, ok := searchParams["ef"].(int); ok {
-			searchParam = searchParam.WithEF(ef)
+			searchOption = searchOption.WithEF(ef)
 		}
 		if radius, ok := searchParams["radius"].(float64); ok {
-			searchParam = searchParam.WithRadius(radius)
+			searchOption = searchOption.WithRadius(radius)
 		}
 		if rangeFilter, ok := searchParams["range_filter"].(float64); ok {
-			searchParam = searchParam.WithRangeFilter(rangeFilter)
+			searchOption = searchOption.WithRangeFilter(rangeFilter)
 		}
 	}
 
 	// 执行搜索
-	// Milvus SDK v2 的 Search 方法签名: Search(ctx, collection, partitions, expr, outputFields, vectors, fieldName, metricType, topK, searchParam)
-	searchResults, err := a.client.Search(
-		ctx,
-		collection,
-		[]string{},     // partitions
-		filter,         // expr (filter expression)
-		[]string{"id"}, // outputFields
-		entityVectors,
-		"vector", // fieldName
-		metric,
-		int(topK),
-		searchParam,
-	)
+	// 新 SDK 的 Search 方法签名: Search(ctx, option SearchOption, callOptions ...grpc.CallOption)
+	searchResults, err := a.client.Search(ctx, searchOption)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("milvus search failed: %w", err)
 	}
@@ -187,27 +183,112 @@ func (a *MilvusSDKClientAdapter) Insert(ctx context.Context, collection string, 
 		}
 	}
 
-	// 构建插入数据（新 SDK 使用 []map[string]interface{} 格式）
-	insertData := make([]map[string]interface{}, len(ids))
-	for i := range ids {
-		insertData[i] = make(map[string]interface{})
-		insertData[i]["id"] = ids[i]
-		insertData[i]["vector"] = vectors[i]
-		if i < len(metadata) {
-			for k, v := range metadata[i] {
-				insertData[i][k] = v
+	// 构建 entity.Column 格式的插入数据
+	// 新 SDK 的 Insert 方法使用 columns
+	idColumn := entity.NewColumnVarChar("id", ids)
+	vectorColumn := entity.NewColumnFloatVector("vector", int32(len(vectors[0])), vectors)
+
+	columns := []entity.Column{idColumn, vectorColumn}
+
+	// 添加元数据列（如果有）
+	if len(metadata) > 0 {
+		for key, values := range extractMetadataColumns(metadata) {
+			if col := buildMetadataColumn(key, values); col != nil {
+				columns = append(columns, col)
 			}
 		}
 	}
 
 	// 执行插入
-	// 新 SDK 的 Insert 方法签名: Insert(ctx, collection, data, ...options)
-	_, err := a.client.Insert(ctx, collection, insertData)
+	// 新 SDK 的 Insert 方法签名: Insert(ctx, option InsertOption, callOptions ...grpc.CallOption)
+	insertOption := client.NewInsertOption(collection, columns...)
+	_, err := a.client.Insert(ctx, insertOption)
 	if err != nil {
 		return fmt.Errorf("milvus insert failed: %w", err)
 	}
 
 	return nil
+}
+
+// extractMetadataColumns 从元数据中提取列数据
+func extractMetadataColumns(metadata []map[string]interface{}) map[string][]interface{} {
+	if len(metadata) == 0 {
+		return nil
+	}
+
+	// 获取所有键
+	keys := make(map[string]bool)
+	for _, m := range metadata {
+		for k := range m {
+			keys[k] = true
+		}
+	}
+
+	// 构建列数据
+	result := make(map[string][]interface{})
+	for k := range keys {
+		values := make([]interface{}, len(metadata))
+		for i, m := range metadata {
+			values[i] = m[k]
+		}
+		result[k] = values
+	}
+
+	return result
+}
+
+// buildMetadataColumn 根据值类型构建元数据列
+func buildMetadataColumn(name string, values []interface{}) entity.Column {
+	if len(values) == 0 {
+		return nil
+	}
+
+	// 根据第一个值的类型判断列类型
+	switch values[0].(type) {
+	case string:
+		strValues := make([]string, len(values))
+		for i, v := range values {
+			strValues[i] = fmt.Sprintf("%v", v)
+		}
+		return entity.NewColumnVarChar(name, strValues)
+	case int, int32, int64:
+		intValues := make([]int64, len(values))
+		for i, v := range values {
+			switch val := v.(type) {
+			case int:
+				intValues[i] = int64(val)
+			case int32:
+				intValues[i] = int64(val)
+			case int64:
+				intValues[i] = val
+			}
+		}
+		return entity.NewColumnInt64(name, intValues)
+	case float32, float64:
+		floatValues := make([]float32, len(values))
+		for i, v := range values {
+			switch val := v.(type) {
+			case float32:
+				floatValues[i] = val
+			case float64:
+				floatValues[i] = float32(val)
+			}
+		}
+		return entity.NewColumnFloat(name, floatValues)
+	case bool:
+		boolValues := make([]bool, len(values))
+		for i, v := range values {
+			boolValues[i] = v.(bool)
+		}
+		return entity.NewColumnBool(name, boolValues)
+	default:
+		// 默认转为字符串
+		strValues := make([]string, len(values))
+		for i, v := range values {
+			strValues[i] = fmt.Sprintf("%v", v)
+		}
+		return entity.NewColumnVarChar(name, strValues)
+	}
 }
 
 // Delete 删除向量数据
@@ -216,8 +297,9 @@ func (a *MilvusSDKClientAdapter) Delete(ctx context.Context, collection string, 
 		return fmt.Errorf("delete expression is required")
 	}
 
-	// 新 SDK 的 Delete 方法签名: Delete(ctx, collection, expr, partitionName)
-	_, err := a.client.Delete(ctx, collection, expr, "")
+	// 新 SDK 的 Delete 方法使用 DeleteOption
+	deleteOption := client.NewDeleteOption(collection, expr)
+	_, err := a.client.Delete(ctx, deleteOption)
 	if err != nil {
 		return fmt.Errorf("milvus delete failed: %w", err)
 	}
@@ -275,8 +357,9 @@ func (a *MilvusSDKClientAdapter) CreateCollection(ctx context.Context, schema in
 			WithDim(dimension))
 
 	// 创建集合
-	// Milvus SDK v2 的 CreateCollection 方法签名: CreateCollection(ctx, schema, shardNum)
-	err := a.client.CreateCollection(ctx, schemaDef, entity.DefaultShardNumber)
+	// 新 SDK 的 CreateCollection 方法使用 CreateCollectionOption
+	createOption := client.NewCreateCollectionOption(schemaDef)
+	err := a.client.CreateCollection(ctx, createOption)
 	if err != nil {
 		return fmt.Errorf("milvus create collection failed: %w", err)
 	}
@@ -287,8 +370,9 @@ func (a *MilvusSDKClientAdapter) CreateCollection(ctx context.Context, schema in
 		return fmt.Errorf("create index failed: %w", err)
 	}
 
-	// Milvus SDK v2 的 CreateIndex 方法签名: CreateIndex(ctx, collection, fieldName, index, async)
-	err = a.client.CreateIndex(ctx, collectionName, "vector", index, false)
+	// 新 SDK 的 CreateIndex 方法使用 CreateIndexOption
+	indexOption := client.NewCreateIndexOption(collectionName, "vector", index)
+	err = a.client.CreateIndex(ctx, indexOption)
 	if err != nil {
 		return fmt.Errorf("milvus create index failed: %w", err)
 	}
@@ -298,7 +382,9 @@ func (a *MilvusSDKClientAdapter) CreateCollection(ctx context.Context, schema in
 
 // DropCollection 删除集合
 func (a *MilvusSDKClientAdapter) DropCollection(ctx context.Context, collection string) error {
-	err := a.client.DropCollection(ctx, collection)
+	// 新 SDK 的 DropCollection 方法使用 DropCollectionOption
+	dropOption := client.NewDropCollectionOption(collection)
+	err := a.client.DropCollection(ctx, dropOption)
 	if err != nil {
 		return fmt.Errorf("milvus drop collection failed: %w", err)
 	}
@@ -307,7 +393,9 @@ func (a *MilvusSDKClientAdapter) DropCollection(ctx context.Context, collection 
 
 // HasCollection 检查集合是否存在
 func (a *MilvusSDKClientAdapter) HasCollection(ctx context.Context, collection string) (bool, error) {
-	exists, err := a.client.HasCollection(ctx, collection)
+	// 新 SDK 的 HasCollection 方法使用 HasCollectionOption
+	hasOption := client.NewHasCollectionOption(collection)
+	exists, err := a.client.HasCollection(ctx, hasOption)
 	if err != nil {
 		return false, fmt.Errorf("milvus has collection failed: %w", err)
 	}
