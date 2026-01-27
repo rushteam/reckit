@@ -99,16 +99,16 @@ func main() {
 		UserID: "1",
 		Scene:  "feed",
 		UserProfile: map[string]any{
-			"user_vector": userVector,
+			"user_embedding": userVector,
 		},
 	}
 
 	// 使用 ANN 召回
 	ann := &recall.ANN{
-		Store:      adapter,
-		TopK:       10,
-		Metric:     "cosine",
-		UserVector: userVector,
+		Store:         adapter,
+		TopK:          10,
+		Metric:        "cosine",
+		UserEmbedding: userVector,
 	}
 
 	items, err := ann.Recall(ctx, rctx)

@@ -469,9 +469,9 @@ func main() {
 		},
 		// 3. 内容召回（基于 category）
 		&recall.ContentRecall{
-			Store:            contentStore,
-			TopK:             20,
-			SimilarityMetric: "cosine",
+			Store:  contentStore,
+			TopK:   20,
+			Metric: "cosine",
 			UserPreferencesExtractor: func(rctx *core.RecommendContext) map[string]float64 {
 				if rctx.User != nil {
 					return rctx.User.Interests // category -> weight

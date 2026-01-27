@@ -127,15 +127,14 @@ func createRecallSources(ctx context.Context, memStore core.Store) map[string]re
 			TopK:  3,
 		},
 		"emb": &recall.EmbRecall{
-			UserVector: []float64{0.5, 0.3, 0.2},
-			TopK:       3,
-			Metric:     "cosine",
+			UserEmbedding: []float64{0.5, 0.3, 0.2},
+			TopK:          3,
+			Metric:        "cosine",
 		},
 		"content": &recall.ContentRecall{
-			Store: contentStore,
-			TopK:  3,
-			// ContentRecall 使用不同的相似度计算方式，暂时保留 SimilarityMetric
-			SimilarityMetric: "cosine",
+			Store:  contentStore,
+			TopK:   3,
+			Metric: "cosine",
 		},
 	}
 }
