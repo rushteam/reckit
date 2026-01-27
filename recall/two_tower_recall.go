@@ -51,7 +51,7 @@ import (
 //	}
 type TwoTowerRecall struct {
 	// FeatureService 特征服务，用于获取用户特征
-	FeatureService feature.FeatureService
+	FeatureService core.FeatureService
 
 	// UserTowerService 用户塔推理服务（core.MLService 接口）
 	// 支持 ONNX Runtime、TorchServe、TensorFlow Serving 等
@@ -80,7 +80,7 @@ type TwoTowerRecall struct {
 
 // NewTwoTowerRecall 创建一个新的双塔召回源。
 func NewTwoTowerRecall(
-	featureService feature.FeatureService,
+	featureService core.FeatureService,
 	userTowerService core.MLService,
 	vectorService core.VectorService,
 	opts ...TwoTowerRecallOption,

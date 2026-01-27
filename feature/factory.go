@@ -18,7 +18,7 @@ func NewFeatureServiceFactory() *FeatureServiceFactory {
 func (f *FeatureServiceFactory) CreateFromStore(
 	store core.Store,
 	opts ...ServiceOption,
-) FeatureService {
+) core.FeatureService {
 	keyPrefix := KeyPrefix{
 		User:     "user:features:",
 		Item:     "item:features:",
@@ -35,7 +35,7 @@ func (f *FeatureServiceFactory) CreateWithCache(
 	cacheSize int,
 	cacheTTL time.Duration,
 	opts ...ServiceOption,
-) FeatureService {
+) core.FeatureService {
 	cache := NewMemoryFeatureCache(cacheSize, cacheTTL)
 	opts = append(opts, WithCache(cache, cacheTTL))
 	return f.CreateFromStore(store, opts...)
@@ -46,7 +46,7 @@ func (f *FeatureServiceFactory) CreateWithMonitor(
 	store core.Store,
 	maxSamples int,
 	opts ...ServiceOption,
-) FeatureService {
+) core.FeatureService {
 	monitor := NewMemoryFeatureMonitor(maxSamples)
 	opts = append(opts, WithMonitor(monitor))
 	return f.CreateFromStore(store, opts...)
@@ -56,7 +56,7 @@ func (f *FeatureServiceFactory) CreateWithMonitor(
 func (f *FeatureServiceFactory) CreateWithFallback(
 	store core.Store,
 	opts ...ServiceOption,
-) FeatureService {
+) core.FeatureService {
 	fallback := NewDefaultFallbackStrategy()
 	opts = append(opts, WithFallback(fallback))
 	return f.CreateFromStore(store, opts...)
@@ -68,7 +68,7 @@ func (f *FeatureServiceFactory) CreateFull(
 	cacheSize int,
 	cacheTTL time.Duration,
 	monitorMaxSamples int,
-) FeatureService {
+) core.FeatureService {
 	cache := NewMemoryFeatureCache(cacheSize, cacheTTL)
 	monitor := NewMemoryFeatureMonitor(monitorMaxSamples)
 	fallback := NewDefaultFallbackStrategy()

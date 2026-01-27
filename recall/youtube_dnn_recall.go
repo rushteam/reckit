@@ -22,7 +22,7 @@ import (
 //	python train/train_youtube_dnn.py
 //	uvicorn service.youtube_dnn_server:app --host 0.0.0.0 --port 8082
 type YouTubeDNNRecall struct {
-	FeatureService feature.FeatureService
+	FeatureService core.FeatureService
 	Endpoint       string // HTTP 服务端点，例如 "http://localhost:8082/user_embedding"
 	Timeout        time.Duration
 	Client         *http.Client

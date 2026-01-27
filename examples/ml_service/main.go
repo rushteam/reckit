@@ -70,36 +70,7 @@ func main() {
 		fmt.Printf("TF Serving (gRPC) 预测成功\n")
 	}
 
-	// ========== 2. ANN Service 示例 ==========
-	fmt.Println("\n=== ANN Service 示例 ===")
-
-	annService := service.NewANNServiceClient(
-		"http://localhost:19530",
-		"items",
-		service.WithANNServiceTimeout(30*time.Second),
-	)
-	defer annService.Close()
-
-	// 健康检查
-	if err := annService.Health(ctx); err != nil {
-		fmt.Printf("ANN Service 健康检查失败: %v\n", err)
-	} else {
-		fmt.Println("ANN Service 服务正常")
-	}
-
-	// 向量搜索
-	userVector := []float64{0.1, 0.2, 0.3, 0.4}
-	ids, scores, err := annService.Search(ctx, userVector, 10, "cosine")
-	if err != nil {
-		fmt.Printf("ANN Service 搜索失败: %v\n", err)
-	} else {
-		fmt.Printf("ANN Service 搜索成功，返回 %d 个结果\n", len(ids))
-		for i, id := range ids {
-			fmt.Printf("  物品 %d: %.4f\n", id, scores[i])
-		}
-	}
-
-	// ========== 3. 使用工厂方法 ==========
+	// ========== 2. 使用工厂方法 ==========
 	fmt.Println("\n=== 使用工厂方法 ===")
 
 	// TF Serving 配置
@@ -126,19 +97,7 @@ func main() {
 		}
 	}
 
-	// ANN Service 配置
-	annConfig := &service.ServiceConfig{
-		Type:      service.ServiceTypeANN,
-		Endpoint:  "http://localhost:19530",
-		ModelName: "items", // 在 ANN 中作为 Collection
-		Timeout:   30,
-	}
-
-	annMLService, err := service.NewMLService(annConfig)
-	if err != nil {
-		fmt.Printf("创建 ANN 服务失败: %v\n", err)
-	} else {
-		defer annMLService.Close()
-		fmt.Println("使用工厂方法创建 ANN 服务成功")
-	}
+	// 注意：ANN（向量检索）应该使用 core.VectorService 接口，而不是 core.MLService
+	// 请参考 ext/vector/milvus 或 store.MemoryVectorService 实现向量检索
+	fmt.Println("\n注意：向量检索应使用 core.VectorService，请参考向量服务示例")
 }

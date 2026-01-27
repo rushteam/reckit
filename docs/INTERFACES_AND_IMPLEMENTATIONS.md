@@ -127,7 +127,7 @@ type VectorStore interface {
 **作用**: 定义向量存储接口，用于向量检索召回。
 
 **已有实现**:
-- ✅ `VectorStoreAdapter` - 将 `vector.ANNService` 适配为 `VectorStore`
+- ✅ `VectorStoreAdapter` - 将 `core.VectorDatabaseService` 适配为 `VectorStore`
 
 #### `recall.ContentStore` - 内容推荐存储接口
 **位置**: `recall/content.go`
@@ -694,7 +694,7 @@ type KeyValueStore interface {
 
 ### 9.1 核心接口
 
-#### `vector.ANNService` - 向量检索服务接口
+#### `core.VectorDatabaseService` - 向量检索服务接口
 **位置**: `vector/ann_service.go`
 
 ```go

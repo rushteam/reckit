@@ -8,17 +8,9 @@ import (
 	"github.com/rushteam/reckit/pkg/utils"
 )
 
-// MFStore 是矩阵分解的存储接口，用于获取用户和物品的隐向量。
-type MFStore interface {
-	// GetUserVector 获取用户的隐向量
-	GetUserVector(ctx context.Context, userID string) ([]float64, error)
-
-	// GetItemVector 获取物品的隐向量
-	GetItemVector(ctx context.Context, itemID string) ([]float64, error)
-
-	// GetAllItemVectors 获取所有物品的隐向量（用于在线召回）
-	GetAllItemVectors(ctx context.Context) (map[string][]float64, error)
-}
+// MFStore 是矩阵分解的存储接口（已废弃，使用 core.RecallDataStore）。
+// 为了向后兼容，保留为类型别名。
+type MFStore = core.RecallDataStore
 
 // MFRecall 是基于矩阵分解（Matrix Factorization）的召回源。
 //

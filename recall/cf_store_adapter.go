@@ -7,8 +7,9 @@ import (
 	"github.com/rushteam/reckit/core"
 )
 
-// StoreCFAdapter 是基于 core.Store 接口的协同过滤存储适配器。
-// 从 Redis/MySQL 等存储中读取用户-物品交互数据。
+// StoreCFAdapter 是基于 core.Store 接口的召回数据存储适配器。
+// 实现 core.RecallDataStore 接口，支持协同过滤、内容推荐、矩阵分解等召回算法。
+// 从 Redis/MySQL 等存储中读取召回所需的数据。
 type StoreCFAdapter struct {
 	store core.Store
 
@@ -100,6 +101,50 @@ func (a *StoreCFAdapter) GetAllItems(ctx context.Context) ([]string, error) {
 	}
 	return result, nil
 }
+
+// Name 实现 core.RecallDataStore 接口
+func (a *StoreCFAdapter) Name() string {
+	return "store_cf_adapter"
+}
+
+// GetItemFeatures 实现 core.RecallDataStore 接口（内容推荐）
+func (a *StoreCFAdapter) GetItemFeatures(ctx context.Context, itemID string) (map[string]float64, error) {
+	// 协同过滤适配器不支持内容特征，返回空
+	return make(map[string]float64), nil
+}
+
+// GetUserPreferences 实现 core.RecallDataStore 接口（内容推荐）
+func (a *StoreCFAdapter) GetUserPreferences(ctx context.Context, userID string) (map[string]float64, error) {
+	// 协同过滤适配器不支持用户偏好，返回空
+	return make(map[string]float64), nil
+}
+
+// GetSimilarItems 实现 core.RecallDataStore 接口（内容推荐）
+func (a *StoreCFAdapter) GetSimilarItems(ctx context.Context, itemFeatures map[string]float64, topK int) ([]string, error) {
+	// 协同过滤适配器不支持相似物品，返回空
+	return []string{}, nil
+}
+
+// GetUserVector 实现 core.RecallDataStore 接口（矩阵分解）
+func (a *StoreCFAdapter) GetUserVector(ctx context.Context, userID string) ([]float64, error) {
+	// 协同过滤适配器不支持用户向量，返回空
+	return []float64{}, nil
+}
+
+// GetItemVector 实现 core.RecallDataStore 接口（矩阵分解）
+func (a *StoreCFAdapter) GetItemVector(ctx context.Context, itemID string) ([]float64, error) {
+	// 协同过滤适配器不支持物品向量，返回空
+	return []float64{}, nil
+}
+
+// GetAllItemVectors 实现 core.RecallDataStore 接口（矩阵分解）
+func (a *StoreCFAdapter) GetAllItemVectors(ctx context.Context) (map[string][]float64, error) {
+	// 协同过滤适配器不支持物品向量，返回空
+	return make(map[string][]float64), nil
+}
+
+// 确保实现 core.RecallDataStore 接口
+var _ core.RecallDataStore = (*StoreCFAdapter)(nil)
 
 // SetupCFTestData 辅助函数：为测试准备协同过滤数据到 Store 中。
 // 使用 StoreCFAdapter + MemoryStore 时，可以用这个函数方便地添加测试数据。

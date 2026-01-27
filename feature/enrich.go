@@ -19,7 +19,7 @@ import (
 type EnrichNode struct {
 	// FeatureService 特征服务（推荐使用，统一特征获取接口）
 	// 如果设置了 FeatureService，将优先使用它获取特征
-	FeatureService FeatureService
+	FeatureService core.FeatureService
 
 	// UserFeatureExtractor 从 RecommendContext 提取用户特征（传统模式）
 	// 如果设置了 FeatureService，此选项将被忽略

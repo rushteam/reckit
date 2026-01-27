@@ -115,7 +115,6 @@ import (
     
     "github.com/rushteam/reckit/core"
     "github.com/rushteam/reckit/recall"
-    "github.com/rushteam/reckit/vector"
 )
 
 // 创建 Milvus 服务（扩展包）
@@ -169,7 +168,6 @@ for _, item := range items {
 ```go
 import (
     "github.com/rushteam/reckit/recall"
-    "github.com/rushteam/reckit/vector"
 )
 
 // 创建向量服务适配器（扩展包）
@@ -220,7 +218,6 @@ import (
     "github.com/rushteam/reckit/core"
     "github.com/rushteam/reckit/pipeline"
     "github.com/rushteam/reckit/recall"
-    "github.com/rushteam/reckit/vector"
 )
 
 // 创建向量服务（扩展包）
@@ -308,7 +305,6 @@ import (
     "github.com/rushteam/reckit/core"
     "github.com/rushteam/reckit/pipeline"
     "github.com/rushteam/reckit/recall"
-    "github.com/rushteam/reckit/vector"
 )
 
 func main() {

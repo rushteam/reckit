@@ -3,6 +3,8 @@ package feature
 import (
 	"context"
 	"time"
+
+	"github.com/rushteam/reckit/core"
 )
 
 // BaseFeatureService 是特征服务的基础实现，采用组合模式，将不同的 FeatureProvider 组合。
@@ -295,12 +297,18 @@ func (s *BaseFeatureService) GetRealtimeFeatures(ctx context.Context, userID, it
 	return features, nil
 }
 
-func (s *BaseFeatureService) BatchGetRealtimeFeatures(ctx context.Context, pairs []UserItemPair) (map[UserItemPair]map[string]float64, error) {
+func (s *BaseFeatureService) BatchGetRealtimeFeatures(ctx context.Context, pairs []core.FeatureUserItemPair) (map[core.FeatureUserItemPair]map[string]float64, error) {
 	if len(pairs) == 0 {
-		return make(map[UserItemPair]map[string]float64), nil
+		return make(map[core.FeatureUserItemPair]map[string]float64), nil
 	}
 
-	features, err := s.provider.BatchGetRealtimeFeatures(ctx, pairs)
+	// 转换 pairs 类型（FeatureProvider 使用 UserItemPair）
+	providerPairs := make([]UserItemPair, len(pairs))
+	for i, p := range pairs {
+		providerPairs[i] = UserItemPair{UserID: p.UserID, ItemID: p.ItemID}
+	}
+
+	providerFeatures, err := s.provider.BatchGetRealtimeFeatures(ctx, providerPairs)
 	if err != nil {
 		// 记录错误
 		if s.enableMonitor && s.monitor != nil {
@@ -309,7 +317,7 @@ func (s *BaseFeatureService) BatchGetRealtimeFeatures(ctx context.Context, pairs
 
 		// 尝试降级
 		if s.enableFallback && s.fallback != nil {
-			result := make(map[UserItemPair]map[string]float64)
+			result := make(map[core.FeatureUserItemPair]map[string]float64)
 			for _, pair := range pairs {
 				if fallbackFeatures, err := s.fallback.GetRealtimeFeatures(ctx, pair.UserID, pair.ItemID, nil, nil); err == nil {
 					result[pair] = fallbackFeatures
@@ -319,6 +327,17 @@ func (s *BaseFeatureService) BatchGetRealtimeFeatures(ctx context.Context, pairs
 		}
 
 		return nil, err
+	}
+
+	// 转换返回结果类型（从 UserItemPair 转为 core.FeatureUserItemPair）
+	features := make(map[core.FeatureUserItemPair]map[string]float64)
+	for i, providerPair := range providerPairs {
+		if i < len(pairs) {
+			corePair := pairs[i]
+			if f, ok := providerFeatures[providerPair]; ok {
+				features[corePair] = f
+			}
+		}
 	}
 
 	// 记录监控
@@ -332,6 +351,9 @@ func (s *BaseFeatureService) BatchGetRealtimeFeatures(ctx context.Context, pairs
 
 	return features, nil
 }
+
+// 确保 BaseFeatureService 实现了 core.FeatureService 接口
+var _ core.FeatureService = (*BaseFeatureService)(nil)
 
 func (s *BaseFeatureService) Close() error {
 	// 清理资源

@@ -118,25 +118,18 @@ err := torchService.Health(ctx)
 import "github.com/rushteam/reckit/core"
 import "github.com/rushteam/reckit/service"
 
-// 创建 ANN 服务客户端
-var annService core.MLService = service.NewANNServiceClient(
-    "http://localhost:19530",
-    "items",
-    service.WithANNServiceTimeout(30*time.Second),
-)
-
-// 向量搜索（使用专用方法）
-annClient := annService.(*service.ANNServiceClient)
-ids, scores, err := annClient.Search(ctx, userVector, 20, "cosine")
-
-// 或使用 Predict 接口
-resp, err := annService.Predict(ctx, &core.MLPredictRequest{
-    Instances: [][]float64{userVector},
-    Params: map[string]interface{}{
-        "top_k":  20,
-        "metric": "cosine",
-    },
-})
+// 注意：ANN（向量检索）应该使用 core.VectorService 接口，而不是 core.MLService
+// 请参考 ext/vector/milvus 或 store.MemoryVectorService 实现向量检索
+//
+// 示例：
+// import milvus "github.com/rushteam/reckit/ext/vector/milvus"
+// vectorService, _ := milvus.NewMilvusService("localhost:19530")
+// result, err := vectorService.Search(ctx, &core.VectorSearchRequest{
+//     Collection: "items",
+//     Vector:     userVector,
+//     TopK:       20,
+//     Metric:     "cosine",
+// })
 ```
 
 ## 工厂方法
@@ -233,25 +226,24 @@ rankNode := &rank.RPCNode{
 }
 ```
 
-### 2. 与 vector.ANNService 集成
+### 2. 与 core.VectorDatabaseService 集成
 
 ```go
 import (
-    "github.com/rushteam/reckit/vector"
     "github.com/rushteam/reckit/service"
 )
 
 // 创建 ANN 服务客户端
-annClient := service.NewANNServiceClient("http://localhost:19530", "items")
-
-// 包装为 vector.ANNService
-annService := vector.NewANNServiceFromClient(annClient)
-
+// 注意：向量检索应使用 core.VectorService，请参考 ext/vector/milvus
+// import milvus "github.com/rushteam/reckit/ext/vector/milvus"
+// vectorService, _ := milvus.NewMilvusService("localhost:19530")
+//
 // 在 recall.ANN 中使用
-ann := &recall.ANN{
-    Store: vector.NewVectorStoreAdapter(annService, "items"),
-    TopK:  20,
-}
+// ann := &recall.ANN{
+//     VectorService: vectorService,  // 直接使用 core.VectorService
+//     Collection:    "items",
+//     TopK:          20,
+// }
 ```
 
 ## 协议规范

@@ -36,7 +36,7 @@ Request → Context → Recall → Filter → Rank → ReRank → PostProcess �
 
 ## 关键接口
 
-### 核心接口
+### 核心接口（领域层接口在 core 包）
 
 ```go
 // Pipeline Node（所有处理单元的基础接口）
@@ -64,11 +64,46 @@ type Filter interface {
     ShouldFilter(ctx context.Context, rctx *core.RecommendContext, item *core.Item) (bool, error)
 }
 
-// 存储接口
+// 存储接口（领域层接口，在 core 包）
 type Store interface {
     Get(ctx context.Context, key string) ([]byte, error)
     Set(ctx context.Context, key string, value []byte, ttl int64) error
     // ...
+}
+
+// 特征服务接口（领域层接口，在 core 包）
+type FeatureService interface {
+    GetUserFeatures(ctx context.Context, userID string) (map[string]float64, error)
+    BatchGetUserFeatures(ctx context.Context, userIDs []string) (map[string]map[string]float64, error)
+    GetItemFeatures(ctx context.Context, itemID string) (map[string]float64, error)
+    BatchGetItemFeatures(ctx context.Context, itemIDs []string) (map[string]map[string]float64, error)
+    GetRealtimeFeatures(ctx context.Context, userID, itemID string) (map[string]float64, error)
+    BatchGetRealtimeFeatures(ctx context.Context, pairs []FeatureUserItemPair) (map[FeatureUserItemPair]map[string]float64, error)
+    Close() error
+}
+
+// 向量服务接口（领域层接口，在 core 包）
+type VectorService interface {
+    Search(ctx context.Context, req *VectorSearchRequest) (*VectorSearchResult, error)
+    Close() error
+}
+
+// 向量数据库服务接口（领域层接口，在 core 包）
+type VectorDatabaseService interface {
+    VectorService  // 嵌入召回场景接口
+    Insert(ctx context.Context, req *VectorInsertRequest) error
+    Update(ctx context.Context, req *VectorUpdateRequest) error
+    Delete(ctx context.Context, req *VectorDeleteRequest) error
+    CreateCollection(ctx context.Context, req *VectorCreateCollectionRequest) error
+    DropCollection(ctx context.Context, collection string) error
+    HasCollection(ctx context.Context, collection string) (bool, error)
+}
+
+// ML 服务接口（领域层接口，在 core 包）
+type MLService interface {
+    Predict(ctx context.Context, req *MLPredictRequest) (*MLPredictResponse, error)
+    Health(ctx context.Context) error
+    Close() error
 }
 ```
 
@@ -209,14 +244,14 @@ github.com/rushteam/reckit/
 ├── store/             # 存储抽象（Memory，Redis 移至扩展包）
 ├── vector/             # 向量服务接口（Milvus 移至扩展包）
 ├── service/           # ML 服务（TF Serving, ANN Service）
-├── feature/           # 特征服务（领域层接口 FeatureService）
+├── feature/           # 特征服务实现（接口在 core.FeatureService）
 ├── config/            # Pipeline 配置工厂
 ├── ext/                # 扩展包目录（独立 go.mod）
 │   ├── store/
 │   │   └── redis/     # Redis 存储实现
 │   ├── feast/
-│   │   ├── http/      # Feast HTTP 客户端实现（适配为 feature.FeatureService）
-│   │   └── grpc/      # Feast gRPC 客户端实现（适配为 feature.FeatureService）
+│   │   ├── http/      # Feast HTTP 客户端实现（适配为 core.FeatureService）
+│   │   └── grpc/      # Feast gRPC 客户端实现（适配为 core.FeatureService）
 │   └── vector/
 │       └── milvus/    # Milvus 向量数据库实现
 └── pkg/
@@ -278,7 +313,8 @@ github.com/rushteam/reckit/
 
 ### 特征模块
 
-- `feature/service.go` - FeatureService 接口和实现
+- `core/feature_service.go` - FeatureService 领域接口
+- `feature/service.go` - FeatureService 实现（BaseFeatureService）
 - `feature/enrich.go` - 特征注入节点
 - `feature/store_provider.go` - 存储特征提供者
 - `feature/metadata.go` - 特征元数据和标准化器定义
@@ -318,7 +354,7 @@ p := &pipeline.Pipeline{
         },
         // 特征注入
         &feature.EnrichNode{
-            FeatureService: featureService,
+            FeatureService: featureService, // core.FeatureService 接口
         },
         // 排序
         &rank.LRNode{
@@ -486,8 +522,8 @@ func (n *MyRankNode) Process(ctx context.Context, rctx *core.RecommendContext, i
 
 ### 工厂模式
 - `NodeFactory` - Node 构建工厂（支持动态注册）
-- `FeatureServiceFactory` - 特征服务工厂
-- `MLServiceFactory` - ML 服务工厂
+- `FeatureServiceFactory` - 特征服务工厂（创建 core.FeatureService 实现）
+- `MLServiceFactory` - ML 服务工厂（创建 core.MLService 实现）
 
 ### 适配器模式
 - `VectorStoreAdapter` - 适配向量服务
@@ -517,8 +553,8 @@ func (n *MyRankNode) Process(ctx context.Context, rctx *core.RecommendContext, i
    - Milvus Vector: `go get github.com/rushteam/reckit/ext/vector/milvus`
    - 用户按需引入，避免不必要的依赖
    - 也可以参考扩展包实现，自行实现对应接口
-7. **领域层接口优先**：推荐使用领域层接口（如 `feature.FeatureService`），而非基础设施层接口
-   - Feast 应通过适配器适配为 `feature.FeatureService` 使用
+7. **领域层接口优先**：推荐使用领域层接口（如 `core.FeatureService`），而非基础设施层接口
+   - Feast 应通过适配器适配为 `core.FeatureService` 使用
    - 领域层接口更通用，不绑定具体实现
 7. **类型转换工具**：使用 `pkg/conv` 进行类型转换，避免手写 switch-case
    - `conv.ToFloat64`、`conv.ToInt`、`conv.ToString` - 支持多种类型自动转换
@@ -634,7 +670,7 @@ var s core.Store = store
 
 #### Feast 特征服务（通过适配器）
 
-Feast 是特征存储工具，应通过适配器适配为 `feature.FeatureService` 领域接口使用。
+Feast 是特征存储工具，应通过适配器适配为 `core.FeatureService` 领域接口使用。
 
 ```go
 import (
@@ -657,18 +693,17 @@ featureService := feasthttp.NewFeatureServiceAdapter(feastClient, mapping)
 feastClient, _ := feastgrpc.NewGrpcClient("localhost", 6565, "my_project")
 featureService := feasthttp.NewFeatureServiceAdapter(feastClient, mapping)
 
-// 作为 feature.FeatureService 使用（领域层接口）
-var fs feature.FeatureService = featureService
+// 作为 core.FeatureService 使用（领域层接口）
+var fs core.FeatureService = featureService
 ```
 
-**或自行实现**：参考扩展包实现，自行实现 `feature.FeatureService` 接口。
+**或自行实现**：参考扩展包实现，自行实现 `core.FeatureService` 接口。
 
 #### Milvus 向量数据库
 
 ```go
 import (
     "github.com/rushteam/reckit/core"
-    "github.com/rushteam/reckit/vector"
     milvus "github.com/rushteam/reckit/ext/vector/milvus"
 )
 
@@ -678,11 +713,13 @@ milvusService := milvus.NewMilvusService("localhost:19530")
 // 作为 core.VectorService 使用（召回场景）
 var vectorService core.VectorService = milvusService
 
-// 作为 vector.ANNService 使用（数据管理场景）
-var annService vector.ANNService = milvusService
+// 作为 core.VectorDatabaseService 使用（数据管理场景）
+var dbService core.VectorDatabaseService = milvusService
+// 或使用类型别名（向后兼容）
+var dbService core.VectorDatabaseService = milvusService
 ```
 
-**或自行实现**：参考扩展包实现，自行实现 `core.VectorService` 或 `vector.ANNService` 接口。
+**或自行实现**：参考扩展包实现，自行实现 `core.VectorService` 或 `core.VectorDatabaseService` 接口。
 
 ### 使用 Word2Vec / Item2Vec 模型
 

@@ -11,7 +11,7 @@ import (
 	"github.com/rushteam/reckit/recall"
 	"github.com/rushteam/reckit/service"
 	"github.com/rushteam/reckit/store"
-	"github.com/rushteam/reckit/vector"
+	milvus "github.com/rushteam/reckit/ext/vector/milvus"
 )
 
 func main() {
@@ -67,10 +67,10 @@ func main() {
 
 	// ========== 4. 创建向量检索服务 ==========
 	// 方式1：使用 Milvus（推荐）
-	milvusService := vector.NewMilvusService(
+	milvusService := milvus.NewMilvusService(
 		"localhost:19530", // Milvus 地址
-		vector.WithMilvusDatabase("default"),
-		vector.WithMilvusTimeout(10),
+		milvus.WithMilvusDatabase("default"),
+		milvus.WithMilvusTimeout(10),
 	)
 
 	// 方式2：使用 Faiss（需要 CGO 绑定）

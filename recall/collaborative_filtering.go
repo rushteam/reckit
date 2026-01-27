@@ -32,22 +32,9 @@ func (p *PearsonCorrelation) Calculate(x, y []float64) float64 {
 	return pearsonCorrelation(x, y)
 }
 
-// CFStore 是协同过滤的存储接口，用于获取用户-物品交互数据。
-type CFStore interface {
-	// GetUserItems 获取用户交互过的物品及其评分/权重
-	// 返回 map[itemID]score，score 可以是评分、点击次数、时长等
-	GetUserItems(ctx context.Context, userID string) (map[string]float64, error)
-
-	// GetItemUsers 获取与物品交互过的用户及其评分/权重
-	// 返回 map[userID]score
-	GetItemUsers(ctx context.Context, itemID string) (map[string]float64, error)
-
-	// GetAllUsers 获取所有用户 ID 列表（用于用户协同过滤）
-	GetAllUsers(ctx context.Context) ([]string, error)
-
-	// GetAllItems 获取所有物品 ID 列表（用于物品协同过滤）
-	GetAllItems(ctx context.Context) ([]string, error)
-}
+// CFStore 是协同过滤的存储接口（已废弃，使用 core.RecallDataStore）。
+// 为了向后兼容，保留为类型别名。
+type CFStore = core.RecallDataStore
 
 // UserBasedCF 是基于用户的协同过滤召回源（User-based Collaborative Filtering, User-CF）。
 //

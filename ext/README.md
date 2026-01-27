@@ -111,16 +111,15 @@ go get github.com/rushteam/reckit/ext/vector/milvus
 ```go
 import (
     "github.com/rushteam/reckit/core"
-    "github.com/rushteam/reckit/vector"
     milvus "github.com/rushteam/reckit/ext/vector/milvus"
 )
 
 milvusService := milvus.NewMilvusService("localhost:19530")
 var vectorService core.VectorService = milvusService
-var annService vector.ANNService = milvusService
+var dbService core.VectorDatabaseService = milvusService
 ```
 
-**或自行实现**：参考 `ext/vector/milvus/milvus.go`，实现 `core.VectorService` 或 `vector.ANNService` 接口。
+**或自行实现**：参考 `ext/vector/milvus/milvus.go`，实现 `core.VectorService` 或 `core.VectorDatabaseService` 接口。
 
 ## 迁移说明
 
@@ -132,7 +131,7 @@ var annService vector.ANNService = milvusService
 - `vector/milvus_client.go` → `ext/vector/milvus/milvus_client.go`
 
 核心包现在只包含：
-- 领域层接口（`core.Store`、`feature.FeatureService`、`vector.ANNService`）
+- 领域层接口（`core.Store`、`feature.FeatureService`、`core.VectorDatabaseService`）
 - 无外部依赖的实现（`store.MemoryStore`）
 
 **架构说明**：

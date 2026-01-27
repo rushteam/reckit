@@ -8,7 +8,6 @@ import (
 	"github.com/rushteam/reckit/core"
 	"github.com/rushteam/reckit/pipeline"
 	"github.com/rushteam/reckit/recall"
-	"github.com/rushteam/reckit/vector"
 
 	milvus "github.com/rushteam/reckit/ext/vector/milvus"
 )
@@ -42,7 +41,7 @@ func main() {
 		fmt.Printf("检查集合失败: %v\n", err)
 	} else if !exists {
 		// 创建集合
-		err = milvusService.CreateCollection(ctx, &vector.CreateCollectionRequest{
+		err = milvusService.CreateCollection(ctx, &core.VectorCreateCollectionRequest{
 			Name:      collectionName,
 			Dimension: dimension,
 			Metric:    "cosine",
@@ -66,7 +65,7 @@ func main() {
 	}
 	itemIDs := []string{"1", "2", "3"}
 
-	err = milvusService.Insert(ctx, &vector.InsertRequest{
+	err = milvusService.Insert(ctx, &core.VectorInsertRequest{
 		Collection: collectionName,
 		Vectors:    vectors,
 		IDs:        itemIDs,

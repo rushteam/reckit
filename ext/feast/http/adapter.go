@@ -4,15 +4,16 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/rushteam/reckit/core"
 	"github.com/rushteam/reckit/feature"
 )
 
-// FeatureServiceAdapter 将 Feast Client 适配为 feature.FeatureService 接口。
+// FeatureServiceAdapter 将 Feast Client 适配为 core.FeatureService 接口。
 //
 // 注意：此实现位于扩展包中，需要单独引入：
 //   go get github.com/rushteam/reckit/ext/feast/http
 //
-// 这是推荐的使用方式：通过适配器将 Feast（基础设施层）适配为 feature.FeatureService（领域层）。
+// 这是推荐的使用方式：通过适配器将 Feast（基础设施层）适配为 core.FeatureService（领域层）。
 type FeatureServiceAdapter struct {
 	client         Client
 	featureMapping *FeatureMapping
@@ -43,7 +44,7 @@ type FeatureMapping struct {
 //   - mapping: 特征映射配置
 //
 // 返回：
-//   - *FeatureServiceAdapter: 实现了 feature.FeatureService 接口的适配器
+//   - *FeatureServiceAdapter: 实现了 core.FeatureService 接口的适配器
 func NewFeatureServiceAdapter(client Client, mapping *FeatureMapping) *FeatureServiceAdapter {
 	if mapping.UserEntityKey == "" {
 		mapping.UserEntityKey = "user_id"
@@ -274,9 +275,9 @@ func (a *FeatureServiceAdapter) GetRealtimeFeatures(ctx context.Context, userID,
 }
 
 // BatchGetRealtimeFeatures 批量获取实时特征
-func (a *FeatureServiceAdapter) BatchGetRealtimeFeatures(ctx context.Context, pairs []feature.UserItemPair) (map[feature.UserItemPair]map[string]float64, error) {
+func (a *FeatureServiceAdapter) BatchGetRealtimeFeatures(ctx context.Context, pairs []core.FeatureUserItemPair) (map[core.FeatureUserItemPair]map[string]float64, error) {
 	if len(a.featureMapping.RealtimeFeatures) == 0 {
-		result := make(map[feature.UserItemPair]map[string]float64)
+		result := make(map[core.FeatureUserItemPair]map[string]float64)
 		for _, pair := range pairs {
 			result[pair] = make(map[string]float64)
 		}
@@ -303,8 +304,8 @@ func (a *FeatureServiceAdapter) BatchGetRealtimeFeatures(ctx context.Context, pa
 		return nil, fmt.Errorf("feast batch get realtime features failed: %w", err)
 	}
 
-	// 转换特征向量为 map[UserItemPair]map[string]float64
-	result := make(map[feature.UserItemPair]map[string]float64)
+	// 转换特征向量为 map[FeatureUserItemPair]map[string]float64
+	result := make(map[core.FeatureUserItemPair]map[string]float64)
 	for i, fv := range resp.FeatureVectors {
 		if i >= len(pairs) {
 			break
@@ -345,4 +346,4 @@ func convertToFloat64(v interface{}) (float64, bool) {
 	}
 }
 
-var _ feature.FeatureService = (*FeatureServiceAdapter)(nil)
+var _ core.FeatureService = (*FeatureServiceAdapter)(nil)

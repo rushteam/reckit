@@ -10,20 +10,9 @@ import (
 	"github.com/rushteam/reckit/pkg/utils"
 )
 
-// ContentStore 是基于内容的推荐的存储接口。
-type ContentStore interface {
-	// GetItemFeatures 获取物品的内容特征（类别、标签、关键词等）
-	GetItemFeatures(ctx context.Context, itemID string) (map[string]float64, error)
-
-	// GetUserPreferences 获取用户的偏好特征（喜欢的类别、标签等）
-	GetUserPreferences(ctx context.Context, userID string) (map[string]float64, error)
-
-	// GetSimilarItems 根据物品特征获取相似物品（可选，用于优化）
-	GetSimilarItems(ctx context.Context, itemFeatures map[string]float64, topK int) ([]string, error)
-
-	// GetAllItems 获取所有物品 ID 列表
-	GetAllItems(ctx context.Context) ([]string, error)
-}
+// ContentStore 是基于内容的推荐的存储接口（已废弃，使用 core.RecallDataStore）。
+// 为了向后兼容，保留为类型别名。
+type ContentStore = core.RecallDataStore
 
 // ContentRecall 是基于内容的召回源（Content-Based Recommendation）。
 //

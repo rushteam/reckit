@@ -87,5 +87,46 @@ func (a *StoreContentAdapter) GetAllItems(ctx context.Context) ([]string, error)
 	return result, nil
 }
 
-// 确保实现 ContentStore 接口
-var _ ContentStore = (*StoreContentAdapter)(nil)
+// Name 实现 core.RecallDataStore 接口
+func (a *StoreContentAdapter) Name() string {
+	return "store_content_adapter"
+}
+
+// GetUserItems 实现 core.RecallDataStore 接口（协同过滤）
+func (a *StoreContentAdapter) GetUserItems(ctx context.Context, userID string) (map[string]float64, error) {
+	// 内容推荐适配器不支持用户物品交互，返回空
+	return make(map[string]float64), nil
+}
+
+// GetItemUsers 实现 core.RecallDataStore 接口（协同过滤）
+func (a *StoreContentAdapter) GetItemUsers(ctx context.Context, itemID string) (map[string]float64, error) {
+	// 内容推荐适配器不支持物品用户交互，返回空
+	return make(map[string]float64), nil
+}
+
+// GetAllUsers 实现 core.RecallDataStore 接口（协同过滤）
+func (a *StoreContentAdapter) GetAllUsers(ctx context.Context) ([]string, error) {
+	// 内容推荐适配器不支持所有用户列表，返回空
+	return []string{}, nil
+}
+
+// GetUserVector 实现 core.RecallDataStore 接口（矩阵分解）
+func (a *StoreContentAdapter) GetUserVector(ctx context.Context, userID string) ([]float64, error) {
+	// 内容推荐适配器不支持用户向量，返回空
+	return []float64{}, nil
+}
+
+// GetItemVector 实现 core.RecallDataStore 接口（矩阵分解）
+func (a *StoreContentAdapter) GetItemVector(ctx context.Context, itemID string) ([]float64, error) {
+	// 内容推荐适配器不支持物品向量，返回空
+	return []float64{}, nil
+}
+
+// GetAllItemVectors 实现 core.RecallDataStore 接口（矩阵分解）
+func (a *StoreContentAdapter) GetAllItemVectors(ctx context.Context) (map[string][]float64, error) {
+	// 内容推荐适配器不支持物品向量，返回空
+	return make(map[string][]float64), nil
+}
+
+// 确保实现 core.RecallDataStore 接口
+var _ core.RecallDataStore = (*StoreContentAdapter)(nil)

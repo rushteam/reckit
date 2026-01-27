@@ -39,41 +39,14 @@ func IsFeatureServiceUnavailable(err error) bool {
 	return false
 }
 
-// FeatureService 是特征服务的统一接口，提供用户特征、物品特征、实时特征的获取能力。
-// 采用策略模式，支持多种实现（Redis、HTTP、Memory等）。
+// 注意：FeatureService 接口已移至 core 包（领域接口应该在 core）。
+// 使用 core.FeatureService 接口。
 //
-// ID 类型：使用 string（通用，支持所有 ID 格式）
-type FeatureService interface {
-	// Name 返回特征服务名称（用于日志/监控）
-	Name() string
+// 示例：
+//   var featureService core.FeatureService = NewBaseFeatureService(...)
 
-	// GetUserFeatures 获取用户特征（单个用户）
-	GetUserFeatures(ctx context.Context, userID string) (map[string]float64, error)
-
-	// BatchGetUserFeatures 批量获取用户特征（推荐使用，减少网络往返）
-	BatchGetUserFeatures(ctx context.Context, userIDs []string) (map[string]map[string]float64, error)
-
-	// GetItemFeatures 获取物品特征（单个物品）
-	GetItemFeatures(ctx context.Context, itemID string) (map[string]float64, error)
-
-	// BatchGetItemFeatures 批量获取物品特征（推荐使用，减少网络往返）
-	BatchGetItemFeatures(ctx context.Context, itemIDs []string) (map[string]map[string]float64, error)
-
-	// GetRealtimeFeatures 获取实时特征（用户-物品对）
-	GetRealtimeFeatures(ctx context.Context, userID, itemID string) (map[string]float64, error)
-
-	// BatchGetRealtimeFeatures 批量获取实时特征
-	BatchGetRealtimeFeatures(ctx context.Context, pairs []UserItemPair) (map[UserItemPair]map[string]float64, error)
-
-	// Close 关闭特征服务，释放资源
-	Close() error
-}
-
-// UserItemPair 用户-物品对，用于实时特征查询
-type UserItemPair struct {
-	UserID string
-	ItemID string
-}
+// UserItemPair 用户-物品对，用于实时特征查询（兼容性类型别名）
+type UserItemPair = core.FeatureUserItemPair
 
 // FeatureProvider 是特征提供者的抽象接口，采用策略模式。
 // 不同的特征源（Redis、HTTP、Memory）实现此接口。

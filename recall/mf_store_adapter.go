@@ -95,5 +95,64 @@ func (a *StoreMFAdapter) GetAllItemVectors(ctx context.Context) (map[string][]fl
 	return result, nil
 }
 
-// 确保实现 MFStore 接口
-var _ MFStore = (*StoreMFAdapter)(nil)
+// Name 实现 core.RecallDataStore 接口
+func (a *StoreMFAdapter) Name() string {
+	return "store_mf_adapter"
+}
+
+// GetAllItems 实现 core.RecallDataStore 接口（通用方法）
+func (a *StoreMFAdapter) GetAllItems(ctx context.Context) ([]string, error) {
+	itemsKey := a.KeyPrefix + ":items"
+	itemsData, err := a.store.Get(ctx, itemsKey)
+	if err != nil {
+		if core.IsStoreNotFound(err) {
+			return []string{}, nil
+		}
+		return nil, err
+	}
+
+	var result []string
+	if err := json.Unmarshal(itemsData, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// GetUserItems 实现 core.RecallDataStore 接口（协同过滤）
+func (a *StoreMFAdapter) GetUserItems(ctx context.Context, userID string) (map[string]float64, error) {
+	// 矩阵分解适配器不支持用户物品交互，返回空
+	return make(map[string]float64), nil
+}
+
+// GetItemUsers 实现 core.RecallDataStore 接口（协同过滤）
+func (a *StoreMFAdapter) GetItemUsers(ctx context.Context, itemID string) (map[string]float64, error) {
+	// 矩阵分解适配器不支持物品用户交互，返回空
+	return make(map[string]float64), nil
+}
+
+// GetAllUsers 实现 core.RecallDataStore 接口（协同过滤）
+func (a *StoreMFAdapter) GetAllUsers(ctx context.Context) ([]string, error) {
+	// 矩阵分解适配器不支持所有用户列表，返回空
+	return []string{}, nil
+}
+
+// GetItemFeatures 实现 core.RecallDataStore 接口（内容推荐）
+func (a *StoreMFAdapter) GetItemFeatures(ctx context.Context, itemID string) (map[string]float64, error) {
+	// 矩阵分解适配器不支持物品特征，返回空
+	return make(map[string]float64), nil
+}
+
+// GetUserPreferences 实现 core.RecallDataStore 接口（内容推荐）
+func (a *StoreMFAdapter) GetUserPreferences(ctx context.Context, userID string) (map[string]float64, error) {
+	// 矩阵分解适配器不支持用户偏好，返回空
+	return make(map[string]float64), nil
+}
+
+// GetSimilarItems 实现 core.RecallDataStore 接口（内容推荐）
+func (a *StoreMFAdapter) GetSimilarItems(ctx context.Context, itemFeatures map[string]float64, topK int) ([]string, error) {
+	// 矩阵分解适配器不支持相似物品，返回空
+	return []string{}, nil
+}
+
+// 确保实现 core.RecallDataStore 接口
+var _ core.RecallDataStore = (*StoreMFAdapter)(nil)

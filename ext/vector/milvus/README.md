@@ -13,7 +13,6 @@ go get github.com/rushteam/reckit/ext/vector/milvus
 ```go
 import (
     "github.com/rushteam/reckit/core"
-    "github.com/rushteam/reckit/vector"
     milvus "github.com/rushteam/reckit/ext/vector/milvus"
 )
 
@@ -23,8 +22,8 @@ milvusService := milvus.NewMilvusService("localhost:19530")
 // 作为 core.VectorService 使用
 var vectorService core.VectorService = milvusService
 
-// 作为 vector.ANNService 使用
-var annService vector.ANNService = milvusService
+// 作为 core.VectorDatabaseService 使用
+var dbService core.VectorDatabaseService = milvusService
 ```
 
 ## 依赖
@@ -36,4 +35,4 @@ var annService vector.ANNService = milvusService
 
 ## 自行实现
 
-你也可以参考此实现，自行实现 `core.VectorService` 或 `vector.ANNService` 接口，满足你的特定需求。
+你也可以参考此实现，自行实现 `core.VectorService` 或 `core.VectorDatabaseService` 接口，满足你的特定需求。

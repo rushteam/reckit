@@ -30,7 +30,7 @@ type FeatureExtractor interface {
 //   - Realtime 字段：realtime_<key>
 type DefaultFeatureExtractor struct {
 	// FeatureService 特征服务（可选，如果设置则优先使用）
-	FeatureService FeatureService
+	FeatureService core.FeatureService
 
 	// FieldPrefix 字段前缀（可选，如 "user_"）
 	FieldPrefix string
@@ -54,7 +54,7 @@ func NewDefaultFeatureExtractor(opts ...DefaultFeatureExtractorOption) *DefaultF
 type DefaultFeatureExtractorOption func(*DefaultFeatureExtractor)
 
 // WithFeatureService 设置特征服务（优先使用）
-func WithFeatureService(service FeatureService) DefaultFeatureExtractorOption {
+func WithFeatureService(service core.FeatureService) DefaultFeatureExtractorOption {
 	return func(e *DefaultFeatureExtractor) {
 		e.FeatureService = service
 	}

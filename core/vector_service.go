@@ -16,10 +16,10 @@ import "context"
 //
 // 注意：
 //   - 此接口只包含 Search 方法，专注于召回场景
-//   - 如果需要完整的向量数据库操作（Insert、Update、Delete 等），请使用 vector.ANNService
+//   - 如果需要完整的向量数据库操作（Insert、Update、Delete 等），请使用 core.VectorDatabaseService
 //
 // 实现：
-//   - vector.MilvusService 实现此接口（通过 vector.ANNService）
+//   - ext/vector/milvus.MilvusService 实现此接口（通过 core.VectorDatabaseService）
 //   - 其他向量数据库（Faiss、Elasticsearch 等）也可以实现此接口
 type VectorService interface {
 	// Search 向量搜索
@@ -77,3 +77,13 @@ func ValidateVectorMetric(metric string) bool {
 		return false
 	}
 }
+
+// MetricType 距离度量类型（用于类型安全）
+// 注意：验证函数统一使用 core.ValidateVectorMetric
+type MetricType string
+
+const (
+	MetricCosine       MetricType = "cosine"
+	MetricEuclidean    MetricType = "euclidean"
+	MetricInnerProduct MetricType = "inner_product"
+)

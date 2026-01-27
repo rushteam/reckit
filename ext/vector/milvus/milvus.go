@@ -11,10 +11,9 @@ import (
 	"github.com/milvus-io/milvus/client/v2/milvusclient"
 
 	"github.com/rushteam/reckit/core"
-	"github.com/rushteam/reckit/vector"
 )
 
-// MilvusService 是 Milvus 向量数据库的 ANNService 实现。
+// MilvusService 是 Milvus 向量数据库的 VectorDatabaseService 实现。
 //
 // 注意：此实现位于扩展包中，需要单独引入：
 //
@@ -185,7 +184,7 @@ func (s *MilvusService) Search(ctx context.Context, req *core.VectorSearchReques
 	}, nil
 }
 
-func (s *MilvusService) Insert(ctx context.Context, req *vector.InsertRequest) error {
+func (s *MilvusService) Insert(ctx context.Context, req *core.VectorInsertRequest) error {
 	if req.Collection == "" {
 		return fmt.Errorf("collection name is required")
 	}
@@ -308,8 +307,8 @@ func buildMetadataColumn(name string, values []interface{}) column.Column {
 	}
 }
 
-func (s *MilvusService) Update(ctx context.Context, req *vector.UpdateRequest) error {
-	deleteReq := &vector.DeleteRequest{
+func (s *MilvusService) Update(ctx context.Context, req *core.VectorUpdateRequest) error {
+	deleteReq := &core.VectorDeleteRequest{
 		Collection: req.Collection,
 		IDs:        []string{req.ID},
 	}
@@ -317,7 +316,7 @@ func (s *MilvusService) Update(ctx context.Context, req *vector.UpdateRequest) e
 		return err
 	}
 
-	insertReq := &vector.InsertRequest{
+	insertReq := &core.VectorInsertRequest{
 		Collection: req.Collection,
 		Vectors:    [][]float64{req.Vector},
 		IDs:        []string{req.ID},
@@ -326,7 +325,7 @@ func (s *MilvusService) Update(ctx context.Context, req *vector.UpdateRequest) e
 	return s.Insert(ctx, insertReq)
 }
 
-func (s *MilvusService) Delete(ctx context.Context, req *vector.DeleteRequest) error {
+func (s *MilvusService) Delete(ctx context.Context, req *core.VectorDeleteRequest) error {
 	if req.Collection == "" {
 		return fmt.Errorf("collection name is required")
 	}
@@ -343,7 +342,7 @@ func (s *MilvusService) Delete(ctx context.Context, req *vector.DeleteRequest) e
 	return nil
 }
 
-func (s *MilvusService) CreateCollection(ctx context.Context, req *vector.CreateCollectionRequest) error {
+func (s *MilvusService) CreateCollection(ctx context.Context, req *core.VectorCreateCollectionRequest) error {
 	if req.Name == "" {
 		return fmt.Errorf("collection name is required")
 	}
@@ -351,7 +350,7 @@ func (s *MilvusService) CreateCollection(ctx context.Context, req *vector.Create
 		return fmt.Errorf("dimension must be greater than 0")
 	}
 	if !core.ValidateVectorMetric(req.Metric) {
-		req.Metric = string(vector.MetricCosine)
+		req.Metric = string(core.MetricCosine)
 	}
 
 	// 转换 metric
@@ -433,6 +432,6 @@ func convertToFloat32(vec []float64) []float32 {
 }
 
 var (
-	_ vector.ANNService  = (*MilvusService)(nil)
-	_ core.VectorService = (*MilvusService)(nil)
+	_ core.VectorService         = (*MilvusService)(nil)
+	_ core.VectorDatabaseService = (*MilvusService)(nil)
 )

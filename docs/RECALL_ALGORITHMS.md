@@ -226,7 +226,6 @@ mfStore := recall.NewStoreMFAdapter(memStore, "mf")
 ```go
 import (
     "github.com/rushteam/reckit/recall"
-    "github.com/rushteam/reckit/vector"
 )
 
 // 1. 创建 Milvus 服务（扩展包）

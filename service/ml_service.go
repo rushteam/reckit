@@ -14,7 +14,7 @@ type ServiceType string
 const (
 	ServiceTypeTFServing  ServiceType = "tf_serving"  // TensorFlow Serving
 	ServiceTypeTorchServe ServiceType = "torch_serve" // TorchServe
-	ServiceTypeANN        ServiceType = "ann"         // ANN 服务
+	// ServiceTypeANN 已移除：ANN（向量检索）应该使用 core.VectorService，而不是 core.MLService
 )
 
 // ServiceConfig 服务配置

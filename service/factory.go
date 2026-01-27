@@ -37,14 +37,8 @@ func NewMLService(config *ServiceConfig) (core.MLService, error) {
 		}
 		return NewTFServingClient(config.Endpoint, config.ModelName, opts...), nil
 
-	case ServiceTypeANN:
-		opts := []ANNServiceOption{
-			WithANNServiceTimeout(timeout),
-		}
-		if config.Auth != nil {
-			opts = append(opts, WithANNServiceAuth(config.Auth))
-		}
-		return NewANNServiceClient(config.Endpoint, config.ModelName, opts...), nil
+	// ServiceTypeANN 已移除：ANN（向量检索）应该使用 core.VectorService，而不是 core.MLService
+	// 如果需要向量检索，请使用 ext/vector/milvus 或 store.MemoryVectorService
 
 	case ServiceTypeTorchServe:
 		opts := []TorchServeOption{
@@ -83,7 +77,7 @@ func ValidateConfig(config *ServiceConfig) error {
 	if config.Endpoint == "" {
 		return fmt.Errorf("endpoint is required")
 	}
-	if config.ModelName == "" && config.Type != ServiceTypeANN {
+	if config.ModelName == "" {
 		return fmt.Errorf("model name is required")
 	}
 	return nil
