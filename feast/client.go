@@ -14,8 +14,10 @@ import (
 //   - 特征注册和管理
 //
 // 使用方式：
-//   - 方式1：使用 HTTP/gRPC 客户端（推荐，不依赖 Python SDK）
-//   - 方式2：通过依赖注入（支持自定义实现）
+//   - 方式1：使用扩展包实现（推荐）
+//     - HTTP 客户端：go get github.com/rushteam/reckit/ext/feast/http
+//     - gRPC 客户端：go get github.com/rushteam/reckit/ext/feast/grpc
+//   - 方式2：自行实现此接口（参考扩展包实现）
 //
 // 参考：https://github.com/feast-dev/feast
 type Client interface {
@@ -185,41 +187,6 @@ type ClientFactory interface {
 	NewClient(ctx context.Context, endpoint string, project string, opts ...ClientOption) (Client, error)
 }
 
-// DefaultClientFactory 是默认的 Feast 客户端工厂（使用 HTTP/gRPC）。
-// 根据配置自动选择 HTTP 或 gRPC 客户端实现。
-type DefaultClientFactory struct{}
-
-// NewClient 创建 Feast 客户端
-// 根据配置选项自动选择实现：
-//   - 如果 UseGRPC=true，使用官方 SDK 的 gRPC 客户端
-//   - 否则使用自定义的 HTTP 客户端
-func (f *DefaultClientFactory) NewClient(ctx context.Context, endpoint, project string, opts ...ClientOption) (Client, error) {
-	config := &ClientConfig{
-		Endpoint: endpoint,
-		Project:  project,
-		Timeout:  30 * time.Second,
-		UseGRPC:  false, // 默认使用 HTTP
-	}
-
-	// 应用配置选项
-	for _, opt := range opts {
-		opt(config)
-	}
-
-	// 根据配置选择实现
-	if config.UseGRPC {
-		// 解析 endpoint 获取 host 和 port
-		host, port := parseEndpoint(endpoint)
-		if port == 0 {
-			port = 6565 // 默认 gRPC 端口
-		}
-		return NewGrpcClient(host, port, project, opts...)
-	}
-
-	// 使用 HTTP 客户端
-	return NewHTTPClient(endpoint, project, opts...)
-}
-
 // ClientOption Feast 客户端配置选项
 type ClientOption func(*ClientConfig)
 
@@ -260,14 +227,28 @@ type AuthConfig struct {
 	APIKey string
 }
 
-// WithGRPC 配置选项：使用 gRPC 客户端（官方 SDK）
+// WithTimeout 配置选项：设置超时时间
+func WithTimeout(timeout time.Duration) ClientOption {
+	return func(c *ClientConfig) {
+		c.Timeout = timeout
+	}
+}
+
+// WithAuth 配置选项：设置认证信息
+func WithAuth(auth *AuthConfig) ClientOption {
+	return func(c *ClientConfig) {
+		c.Auth = auth
+	}
+}
+
+// WithGRPC 配置选项：使用 gRPC 客户端（扩展包）
 func WithGRPC() ClientOption {
 	return func(c *ClientConfig) {
 		c.UseGRPC = true
 	}
 }
 
-// WithHTTP 配置选项：使用 HTTP 客户端（自定义实现）
+// WithHTTP 配置选项：使用 HTTP 客户端（扩展包）
 func WithHTTP() ClientOption {
 	return func(c *ClientConfig) {
 		c.UseGRPC = false

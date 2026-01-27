@@ -118,12 +118,15 @@ import (
     "github.com/rushteam/reckit/vector"
 )
 
-// 创建 Milvus 服务
-milvusService := vector.NewMilvusService(
+// 创建 Milvus 服务（扩展包）
+import milvus "github.com/rushteam/reckit/ext/vector/milvus"
+// 安装：go get github.com/rushteam/reckit/ext/vector/milvus
+
+milvusService := milvus.NewMilvusService(
     "localhost:19530",
-    vector.WithMilvusAuth("root", "Milvus"),
-    vector.WithMilvusDatabase("recommend"),
-    vector.WithMilvusTimeout(30),
+    milvus.WithMilvusAuth("root", "Milvus"),
+    milvus.WithMilvusDatabase("recommend"),
+    milvus.WithMilvusTimeout(30),
 )
 defer milvusService.Close()
 
@@ -169,8 +172,11 @@ import (
     "github.com/rushteam/reckit/vector"
 )
 
-// 创建向量服务适配器
-milvusService := vector.NewMilvusService("localhost:19530")
+// 创建向量服务适配器（扩展包）
+import milvus "github.com/rushteam/reckit/ext/vector/milvus"
+// 安装：go get github.com/rushteam/reckit/ext/vector/milvus
+
+milvusService := milvus.NewMilvusService("localhost:19530")
 defer milvusService.Close()
 adapter := vector.NewVectorStoreAdapter(milvusService, "items")
 
@@ -217,8 +223,11 @@ import (
     "github.com/rushteam/reckit/vector"
 )
 
-// 创建向量服务
-milvusService := vector.NewMilvusService("localhost:19530")
+// 创建向量服务（扩展包）
+import milvus "github.com/rushteam/reckit/ext/vector/milvus"
+// 安装：go get github.com/rushteam/reckit/ext/vector/milvus
+
+milvusService := milvus.NewMilvusService("localhost:19530")
 defer milvusService.Close()
 adapter := vector.NewVectorStoreAdapter(milvusService, "items")
 
@@ -306,12 +315,15 @@ func main() {
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
 
-    // 1. 创建 Milvus 服务
-    milvusService := vector.NewMilvusService(
+    // 1. 创建 Milvus 服务（扩展包）
+    import milvus "github.com/rushteam/reckit/ext/vector/milvus"
+    // 安装：go get github.com/rushteam/reckit/ext/vector/milvus
+
+    milvusService := milvus.NewMilvusService(
         "localhost:19530",
-        vector.WithMilvusAuth("root", "Milvus"),
-        vector.WithMilvusDatabase("recommend"),
-        vector.WithMilvusTimeout(30),
+        milvus.WithMilvusAuth("root", "Milvus"),
+        milvus.WithMilvusDatabase("recommend"),
+        milvus.WithMilvusTimeout(30),
     )
     defer milvusService.Close()
 

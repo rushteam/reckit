@@ -229,12 +229,15 @@ import (
     "github.com/rushteam/reckit/vector"
 )
 
-// 1. 创建 Milvus 服务
-milvusService := vector.NewMilvusService(
+// 1. 创建 Milvus 服务（扩展包）
+import milvus "github.com/rushteam/reckit/ext/vector/milvus"
+// 安装：go get github.com/rushteam/reckit/ext/vector/milvus
+
+milvusService := milvus.NewMilvusService(
     "localhost:19530",
-    vector.WithMilvusAuth("root", "Milvus"),
-    vector.WithMilvusDatabase("recommend"),
-    vector.WithMilvusTimeout(30),
+    milvus.WithMilvusAuth("root", "Milvus"),
+    milvus.WithMilvusDatabase("recommend"),
+    milvus.WithMilvusTimeout(30),
 )
 defer milvusService.Close()
 
@@ -314,8 +317,11 @@ fanout := &recall.Fanout{
 **存储适配器**:
 
 ```go
-// 使用 Milvus 服务
-milvusService := vector.NewMilvusService("localhost:19530")
+// 使用 Milvus 服务（扩展包）
+import milvus "github.com/rushteam/reckit/ext/vector/milvus"
+// 安装：go get github.com/rushteam/reckit/ext/vector/milvus
+
+milvusService := milvus.NewMilvusService("localhost:19530")
 adapter := vector.NewVectorStoreAdapter(milvusService, "items")
 
 // 使用适配器

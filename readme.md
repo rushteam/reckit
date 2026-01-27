@@ -522,11 +522,17 @@ github.com/rushteam/reckit/
 ├── rerank/            # 重排模块（Diversity）
 ├── model/             # 排序模型抽象和实现
 ├── feature/            # 特征服务（Enrich, Service, Provider）
-├── store/             # 存储抽象（Memory, Redis）
-├── vector/            # 向量服务（Milvus）
+├── store/             # 存储抽象（Memory，Redis 移至扩展包）
+├── vector/            # 向量服务接口（Milvus 移至扩展包）
 ├── service/           # ML 服务（TF Serving, ANN Service）
-├── feast/             # Feast 集成
+├── feast/             # Feast 接口定义（实现移至扩展包）
 ├── config/            # Pipeline 配置工厂
+├── ext/                # 扩展包目录（独立 go.mod）
+│   ├── store/redis/   # Redis 存储实现
+│   ├── feast/
+│   │   ├── http/      # Feast HTTP 客户端实现
+│   │   └── grpc/      # Feast gRPC 客户端实现
+│   └── vector/milvus/ # Milvus 向量数据库实现
 ├── pkg/
 │   ├── utils/         # Label 工具
 │   └── dsl/           # Label DSL 表达式引擎
@@ -536,16 +542,30 @@ github.com/rushteam/reckit/
 
 ## 🔧 依赖
 
-### Go 依赖
+### 核心包依赖
+
+核心包 `github.com/rushteam/reckit` **无外部依赖**，只保留工具库：
 
 ```go
 require (
-    github.com/google/cel-go v0.26.1
-    github.com/redis/go-redis/v9 v9.5.1
-    golang.org/x/sync v0.19.0
-    gopkg.in/yaml.v3 v3.0.1
+    github.com/google/cel-go v0.26.1  // CEL 表达式引擎（Label DSL）
+    golang.org/x/sync v0.19.0          // 并发工具
+    gopkg.in/yaml.v3 v3.0.1            // YAML 配置解析
 )
 ```
+
+### 扩展包依赖
+
+具体实现位于扩展包中，用户按需引入：
+
+- **Redis Store**: `go get github.com/rushteam/reckit/ext/store/redis`
+- **Feast HTTP**: `go get github.com/rushteam/reckit/ext/feast/http`
+- **Feast gRPC**: `go get github.com/rushteam/reckit/ext/feast/grpc`
+- **Milvus Vector**: `go get github.com/rushteam/reckit/ext/vector/milvus`
+
+**或自行实现**：参考扩展包实现，自行实现对应接口。
+
+详见 `ext/README.md`。
 
 ### Python 依赖
 

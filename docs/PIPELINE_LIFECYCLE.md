@@ -232,7 +232,11 @@ type RecommendContext struct {
 
 ```go
 // 1. 初始化常驻资源
-store := store.NewRedisStore("localhost:6379", 0)
+// Redis Store（扩展包）
+import redisstore "github.com/rushteam/reckit/ext/store/redis"
+// 安装：go get github.com/rushteam/reckit/ext/store/redis
+
+store, _ := redisstore.NewRedisStore("localhost:6379", 0)
 featureService := feature.NewFeatureServiceFactory().CreateFull(store, ...)
 mlService := service.NewTorchServeClient(...)
 
@@ -316,7 +320,9 @@ func HandleRecommendRequest(w http.ResponseWriter, r *http.Request) {
 // ✅ 正确：初始化常驻资源（不包含用户参数）
 func InitPipeline() *pipeline.Pipeline {
     // 初始化存储连接（常驻）
-    store := store.NewRedisStore("localhost:6379", 0)
+    // Redis Store（扩展包）
+    import redisstore "github.com/rushteam/reckit/ext/store/redis"
+    store, _ := redisstore.NewRedisStore("localhost:6379", 0)
     
     // 初始化特征服务（常驻）
     featureService := feature.NewFeatureServiceFactory().CreateFull(store, ...)

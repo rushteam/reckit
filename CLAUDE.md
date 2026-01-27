@@ -206,16 +206,36 @@ github.com/rushteam/reckit/
 ├── rerank/            # 重排模块（Diversity）
 ├── model/             # 排序模型抽象和实现
 ├── feature/           # 特征服务（Enrich, Service, Provider）
-├── store/             # 存储抽象（Memory, Redis）
-├── vector/             # 向量服务（Milvus）
+├── store/             # 存储抽象（Memory，Redis 移至扩展包）
+├── vector/             # 向量服务接口（Milvus 移至扩展包）
 ├── service/           # ML 服务（TF Serving, ANN Service）
-├── feast/             # Feast 集成
+├── feast/             # Feast 接口定义（HTTP/gRPC 实现移至扩展包）
 ├── config/            # Pipeline 配置工厂
+├── ext/                # 扩展包目录（独立 go.mod）
+│   ├── store/
+│   │   └── redis/     # Redis 存储实现
+│   ├── feast/
+│   │   ├── http/      # Feast HTTP 客户端实现
+│   │   └── grpc/      # Feast gRPC 客户端实现
+│   └── vector/
+│       └── milvus/    # Milvus 向量数据库实现
 └── pkg/
     ├── utils/         # Label 工具
     ├── dsl/           # Label DSL 表达式引擎
     └── conv/          # 类型转换与泛型工具（ToFloat64、ConfigGet、MapToFloat64 等）
 ```
+
+### 扩展包说明
+
+核心包 `github.com/rushteam/reckit` **无外部依赖**，只保留工具库（CEL、YAML、sync）。
+
+具体实现已移至 `ext/` 扩展包，每个扩展包有独立的 `go.mod`，用户按需引入：
+
+- **Redis Store**: `go get github.com/rushteam/reckit/ext/store/redis`
+- **Feast gRPC**: `go get github.com/rushteam/reckit/ext/feast/grpc`
+- **Milvus Vector**: `go get github.com/rushteam/reckit/ext/vector/milvus`
+
+详见 `ext/README.md`。
 
 ## 关键文件位置
 
@@ -491,12 +511,19 @@ func (n *MyRankNode) Process(ctx context.Context, rctx *core.RecommendContext, i
 3. **接口优先**：所有策略都通过接口实现，不使用字符串配置
 4. **无硬编码**：所有默认值都从配置接口获取
 5. **线程安全**：`NodeFactory` 使用 `sync.RWMutex` 保证线程安全
-6. **类型转换工具**：使用 `pkg/conv` 进行类型转换，避免手写 switch-case
+6. **扩展包设计**：核心包无外部依赖，具体实现位于扩展包中
+   - Redis Store: `go get github.com/rushteam/reckit/ext/store/redis`
+   - Feast HTTP: `go get github.com/rushteam/reckit/ext/feast/http`
+   - Feast gRPC: `go get github.com/rushteam/reckit/ext/feast/grpc`
+   - Milvus Vector: `go get github.com/rushteam/reckit/ext/vector/milvus`
+   - 用户按需引入，避免不必要的依赖
+   - 也可以参考扩展包实现，自行实现对应接口
+7. **类型转换工具**：使用 `pkg/conv` 进行类型转换，避免手写 switch-case
    - `conv.ToFloat64`、`conv.ToInt`、`conv.ToString` - 支持多种类型自动转换
    - `conv.MapToFloat64` - map[string]any -> map[string]float64
    - `conv.SliceAnyToString` - []any -> []string（兼容 YAML/JSON）
    - `conv.ConfigGet[T]`、`conv.ConfigGetInt64` - 从配置 map 读取值
-7. **UserProfile 扩展属性**：通过 `Extras map[string]any` 存储自定义属性
+8. **UserProfile 扩展属性**：通过 `Extras map[string]any` 存储自定义属性
    - `GetExtraFloat64`、`GetExtraInt`、`GetExtraString` - 带类型转换的获取方法
    - `core.GetExtraAs[T]` - 泛型方法，用于精确类型匹配（不进行数值转换）
 
@@ -579,6 +606,90 @@ purchaseCount, _ := userProfile.GetExtraInt("purchase_history_count")
 tags, _ := core.GetExtraAs[[]string](userProfile, "custom_tags")
 // 注意：GetExtraAs 仅做类型断言，不进行数值转换；数值转换请使用 GetExtraFloat64/GetExtraInt
 ```
+
+### 使用扩展包（Redis、Feast gRPC、Milvus）
+
+核心包无外部依赖，具体实现位于扩展包中，需要单独引入：
+
+#### Redis Store
+
+```go
+import (
+    "github.com/rushteam/reckit/core"
+    redisstore "github.com/rushteam/reckit/ext/store/redis"
+)
+
+// 安装：go get github.com/rushteam/reckit/ext/store/redis
+store, err := redisstore.NewRedisStore("localhost:6379", 0)
+if err != nil {
+    log.Fatal(err)
+}
+defer store.Close()
+
+// 作为 core.Store 使用
+var s core.Store = store
+```
+
+#### Feast HTTP 客户端
+
+```go
+import (
+    "github.com/rushteam/reckit/feast"
+    feasthttp "github.com/rushteam/reckit/ext/feast/http"
+)
+
+// 安装：go get github.com/rushteam/reckit/ext/feast/http
+client, err := feasthttp.NewClient("http://localhost:6566", "my_project")
+if err != nil {
+    log.Fatal(err)
+}
+defer client.Close()
+
+// 作为 feast.Client 使用
+var c feast.Client = client
+```
+
+#### Feast gRPC 客户端
+
+```go
+import (
+    "github.com/rushteam/reckit/feast"
+    feastgrpc "github.com/rushteam/reckit/ext/feast/grpc"
+)
+
+// 安装：go get github.com/rushteam/reckit/ext/feast/grpc
+client, err := feastgrpc.NewGrpcClient("localhost", 6565, "my_project")
+if err != nil {
+    log.Fatal(err)
+}
+defer client.Close()
+
+// 作为 feast.Client 使用
+var c feast.Client = client
+```
+
+**或自行实现**：参考扩展包实现，自行实现 `feast.Client` 接口。
+
+#### Milvus 向量数据库
+
+```go
+import (
+    "github.com/rushteam/reckit/core"
+    "github.com/rushteam/reckit/vector"
+    milvus "github.com/rushteam/reckit/ext/vector/milvus"
+)
+
+// 安装：go get github.com/rushteam/reckit/ext/vector/milvus
+milvusService := milvus.NewMilvusService("localhost:19530")
+
+// 作为 core.VectorService 使用（召回场景）
+var vectorService core.VectorService = milvusService
+
+// 作为 vector.ANNService 使用（数据管理场景）
+var annService vector.ANNService = milvusService
+```
+
+**或自行实现**：参考扩展包实现，自行实现 `core.VectorService` 或 `vector.ANNService` 接口。
 
 ### 使用 Word2Vec / Item2Vec 模型
 
@@ -758,3 +869,4 @@ normalized := scaler.Normalize(features)
 - `docs/ENCODER_INTERFACE_DESIGN.md` - 编码器接口设计说明
 - `docs/USER_PROFILE.md` - 用户画像文档（包含扩展属性 Extras 的使用）
 - `pkg/conv/README.md` - 类型转换与泛型工具文档
+- `ext/README.md` - 扩展包使用指南

@@ -1,4 +1,4 @@
-package store
+package redis
 
 import (
 	"context"
@@ -10,10 +10,14 @@ import (
 
 // RedisStore 是 Redis 实现的 KeyValueStore，支持所有 Redis 数据结构操作。
 // 生产环境常用，支持持久化、集群、哨兵等。
+//
+// 注意：此实现位于扩展包中，需要单独引入：
+//   go get github.com/rushteam/reckit/ext/store/redis
 type RedisStore struct {
 	client *redis.Client
 }
 
+// NewRedisStore 创建一个新的 Redis 存储实例。
 func NewRedisStore(addr string, db int) (*RedisStore, error) {
 	client := redis.NewClient(&redis.Options{
 		Addr: addr,
@@ -127,5 +131,7 @@ func (r *RedisStore) Close() error {
 }
 
 // 确保 RedisStore 实现了 core.Store 和 core.KeyValueStore 接口
-var _ core.Store = (*RedisStore)(nil)
-var _ core.KeyValueStore = (*RedisStore)(nil)
+var (
+	_ core.Store        = (*RedisStore)(nil)
+	_ core.KeyValueStore = (*RedisStore)(nil)
+)

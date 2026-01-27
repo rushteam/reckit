@@ -1,4 +1,4 @@
-package vector
+package milvus
 
 import (
 	"context"
@@ -7,24 +7,19 @@ import (
 	"time"
 
 	"github.com/rushteam/reckit/core"
+	"github.com/rushteam/reckit/vector"
 )
 
 // MilvusService 是 Milvus 向量数据库的 ANNService 实现。
 //
-// 使用 Milvus 原生 VARCHAR 主键支持（Milvus 2.0+）：
-//   - 直接使用 string IDs，无需转换为 int64
-//   - 无哈希冲突风险
-//   - 完全可逆（直接返回原始 ID）
-//   - 性能更好（无转换开销）
-//
-// 创建集合时会自动使用 VARCHAR 主键类型。
+// 注意：此实现位于扩展包中，需要单独引入：
+//   go get github.com/rushteam/reckit/ext/vector/milvus
 type MilvusService struct {
-	Address  string
-	Username string
-	Password string
-	Database string
-	Timeout  int
-
+	Address       string
+	Username      string
+	Password      string
+	Database      string
+	Timeout       int
 	client        MilvusClient
 	clientFactory MilvusClientFactory
 }
@@ -43,30 +38,6 @@ func NewMilvusService(address string, opts ...MilvusOption) *MilvusService {
 	}
 
 	return service
-}
-
-// initClient 初始化 Milvus SDK 客户端
-func (s *MilvusService) initClient(ctx context.Context) error {
-	if s.client != nil {
-		return nil
-	}
-
-	if s.clientFactory == nil {
-		s.clientFactory = &DefaultMilvusClientFactory{}
-	}
-
-	timeout := time.Duration(s.Timeout) * time.Second
-	if timeout == 0 {
-		timeout = 30 * time.Second
-	}
-
-	client, err := s.clientFactory.NewClient(ctx, s.Address, s.Username, s.Password, s.Database, timeout)
-	if err != nil {
-		return fmt.Errorf("init milvus client: %w", err)
-	}
-
-	s.client = client
-	return nil
 }
 
 type MilvusOption func(*MilvusService)
@@ -102,8 +73,30 @@ func WithMilvusClient(client MilvusClient) MilvusOption {
 	}
 }
 
+func (s *MilvusService) initClient(ctx context.Context) error {
+	if s.client != nil {
+		return nil
+	}
+
+	if s.clientFactory == nil {
+		s.clientFactory = &DefaultMilvusClientFactory{}
+	}
+
+	timeout := time.Duration(s.Timeout) * time.Second
+	if timeout == 0 {
+		timeout = 30 * time.Second
+	}
+
+	client, err := s.clientFactory.NewClient(ctx, s.Address, s.Username, s.Password, s.Database, timeout)
+	if err != nil {
+		return fmt.Errorf("init milvus client: %w", err)
+	}
+
+	s.client = client
+	return nil
+}
+
 // Search 实现 core.VectorService 接口
-// 直接使用 core.VectorSearchRequest，符合 DDD 原则
 func (s *MilvusService) Search(ctx context.Context, req *core.VectorSearchRequest) (*core.VectorSearchResult, error) {
 	if err := s.initClient(ctx); err != nil {
 		return nil, err
@@ -135,7 +128,6 @@ func (s *MilvusService) Search(ctx context.Context, req *core.VectorSearchReques
 		filterExpr = s.buildFilterExpr(req.Filter)
 	}
 
-	// 直接返回 string IDs（使用 Milvus VARCHAR 主键，无需转换）
 	ids, scores, distances, err := s.client.Search(
 		ctx,
 		req.Collection,
@@ -150,7 +142,7 @@ func (s *MilvusService) Search(ctx context.Context, req *core.VectorSearchReques
 	}
 
 	return &core.VectorSearchResult{
-		IDs:       ids, // 直接使用 string IDs，无需转换
+		IDs:       ids,
 		Scores:    scores,
 		Distances: distances,
 	}, nil
@@ -176,7 +168,7 @@ func (s *MilvusService) buildFilterExpr(filter map[string]interface{}) string {
 	return strings.Join(exprs, " && ")
 }
 
-func (s *MilvusService) Insert(ctx context.Context, req *InsertRequest) error {
+func (s *MilvusService) Insert(ctx context.Context, req *vector.InsertRequest) error {
 	if err := s.initClient(ctx); err != nil {
 		return err
 	}
@@ -196,11 +188,9 @@ func (s *MilvusService) Insert(ctx context.Context, req *InsertRequest) error {
 		vectorsFloat32[i] = convertToFloat32(v)
 	}
 
-	// 直接使用 string IDs（使用 Milvus VARCHAR 主键，无需转换）
-	// Milvus 2.0+ 原生支持 VARCHAR 主键，可以直接使用 string ID
 	data := []map[string]interface{}{
 		{
-			"id":     req.IDs, // 直接使用 string IDs
+			"id":     req.IDs,
 			"vector": vectorsFloat32,
 		},
 	}
@@ -216,8 +206,8 @@ func (s *MilvusService) Insert(ctx context.Context, req *InsertRequest) error {
 	return nil
 }
 
-func (s *MilvusService) Update(ctx context.Context, req *UpdateRequest) error {
-	deleteReq := &DeleteRequest{
+func (s *MilvusService) Update(ctx context.Context, req *vector.UpdateRequest) error {
+	deleteReq := &vector.DeleteRequest{
 		Collection: req.Collection,
 		IDs:        []string{req.ID},
 	}
@@ -225,7 +215,7 @@ func (s *MilvusService) Update(ctx context.Context, req *UpdateRequest) error {
 		return err
 	}
 
-	insertReq := &InsertRequest{
+	insertReq := &vector.InsertRequest{
 		Collection: req.Collection,
 		Vectors:    [][]float64{req.Vector},
 		IDs:        []string{req.ID},
@@ -234,7 +224,7 @@ func (s *MilvusService) Update(ctx context.Context, req *UpdateRequest) error {
 	return s.Insert(ctx, insertReq)
 }
 
-func (s *MilvusService) Delete(ctx context.Context, req *DeleteRequest) error {
+func (s *MilvusService) Delete(ctx context.Context, req *vector.DeleteRequest) error {
 	if err := s.initClient(ctx); err != nil {
 		return err
 	}
@@ -247,7 +237,6 @@ func (s *MilvusService) Delete(ctx context.Context, req *DeleteRequest) error {
 	}
 
 	expr := s.buildDeleteExpr(req.IDs)
-
 	err := s.client.Delete(ctx, req.Collection, expr)
 	if err != nil {
 		return fmt.Errorf("milvus delete failed: %w", err)
@@ -261,10 +250,8 @@ func (s *MilvusService) buildDeleteExpr(ids []string) string {
 		return ""
 	}
 	if len(ids) == 1 {
-		// VARCHAR 主键需要使用引号
 		return fmt.Sprintf("id == '%s'", ids[0])
 	}
-	// VARCHAR 主键的批量删除，每个 ID 都需要引号
 	quotedIDs := make([]string, len(ids))
 	for i, id := range ids {
 		quotedIDs[i] = fmt.Sprintf("'%s'", id)
@@ -272,7 +259,7 @@ func (s *MilvusService) buildDeleteExpr(ids []string) string {
 	return fmt.Sprintf("id in [%s]", strings.Join(quotedIDs, ", "))
 }
 
-func (s *MilvusService) CreateCollection(ctx context.Context, req *CreateCollectionRequest) error {
+func (s *MilvusService) CreateCollection(ctx context.Context, req *vector.CreateCollectionRequest) error {
 	if err := s.initClient(ctx); err != nil {
 		return err
 	}
@@ -284,11 +271,10 @@ func (s *MilvusService) CreateCollection(ctx context.Context, req *CreateCollect
 		return fmt.Errorf("dimension must be greater than 0")
 	}
 	if !core.ValidateVectorMetric(req.Metric) {
-		req.Metric = string(MetricCosine)
+		req.Metric = string(vector.MetricCosine)
 	}
 
 	schema := s.buildSchema(req)
-
 	err := s.client.CreateCollection(ctx, schema)
 	if err != nil {
 		return fmt.Errorf("milvus create collection failed: %w", err)
@@ -297,9 +283,7 @@ func (s *MilvusService) CreateCollection(ctx context.Context, req *CreateCollect
 	return nil
 }
 
-func (s *MilvusService) buildSchema(req *CreateCollectionRequest) interface{} {
-	// 使用 Milvus VARCHAR 主键（支持原生 string ID）
-	// Milvus 2.0+ 支持 VARCHAR 主键，无需转换为 int64
+func (s *MilvusService) buildSchema(req *vector.CreateCollectionRequest) interface{} {
 	schema := map[string]interface{}{
 		"collection_name": req.Name,
 		"dimension":       req.Dimension,
@@ -307,12 +291,11 @@ func (s *MilvusService) buildSchema(req *CreateCollectionRequest) interface{} {
 		"primary_key": map[string]interface{}{
 			"name":       "id",
 			"data_type":  "VARCHAR",
-			"max_length": 255, // VARCHAR 最大长度（1-65535）
+			"max_length": 255,
 			"is_primary": true,
 		},
 	}
 
-	// 如果提供了额外参数，合并到 schema
 	if req.Params != nil {
 		for k, v := range req.Params {
 			schema[k] = v
@@ -357,11 +340,11 @@ func (s *MilvusService) Close() error {
 
 func (s *MilvusService) convertMetric(metric string) string {
 	switch metric {
-	case string(MetricCosine):
+	case "cosine":
 		return "COSINE"
-	case string(MetricEuclidean):
+	case "euclidean":
 		return "L2"
-	case string(MetricInnerProduct):
+	case "inner_product":
 		return "IP"
 	default:
 		return "COSINE"
@@ -376,8 +359,7 @@ func convertToFloat32(vec []float64) []float32 {
 	return result
 }
 
-// 确保 MilvusService 实现了两个接口
 var (
-	_ ANNService        = (*MilvusService)(nil)
+	_ vector.ANNService   = (*MilvusService)(nil)
 	_ core.VectorService = (*MilvusService)(nil)
 )

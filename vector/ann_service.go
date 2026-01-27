@@ -46,8 +46,11 @@ import (
 //     ```
 //
 // 实现：
-//   - vector.MilvusService 实现此接口
+//   - ext/vector/milvus.MilvusService 实现此接口（扩展包）
 //   - 其他向量数据库（Faiss、Elasticsearch 等）也可以实现此接口
+//
+// 注意：Milvus 实现已移至扩展包，请使用：
+//   go get github.com/rushteam/reckit/ext/vector/milvus
 type ANNService interface {
 	// 嵌入领域层接口（符合 DDD 原则）
 	// 基础设施层接口扩展领域层接口，而不是相反

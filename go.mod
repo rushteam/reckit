@@ -3,9 +3,7 @@ module github.com/rushteam/reckit
 go 1.25.5
 
 require (
-	github.com/feast-dev/feast/sdk/go v0.9.4
 	github.com/google/cel-go v0.26.1
-	github.com/redis/go-redis/v9 v9.5.1
 	golang.org/x/sync v0.19.0
 	gopkg.in/yaml.v3 v3.0.1
 )

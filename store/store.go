@@ -6,3 +6,6 @@ package store
 // 示例：
 //   var store core.Store = NewMemoryStore()
 //   var kvStore core.KeyValueStore = NewMemoryStore()
+//
+// Redis 实现已移至扩展包：
+//   go get github.com/rushteam/reckit/ext/store/redis

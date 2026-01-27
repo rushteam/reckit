@@ -13,34 +13,31 @@ import (
 	"github.com/rushteam/reckit/pipeline"
 	"github.com/rushteam/reckit/rank"
 	"github.com/rushteam/reckit/recall"
+	
+	// Feast 扩展包
+	feasthttp "github.com/rushteam/reckit/ext/feast/http"
+	feastgrpc "github.com/rushteam/reckit/ext/feast/grpc"
 )
 
 func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// 1. 创建 Feast 客户端
-	// 方式 A：使用 HTTP 客户端（自定义实现，支持完整功能）
-	// feastClient, err := feast.NewHTTPClient(
+	// 1. 创建 Feast 客户端（扩展包）
+	// 方式 A：使用 HTTP 客户端（扩展包）
+	// 安装：go get github.com/rushteam/reckit/ext/feast/http
+	// feastClient, err := feasthttp.NewClient(
 	// 	"http://localhost:6566", // Feast Feature Server 端点
 	// 	"my_project",             // 项目名称
 	// )
 	
-	// 方式 B：使用 gRPC 客户端（官方 SDK，性能更好，推荐生产环境）
-	feastClient, err := feast.NewGrpcClient(
+	// 方式 B：使用 gRPC 客户端（扩展包，官方 SDK，性能更好，推荐生产环境）
+	// 安装：go get github.com/rushteam/reckit/ext/feast/grpc
+	feastClient, err := feastgrpc.NewGrpcClient(
 		"localhost",  // 主机地址
 		6565,         // gRPC 端口（默认 6565）
 		"my_project", // 项目名称
 	)
-	
-	// 方式 C：使用工厂模式（自动选择）
-	// factory := &feast.DefaultClientFactory{}
-	// feastClient, err := factory.NewClient(
-	// 	ctx,
-	// 	"localhost:6565",
-	// 	"my_project",
-	// 	feast.WithGRPC(), // 或 feast.WithHTTP()
-	// )
 	
 	if err != nil {
 		log.Fatalf("创建 Feast 客户端失败: %v", err)
@@ -48,7 +45,7 @@ func main() {
 	defer feastClient.Close()
 
 	// 2. 创建特征映射配置
-	mapping := &feast.FeatureMapping{
+	mapping := &feasthttp.FeatureMapping{
 		UserFeatures: []string{
 			"user_stats:age",
 			"user_stats:gender",
@@ -68,7 +65,8 @@ func main() {
 	}
 
 	// 3. 创建适配器（将 Feast Client 适配为 FeatureService）
-	adapter := feast.NewFeatureServiceAdapter(feastClient, mapping)
+	// 适配器位于扩展包中
+	adapter := feasthttp.NewFeatureServiceAdapter(feastClient, mapping)
 
 	// 4. 创建特征注入节点
 	enrichNode := &feature.EnrichNode{
