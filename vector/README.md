@@ -8,6 +8,103 @@
 - **高内聚低耦合**：基础设施层（vector）实现领域层接口（core），领域层不依赖基础设施层
 - **接口组合**：通过接口组合实现统一，无需包装器或适配器
 
+## 接口使用场景对比
+
+### core.VectorService（召回场景专用）
+
+**适用场景**：推荐系统的召回阶段，只需要向量搜索功能
+
+```go
+import (
+    "github.com/rushteam/reckit/core"
+    "github.com/rushteam/reckit/vector"
+)
+
+// 创建服务
+milvusService := vector.NewMilvusService("localhost:19530")
+
+// 作为 core.VectorService 使用（召回场景）
+var vectorService core.VectorService = milvusService
+
+// 向量搜索
+result, err := vectorService.Search(ctx, &core.VectorSearchRequest{
+    Collection: "items",
+    Vector:     userVector,
+    TopK:       20,
+    Metric:     "cosine",
+})
+```
+
+**特点**：
+- ✅ 接口简洁，只包含 Search 方法
+- ✅ 专注于召回场景，符合单一职责原则
+- ✅ 领域层接口，不依赖基础设施层
+
+### vector.ANNService（完整向量数据库接口）
+
+**适用场景**：向量数据管理、离线导入、在线检索等完整操作
+
+```go
+import (
+    "github.com/rushteam/reckit/core"
+    "github.com/rushteam/reckit/vector"
+)
+
+// 创建服务
+milvusService := vector.NewMilvusService("localhost:19530")
+
+// 作为 vector.ANNService 使用（数据管理场景）
+var annService vector.ANNService = milvusService
+
+// 1. 创建集合
+err := annService.CreateCollection(ctx, &vector.CreateCollectionRequest{
+    Name:      "items",
+    Dimension: 128,
+    Metric:    "cosine",
+})
+
+// 2. 插入向量
+err = annService.Insert(ctx, &vector.InsertRequest{
+    Collection: "items",
+    Vectors:    itemVectors,
+    IDs:        itemIDs,
+})
+
+// 3. 向量搜索（也可以使用，因为嵌入了 core.VectorService）
+result, err := annService.Search(ctx, &core.VectorSearchRequest{
+    Collection: "items",
+    Vector:     userVector,
+    TopK:       20,
+    Metric:     "cosine",
+})
+
+// 4. 更新向量
+err = annService.Update(ctx, &vector.UpdateRequest{
+    Collection: "items",
+    ID:         "item_1",
+    Vector:     newVector,
+})
+
+// 5. 删除向量
+err = annService.Delete(ctx, &vector.DeleteRequest{
+    Collection: "items",
+    IDs:        []string{"item_1", "item_2"},
+})
+```
+
+**特点**：
+- ✅ 完整的向量数据库操作（CRUD + 集合管理）
+- ✅ 嵌入 `core.VectorService`，可以使用 Search 方法
+- ✅ 基础设施层接口，提供技术实现细节
+
+### 选择建议
+
+| 场景 | 推荐接口 | 原因 |
+|------|---------|------|
+| **召回场景** | `core.VectorService` | 只需要 Search，接口简洁，符合领域层抽象 |
+| **数据管理** | `vector.ANNService` | 需要完整的 CRUD 和集合管理功能 |
+| **混合场景** | `vector.ANNService` | 既需要召回也需要数据管理，一个接口满足所有需求 |
+
 ## 设计目标
 
 - **统一接口**：提供统一的向量数据库接口，便于替换实现

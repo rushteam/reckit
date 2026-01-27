@@ -283,7 +283,7 @@ func (s *MilvusService) CreateCollection(ctx context.Context, req *CreateCollect
 	if req.Dimension <= 0 {
 		return fmt.Errorf("dimension must be greater than 0")
 	}
-	if !ValidateMetric(req.Metric) {
+	if !core.ValidateVectorMetric(req.Metric) {
 		req.Metric = string(MetricCosine)
 	}
 

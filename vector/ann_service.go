@@ -13,9 +13,37 @@ import (
 //   - 基础设施层（vector）实现领域层接口（core）
 //   - 提供完整的向量数据库操作（CRUD + 集合管理）
 //
-// 使用场景：
-//   - 召回场景：作为 core.VectorService 使用（只使用 Search 方法）
-//   - 数据管理：作为 vector.ANNService 使用（使用 Insert、Update、Delete 等）
+// 使用场景对比：
+//
+//  1. 召回场景（推荐使用 core.VectorService）：
+//     ```go
+//     var vectorService core.VectorService = milvusService
+//     result, err := vectorService.Search(ctx, &core.VectorSearchRequest{
+//         Collection: "items",
+//         Vector:     userVector,
+//         TopK:       20,
+//         Metric:     "cosine",
+//     })
+//     ```
+//
+//  2. 数据管理场景（使用 vector.ANNService）：
+//     ```go
+//     var annService vector.ANNService = milvusService
+//     // 创建集合
+//     err := annService.CreateCollection(ctx, &vector.CreateCollectionRequest{
+//         Name:      "items",
+//         Dimension: 128,
+//         Metric:    "cosine",
+//     })
+//     // 插入向量
+//     err = annService.Insert(ctx, &vector.InsertRequest{
+//         Collection: "items",
+//         Vectors:    itemVectors,
+//         IDs:        itemIDs,
+//     })
+//     // 也可以使用 Search（因为嵌入了 core.VectorService）
+//     result, err := annService.Search(ctx, &core.VectorSearchRequest{...})
+//     ```
 //
 // 实现：
 //   - vector.MilvusService 实现此接口
@@ -98,7 +126,8 @@ type CreateCollectionRequest struct {
 	Params map[string]interface{}
 }
 
-// MetricType 距离度量类型
+// MetricType 距离度量类型（用于类型安全）
+// 注意：验证函数统一使用 core.ValidateVectorMetric
 type MetricType string
 
 const (
@@ -106,13 +135,3 @@ const (
 	MetricEuclidean   MetricType = "euclidean"
 	MetricInnerProduct MetricType = "inner_product"
 )
-
-// ValidateMetric 验证距离度量类型
-func ValidateMetric(metric string) bool {
-	switch metric {
-	case string(MetricCosine), string(MetricEuclidean), string(MetricInnerProduct):
-		return true
-	default:
-		return false
-	}
-}
