@@ -85,7 +85,7 @@ func main() {
 			&filter.FilterNode{
 				Filters: []filter.Filter{
 					filter.NewUserBlockFilter(nil, "user:block"),
-					filter.NewExposedFilter(nil, "user:exposed", 7*24*3600),
+					filter.NewExposedFilter(nil, "user:exposed", 7*24*3600, 0),
 				},
 			},
 			// 注入物品基础特征（示例：在实际场景中，这些特征可能来自特征服务）

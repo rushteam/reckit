@@ -3,6 +3,7 @@ module github.com/rushteam/reckit/ext/store/redis
 go 1.25.5
 
 require (
+	github.com/bits-and-blooms/bloom/v3 v3.7.1
 	github.com/rushteam/reckit v0.0.0
 	github.com/redis/go-redis/v9 v9.5.1
 )

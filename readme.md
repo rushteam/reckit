@@ -239,7 +239,7 @@ func main() {
             // 用户拉黑过滤
             filter.NewUserBlockFilter(storeAdapter, "user:block"),
             // 已曝光过滤（7天窗口）
-            filter.NewExposedFilter(storeAdapter, "user:exposed", 7*24*3600),
+            filter.NewExposedFilter(storeAdapter, "user:exposed", 7*24*3600, 0),
         },
     }
 

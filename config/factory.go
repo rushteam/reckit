@@ -175,7 +175,8 @@ func buildFilterNode(config map[string]interface{}) (pipeline.Node, error) {
 		case "exposed":
 			keyPrefix := conv.ConfigGet[string](filterMap, "key_prefix", "")
 			timeWindow := conv.ConfigGetInt64(filterMap, "time_window", 0)
-			filters = append(filters, filter.NewExposedFilter(nil, keyPrefix, timeWindow))
+			bloomFilterDayWindow := conv.ConfigGet[int](filterMap, "bloom_filter_day_window", 0)
+			filters = append(filters, filter.NewExposedFilter(nil, keyPrefix, timeWindow, bloomFilterDayWindow))
 
 		default:
 			return nil, fmt.Errorf("unknown filter type: %s", filterType)

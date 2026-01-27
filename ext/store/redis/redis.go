@@ -130,6 +130,12 @@ func (r *RedisStore) Close(ctx context.Context) error {
 	return r.client.Close()
 }
 
+// GetClient 返回内部的 Redis 客户端（用于高级用法，如布隆过滤器）。
+// 注意：此方法仅用于需要直接访问 Redis 客户端的场景。
+func (r *RedisStore) GetClient() *redis.Client {
+	return r.client
+}
+
 // 确保 RedisStore 实现了 core.Store 和 core.KeyValueStore 接口
 var (
 	_ core.Store        = (*RedisStore)(nil)
