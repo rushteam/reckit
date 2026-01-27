@@ -102,7 +102,9 @@ func WithMilvusClient(client MilvusClient) MilvusOption {
 	}
 }
 
-func (s *MilvusService) Search(ctx context.Context, req *SearchRequest) (*SearchResult, error) {
+// Search 实现 core.VectorService 接口
+// 直接使用 core.VectorSearchRequest，符合 DDD 原则
+func (s *MilvusService) Search(ctx context.Context, req *core.VectorSearchRequest) (*core.VectorSearchResult, error) {
 	if err := s.initClient(ctx); err != nil {
 		return nil, err
 	}
@@ -116,8 +118,8 @@ func (s *MilvusService) Search(ctx context.Context, req *SearchRequest) (*Search
 	if req.TopK <= 0 {
 		req.TopK = 10
 	}
-	if !ValidateMetric(req.Metric) {
-		req.Metric = string(MetricCosine)
+	if !core.ValidateVectorMetric(req.Metric) {
+		req.Metric = "cosine"
 	}
 
 	milvusMetric := s.convertMetric(req.Metric)
@@ -147,7 +149,7 @@ func (s *MilvusService) Search(ctx context.Context, req *SearchRequest) (*Search
 		return nil, fmt.Errorf("milvus search failed: %w", err)
 	}
 
-	return &SearchResult{
+	return &core.VectorSearchResult{
 		IDs:       ids, // 直接使用 string IDs，无需转换
 		Scores:    scores,
 		Distances: distances,
@@ -374,53 +376,8 @@ func convertToFloat32(vec []float64) []float32 {
 	return result
 }
 
-var _ ANNService = (*MilvusService)(nil)
-
-// SearchCore 实现 core.VectorService 接口
-// 将 core.VectorSearchRequest 转换为内部 SearchRequest，然后调用内部实现
-func (s *MilvusService) SearchCore(ctx context.Context, req *core.VectorSearchRequest) (*core.VectorSearchResult, error) {
-	// 转换为内部 SearchRequest
-	internalReq := &SearchRequest{
-		Collection: req.Collection,
-		Vector:     req.Vector,
-		TopK:       req.TopK,
-		Metric:     req.Metric,
-		Filter:     req.Filter,
-		Params:     req.Params,
-	}
-
-	// 调用内部实现（注意：这里调用的是 MilvusService.Search，接受 *SearchRequest）
-	result, err := s.Search(ctx, internalReq)
-	if err != nil {
-		return nil, err
-	}
-
-	// 转换为 core.VectorSearchResult
-	return &core.VectorSearchResult{
-		IDs:       result.IDs,
-		Scores:    result.Scores,
-		Distances: result.Distances,
-	}, nil
-}
-
-// 实现 core.VectorService 接口
-// 注意：MilvusService 同时实现了两个接口：
-// 1. ANNService（内部接口，用于完整的向量数据库操作，Search 方法接受 *SearchRequest）
-// 2. core.VectorService（领域接口，用于召回场景，SearchCore 方法接受 *core.VectorSearchRequest）
-//
-// 为了满足 core.VectorService 接口，我们需要一个包装器
-type milvusVectorServiceWrapper struct {
-	*MilvusService
-}
-
-// Search 实现 core.VectorService 接口
-func (w *milvusVectorServiceWrapper) Search(ctx context.Context, req *core.VectorSearchRequest) (*core.VectorSearchResult, error) {
-	return w.MilvusService.SearchCore(ctx, req)
-}
-
-// NewMilvusVectorService 创建一个实现 core.VectorService 接口的包装器
-func NewMilvusVectorService(service *MilvusService) core.VectorService {
-	return &milvusVectorServiceWrapper{MilvusService: service}
-}
-
-var _ core.VectorService = (*milvusVectorServiceWrapper)(nil)
+// 确保 MilvusService 实现了两个接口
+var (
+	_ ANNService        = (*MilvusService)(nil)
+	_ core.VectorService = (*MilvusService)(nil)
+)

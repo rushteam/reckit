@@ -30,7 +30,7 @@ func (a *VectorStoreAdapter) ListVectors(ctx context.Context) (map[string][]floa
 }
 
 func (a *VectorStoreAdapter) Search(ctx context.Context, vector []float64, topK int, metric string) ([]string, []float64, error) {
-	req := &SearchRequest{
+	req := &core.VectorSearchRequest{
 		Collection: a.collection,
 		Vector:     vector,
 		TopK:       topK,

@@ -2,12 +2,28 @@ package vector
 
 import (
 	"context"
+
+	"github.com/rushteam/reckit/core"
 )
 
-// ANNService 是抽象向量 ANN（Approximate Nearest Neighbor）服务接口。
+// ANNService 是完整的向量数据库服务接口。
+//
+// 设计原则：
+//   - 嵌入 core.VectorService（领域层接口），符合 DDD 依赖倒置原则
+//   - 基础设施层（vector）实现领域层接口（core）
+//   - 提供完整的向量数据库操作（CRUD + 集合管理）
+//
+// 使用场景：
+//   - 召回场景：作为 core.VectorService 使用（只使用 Search 方法）
+//   - 数据管理：作为 vector.ANNService 使用（使用 Insert、Update、Delete 等）
+//
+// 实现：
+//   - vector.MilvusService 实现此接口
+//   - 其他向量数据库（Faiss、Elasticsearch 等）也可以实现此接口
 type ANNService interface {
-	// Search 向量搜索（核心功能）
-	Search(ctx context.Context, req *SearchRequest) (*SearchResult, error)
+	// 嵌入领域层接口（符合 DDD 原则）
+	// 基础设施层接口扩展领域层接口，而不是相反
+	core.VectorService
 
 	// Insert 插入向量
 	Insert(ctx context.Context, req *InsertRequest) error
@@ -26,42 +42,6 @@ type ANNService interface {
 
 	// HasCollection 检查集合是否存在
 	HasCollection(ctx context.Context, collection string) (bool, error)
-
-	// Close 关闭连接
-	Close() error
-}
-
-// SearchRequest 向量搜索请求
-type SearchRequest struct {
-	// Collection 集合名称
-	Collection string
-
-	// Vector 查询向量
-	Vector []float64
-
-	// TopK 返回 TopK 个最相似的结果
-	TopK int
-
-	// Metric 距离度量方式：cosine / euclidean / inner_product
-	Metric string
-
-	// Filter 过滤条件
-	Filter map[string]interface{}
-
-	// Params 额外参数
-	Params map[string]interface{}
-}
-
-// SearchResult 向量搜索结果
-type SearchResult struct {
-	// IDs 物品 ID 列表（按相似度排序）
-	IDs []string
-
-	// Scores 相似度分数列表
-	Scores []float64
-
-	// Distances 距离列表
-	Distances []float64
 }
 
 // InsertRequest 向量插入请求

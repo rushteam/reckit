@@ -2,6 +2,12 @@
 
 抽象向量 ANN（Approximate Nearest Neighbor）服务接口，支持 Milvus、Faiss、Pinecone 等向量数据库。
 
+## 设计原则
+
+- **DDD 分层架构**：`vector.ANNService` 嵌入 `core.VectorService`（领域层接口），符合依赖倒置原则
+- **高内聚低耦合**：基础设施层（vector）实现领域层接口（core），领域层不依赖基础设施层
+- **接口组合**：通过接口组合实现统一，无需包装器或适配器
+
 ## 设计目标
 
 - **统一接口**：提供统一的向量数据库接口，便于替换实现
@@ -16,14 +22,16 @@
 
 ```go
 type ANNService interface {
-    Search(ctx context.Context, req *SearchRequest) (*SearchResult, error)
+    // 嵌入 core.VectorService（领域层接口）
+    core.VectorService
+    
+    // 额外的数据管理功能
     Insert(ctx context.Context, req *InsertRequest) error
     Update(ctx context.Context, req *UpdateRequest) error
     Delete(ctx context.Context, req *DeleteRequest) error
     CreateCollection(ctx context.Context, req *CreateCollectionRequest) error
     DropCollection(ctx context.Context, collection string) error
     HasCollection(ctx context.Context, collection string) (bool, error)
-    Close() error
 }
 ```
 
@@ -92,7 +100,7 @@ err := milvusService.Insert(ctx, &vector.InsertRequest{
 ### 4. 向量搜索
 
 ```go
-result, err := milvusService.Search(ctx, &vector.SearchRequest{
+result, err := milvusService.Search(ctx, &core.VectorSearchRequest{
     Collection: "items",
     Vector:     userVector,
     TopK:       20,
@@ -266,7 +274,18 @@ go run ./examples/milvus_ann
 
 1. **直接使用 ANNService**（推荐）：
    ```go
-   result, err := milvusService.Search(ctx, &vector.SearchRequest{
+   result, err := milvusService.Search(ctx, &core.VectorSearchRequest{
+       Collection: "items",
+       Vector:     userVector,
+       TopK:       20,
+       Metric:     "cosine",
+   })
+   ```
+   
+   或者作为 `core.VectorService` 使用（召回场景）：
+   ```go
+   var vectorService core.VectorService = milvusService
+   result, err := vectorService.Search(ctx, &core.VectorSearchRequest{
        Collection: "items",
        Vector:     userVector,
        TopK:       20,

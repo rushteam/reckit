@@ -75,7 +75,7 @@ func main() {
 	fmt.Println("\n=== 向量搜索 ===")
 	userVector := generateRandomVector(dimension)
 
-	searchResult, err := milvusService.Search(ctx, &vector.SearchRequest{
+	searchResult, err := milvusService.Search(ctx, &core.VectorSearchRequest{
 		Collection: collectionName,
 		Vector:     userVector,
 		TopK:       10,

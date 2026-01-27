@@ -77,8 +77,9 @@ func main() {
 	// faissService := vector.NewFaissService(...)
 
 	// ========== 5. 使用向量服务 ==========
-	// 使用包装器将 MilvusService 适配为 core.VectorService 接口
-	vectorService := vector.NewMilvusVectorService(milvusService)
+	// MilvusService 直接实现了 core.VectorService 接口（通过接口组合）
+	// 可以直接作为 core.VectorService 使用，无需包装器
+	var vectorService core.VectorService = milvusService
 
 	// ========== 6. 创建双塔召回源 ==========
 	twoTowerRecall := recall.NewTwoTowerRecall(
