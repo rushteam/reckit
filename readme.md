@@ -525,7 +525,7 @@ github.com/rushteam/reckit/
 ├── store/             # 存储抽象（Memory，Redis 移至扩展包）
 ├── vector/            # 向量服务接口（Milvus 移至扩展包）
 ├── service/           # ML 服务（TF Serving, ANN Service）
-├── feast/             # Feast 接口定义（实现移至扩展包）
+├── feature/           # 特征服务（领域层接口 FeatureService）
 ├── config/            # Pipeline 配置工厂
 ├── ext/                # 扩展包目录（独立 go.mod）
 │   ├── store/redis/   # Redis 存储实现
@@ -559,11 +559,10 @@ require (
 具体实现位于扩展包中，用户按需引入：
 
 - **Redis Store**: `go get github.com/rushteam/reckit/ext/store/redis`
-- **Feast HTTP**: `go get github.com/rushteam/reckit/ext/feast/http`
-- **Feast gRPC**: `go get github.com/rushteam/reckit/ext/feast/grpc`
+- **Feast HTTP/gRPC**: `go get github.com/rushteam/reckit/ext/feast/http` 或 `/grpc`（通过适配器适配为 `feature.FeatureService`）
 - **Milvus Vector**: `go get github.com/rushteam/reckit/ext/vector/milvus`
 
-**或自行实现**：参考扩展包实现，自行实现对应接口。
+**或自行实现**：参考扩展包实现，自行实现对应接口（推荐实现领域层接口，如 `feature.FeatureService`）。
 
 详见 `ext/README.md`。
 

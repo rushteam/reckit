@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/rushteam/reckit/feast"
 	"github.com/rushteam/reckit/feature"
 )
 
@@ -12,8 +11,10 @@ import (
 //
 // 注意：此实现位于扩展包中，需要单独引入：
 //   go get github.com/rushteam/reckit/ext/feast/http
+//
+// 这是推荐的使用方式：通过适配器将 Feast（基础设施层）适配为 feature.FeatureService（领域层）。
 type FeatureServiceAdapter struct {
-	client         feast.Client
+	client         Client
 	featureMapping *FeatureMapping
 }
 
@@ -36,7 +37,14 @@ type FeatureMapping struct {
 }
 
 // NewFeatureServiceAdapter 创建一个新的 FeatureService 适配器。
-func NewFeatureServiceAdapter(client feast.Client, mapping *FeatureMapping) *FeatureServiceAdapter {
+//
+// 参数：
+//   - client: Feast 客户端（基础设施层）
+//   - mapping: 特征映射配置
+//
+// 返回：
+//   - *FeatureServiceAdapter: 实现了 feature.FeatureService 接口的适配器
+func NewFeatureServiceAdapter(client Client, mapping *FeatureMapping) *FeatureServiceAdapter {
 	if mapping.UserEntityKey == "" {
 		mapping.UserEntityKey = "user_id"
 	}
@@ -67,7 +75,7 @@ func (a *FeatureServiceAdapter) GetUserFeatures(ctx context.Context, userID stri
 	}
 
 	// 调用 Feast 客户端
-	req := &feast.GetOnlineFeaturesRequest{
+	req := &GetOnlineFeaturesRequest{
 		Features:   a.featureMapping.UserFeatures,
 		EntityRows: entityRows,
 	}
@@ -111,7 +119,7 @@ func (a *FeatureServiceAdapter) BatchGetUserFeatures(ctx context.Context, userID
 	}
 
 	// 调用 Feast 客户端
-	req := &feast.GetOnlineFeaturesRequest{
+	req := &GetOnlineFeaturesRequest{
 		Features:   a.featureMapping.UserFeatures,
 		EntityRows: entityRows,
 	}
@@ -152,7 +160,7 @@ func (a *FeatureServiceAdapter) GetItemFeatures(ctx context.Context, itemID stri
 	}
 
 	// 调用 Feast 客户端
-	req := &feast.GetOnlineFeaturesRequest{
+	req := &GetOnlineFeaturesRequest{
 		Features:   a.featureMapping.ItemFeatures,
 		EntityRows: entityRows,
 	}
@@ -196,7 +204,7 @@ func (a *FeatureServiceAdapter) BatchGetItemFeatures(ctx context.Context, itemID
 	}
 
 	// 调用 Feast 客户端
-	req := &feast.GetOnlineFeaturesRequest{
+	req := &GetOnlineFeaturesRequest{
 		Features:   a.featureMapping.ItemFeatures,
 		EntityRows: entityRows,
 	}
@@ -240,7 +248,7 @@ func (a *FeatureServiceAdapter) GetRealtimeFeatures(ctx context.Context, userID,
 	}
 
 	// 调用 Feast 客户端
-	req := &feast.GetOnlineFeaturesRequest{
+	req := &GetOnlineFeaturesRequest{
 		Features:   a.featureMapping.RealtimeFeatures,
 		EntityRows: entityRows,
 	}
@@ -285,7 +293,7 @@ func (a *FeatureServiceAdapter) BatchGetRealtimeFeatures(ctx context.Context, pa
 	}
 
 	// 调用 Feast 客户端
-	req := &feast.GetOnlineFeaturesRequest{
+	req := &GetOnlineFeaturesRequest{
 		Features:   a.featureMapping.RealtimeFeatures,
 		EntityRows: entityRows,
 	}

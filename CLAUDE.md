@@ -209,14 +209,14 @@ github.com/rushteam/reckit/
 ├── store/             # 存储抽象（Memory，Redis 移至扩展包）
 ├── vector/             # 向量服务接口（Milvus 移至扩展包）
 ├── service/           # ML 服务（TF Serving, ANN Service）
-├── feast/             # Feast 接口定义（HTTP/gRPC 实现移至扩展包）
+├── feature/           # 特征服务（领域层接口 FeatureService）
 ├── config/            # Pipeline 配置工厂
 ├── ext/                # 扩展包目录（独立 go.mod）
 │   ├── store/
 │   │   └── redis/     # Redis 存储实现
 │   ├── feast/
-│   │   ├── http/      # Feast HTTP 客户端实现
-│   │   └── grpc/      # Feast gRPC 客户端实现
+│   │   ├── http/      # Feast HTTP 客户端实现（适配为 feature.FeatureService）
+│   │   └── grpc/      # Feast gRPC 客户端实现（适配为 feature.FeatureService）
 │   └── vector/
 │       └── milvus/    # Milvus 向量数据库实现
 └── pkg/
@@ -491,7 +491,7 @@ func (n *MyRankNode) Process(ctx context.Context, rctx *core.RecommendContext, i
 
 ### 适配器模式
 - `VectorStoreAdapter` - 适配向量服务
-- `FeatureServiceAdapter` - 适配 Feast
+- `FeatureServiceAdapter` - 适配 Feast（位于扩展包 `ext/feast/http`）
 - `S3Client` - 适配 S3 兼容协议（AWS S3、阿里云 OSS、腾讯云 COS、MinIO 等）
 
 ### 装饰器模式
@@ -513,11 +513,13 @@ func (n *MyRankNode) Process(ctx context.Context, rctx *core.RecommendContext, i
 5. **线程安全**：`NodeFactory` 使用 `sync.RWMutex` 保证线程安全
 6. **扩展包设计**：核心包无外部依赖，具体实现位于扩展包中
    - Redis Store: `go get github.com/rushteam/reckit/ext/store/redis`
-   - Feast HTTP: `go get github.com/rushteam/reckit/ext/feast/http`
-   - Feast gRPC: `go get github.com/rushteam/reckit/ext/feast/grpc`
+   - Feast HTTP/gRPC: `go get github.com/rushteam/reckit/ext/feast/http` 或 `/grpc`
    - Milvus Vector: `go get github.com/rushteam/reckit/ext/vector/milvus`
    - 用户按需引入，避免不必要的依赖
    - 也可以参考扩展包实现，自行实现对应接口
+7. **领域层接口优先**：推荐使用领域层接口（如 `feature.FeatureService`），而非基础设施层接口
+   - Feast 应通过适配器适配为 `feature.FeatureService` 使用
+   - 领域层接口更通用，不绑定具体实现
 7. **类型转换工具**：使用 `pkg/conv` 进行类型转换，避免手写 switch-case
    - `conv.ToFloat64`、`conv.ToInt`、`conv.ToString` - 支持多种类型自动转换
    - `conv.MapToFloat64` - map[string]any -> map[string]float64
@@ -607,7 +609,7 @@ tags, _ := core.GetExtraAs[[]string](userProfile, "custom_tags")
 // 注意：GetExtraAs 仅做类型断言，不进行数值转换；数值转换请使用 GetExtraFloat64/GetExtraInt
 ```
 
-### 使用扩展包（Redis、Feast gRPC、Milvus）
+### 使用扩展包（Redis、Feast、Milvus）
 
 核心包无外部依赖，具体实现位于扩展包中，需要单独引入：
 
@@ -630,45 +632,36 @@ defer store.Close()
 var s core.Store = store
 ```
 
-#### Feast HTTP 客户端
+#### Feast 特征服务（通过适配器）
+
+Feast 是特征存储工具，应通过适配器适配为 `feature.FeatureService` 领域接口使用。
 
 ```go
 import (
-    "github.com/rushteam/reckit/feast"
+    "github.com/rushteam/reckit/feature"
     feasthttp "github.com/rushteam/reckit/ext/feast/http"
-)
-
-// 安装：go get github.com/rushteam/reckit/ext/feast/http
-client, err := feasthttp.NewClient("http://localhost:6566", "my_project")
-if err != nil {
-    log.Fatal(err)
-}
-defer client.Close()
-
-// 作为 feast.Client 使用
-var c feast.Client = client
-```
-
-#### Feast gRPC 客户端
-
-```go
-import (
-    "github.com/rushteam/reckit/feast"
     feastgrpc "github.com/rushteam/reckit/ext/feast/grpc"
 )
 
-// 安装：go get github.com/rushteam/reckit/ext/feast/grpc
-client, err := feastgrpc.NewGrpcClient("localhost", 6565, "my_project")
-if err != nil {
-    log.Fatal(err)
+// 方式 1：使用 HTTP 客户端
+// 安装：go get github.com/rushteam/reckit/ext/feast/http
+feastClient, _ := feasthttp.NewClient("http://localhost:6566", "my_project")
+mapping := &feasthttp.FeatureMapping{
+    UserFeatures: []string{"user_stats:age", "user_stats:gender"},
+    ItemFeatures: []string{"item_stats:price", "item_stats:category"},
 }
-defer client.Close()
+featureService := feasthttp.NewFeatureServiceAdapter(feastClient, mapping)
 
-// 作为 feast.Client 使用
-var c feast.Client = client
+// 方式 2：使用 gRPC 客户端
+// 安装：go get github.com/rushteam/reckit/ext/feast/grpc
+feastClient, _ := feastgrpc.NewGrpcClient("localhost", 6565, "my_project")
+featureService := feasthttp.NewFeatureServiceAdapter(feastClient, mapping)
+
+// 作为 feature.FeatureService 使用（领域层接口）
+var fs feature.FeatureService = featureService
 ```
 
-**或自行实现**：参考扩展包实现，自行实现 `feast.Client` 接口。
+**或自行实现**：参考扩展包实现，自行实现 `feature.FeatureService` 接口。
 
 #### Milvus 向量数据库
 

@@ -8,8 +8,6 @@ import (
 	"io"
 	"net/http"
 	"time"
-
-	"github.com/rushteam/reckit/feast"
 )
 
 // HTTPClient 是 Feast Feature Store 的 HTTP 客户端实现。
@@ -27,15 +25,15 @@ type HTTPClient struct {
 	Timeout time.Duration
 
 	// Auth 认证信息
-	Auth *feast.AuthConfig
+	Auth *AuthConfig
 
 	// httpClient HTTP 客户端
 	httpClient *http.Client
 }
 
 // NewHTTPClient 创建一个新的 Feast HTTP 客户端。
-func NewHTTPClient(endpoint, project string, opts ...feast.ClientOption) (*HTTPClient, error) {
-	config := &feast.ClientConfig{
+func NewHTTPClient(endpoint, project string, opts ...ClientOption) (*HTTPClient, error) {
+	config := &ClientConfig{
 		Endpoint: endpoint,
 		Project:  project,
 		Timeout:  30 * time.Second,
@@ -58,7 +56,7 @@ func NewHTTPClient(endpoint, project string, opts ...feast.ClientOption) (*HTTPC
 }
 
 // GetOnlineFeatures 获取在线特征
-func (c *HTTPClient) GetOnlineFeatures(ctx context.Context, req *feast.GetOnlineFeaturesRequest) (*feast.GetOnlineFeaturesResponse, error) {
+func (c *HTTPClient) GetOnlineFeatures(ctx context.Context, req *GetOnlineFeaturesRequest) (*GetOnlineFeaturesResponse, error) {
 	// 1. 验证请求
 	if len(req.Features) == 0 {
 		return nil, fmt.Errorf("features are required")
@@ -129,22 +127,22 @@ func (c *HTTPClient) GetOnlineFeatures(ctx context.Context, req *feast.GetOnline
 	}
 
 	// 10. 转换响应格式
-	featureVectors := make([]feast.FeatureVector, len(result.Results))
+	featureVectors := make([]FeatureVector, len(result.Results))
 	for i, r := range result.Results {
-		featureVectors[i] = feast.FeatureVector{
+		featureVectors[i] = FeatureVector{
 			Values:    r.Values,
 			EntityRow: req.EntityRows[i],
 		}
 	}
 
-	return &feast.GetOnlineFeaturesResponse{
+	return &GetOnlineFeaturesResponse{
 		FeatureVectors: featureVectors,
 		Metadata:       result.Metadata,
 	}, nil
 }
 
 // GetHistoricalFeatures 获取历史特征
-func (c *HTTPClient) GetHistoricalFeatures(ctx context.Context, req *feast.GetHistoricalFeaturesRequest) (*feast.GetHistoricalFeaturesResponse, error) {
+func (c *HTTPClient) GetHistoricalFeatures(ctx context.Context, req *GetHistoricalFeaturesRequest) (*GetHistoricalFeaturesResponse, error) {
 	// 1. 验证请求
 	if len(req.Features) == 0 {
 		return nil, fmt.Errorf("features are required")
@@ -217,14 +215,14 @@ func (c *HTTPClient) GetHistoricalFeatures(ctx context.Context, req *feast.GetHi
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
 
-	return &feast.GetHistoricalFeaturesResponse{
+	return &GetHistoricalFeaturesResponse{
 		DataFrame: result.DataFrame,
 		Metadata:  result.Metadata,
 	}, nil
 }
 
 // Materialize 将特征物化到在线存储
-func (c *HTTPClient) Materialize(ctx context.Context, req *feast.MaterializeRequest) error {
+func (c *HTTPClient) Materialize(ctx context.Context, req *MaterializeRequest) error {
 	// 1. 构建请求体
 	body := map[string]interface{}{
 		"start_time": req.StartTime.Format(time.RFC3339),
@@ -281,7 +279,7 @@ func (c *HTTPClient) Materialize(ctx context.Context, req *feast.MaterializeRequ
 }
 
 // ListFeatures 列出所有可用的特征
-func (c *HTTPClient) ListFeatures(ctx context.Context) ([]feast.Feature, error) {
+func (c *HTTPClient) ListFeatures(ctx context.Context) ([]Feature, error) {
 	// 1. 构建 URL
 	url := c.Endpoint
 	if url[len(url)-1] != '/' {
@@ -318,7 +316,7 @@ func (c *HTTPClient) ListFeatures(ctx context.Context) ([]feast.Feature, error) 
 
 	// 6. 解析响应
 	var result struct {
-		Features []feast.Feature `json:"features"`
+		Features []Feature `json:"features"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
@@ -328,7 +326,7 @@ func (c *HTTPClient) ListFeatures(ctx context.Context) ([]feast.Feature, error) 
 }
 
 // GetFeatureService 获取特征服务信息
-func (c *HTTPClient) GetFeatureService(ctx context.Context) (*feast.FeatureServiceInfo, error) {
+func (c *HTTPClient) GetFeatureService(ctx context.Context) (*FeatureServiceInfo, error) {
 	// 1. 构建 URL
 	url := c.Endpoint
 	if url[len(url)-1] != '/' {
@@ -364,7 +362,7 @@ func (c *HTTPClient) GetFeatureService(ctx context.Context) (*feast.FeatureServi
 	}
 
 	// 6. 解析响应
-	var info feast.FeatureServiceInfo
+	var info FeatureServiceInfo
 	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
@@ -394,4 +392,4 @@ func (c *HTTPClient) addAuth(req *http.Request) {
 	}
 }
 
-var _ feast.Client = (*HTTPClient)(nil)
+var _ Client = (*HTTPClient)(nil)

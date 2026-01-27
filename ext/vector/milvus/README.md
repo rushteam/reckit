@@ -30,7 +30,7 @@ var annService vector.ANNService = milvusService
 ## 依赖
 
 - `github.com/rushteam/reckit` - 核心包（仅接口定义）
-- `github.com/milvus-io/milvus-sdk-go/v2/client` - Milvus 官方 SDK
+- `github.com/milvus-io/milvus/client/v2` - Milvus 官方 SDK
 
 ## 自行实现
 

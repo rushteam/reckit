@@ -8,3 +8,4 @@ require (
 )
 
 replace github.com/rushteam/reckit => ../../../
+replace github.com/rushteam/reckit/ext/feast/http => ../http

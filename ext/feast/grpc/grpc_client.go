@@ -7,7 +7,7 @@ import (
 	"time"
 
 	feastsdk "github.com/feast-dev/feast/sdk/go"
-	"github.com/rushteam/reckit/feast"
+	"github.com/rushteam/reckit/ext/feast/http"
 )
 
 // GrpcClient 是基于官方 Feast Go SDK 的 gRPC 客户端实现。
@@ -21,12 +21,12 @@ type GrpcClient struct {
 }
 
 // NewGrpcClient 创建一个基于官方 SDK 的 Feast gRPC 客户端。
-func NewGrpcClient(host string, port int, project string, opts ...feast.ClientOption) (*GrpcClient, error) {
+func NewGrpcClient(host string, port int, project string, opts ...http.ClientOption) (*GrpcClient, error) {
 	if port == 0 {
 		port = 6565
 	}
 
-	config := &feast.ClientConfig{
+	config := &http.ClientConfig{
 		Endpoint: fmt.Sprintf("%s:%d", host, port),
 		Project:  project,
 		Timeout:  30 * time.Second,
@@ -62,8 +62,8 @@ func NewGrpcClient(host string, port int, project string, opts ...feast.ClientOp
 	}, nil
 }
 
-// GetOnlineFeatures 实现 feast.Client 接口
-func (c *GrpcClient) GetOnlineFeatures(ctx context.Context, req *feast.GetOnlineFeaturesRequest) (*feast.GetOnlineFeaturesResponse, error) {
+// GetOnlineFeatures 实现 Client 接口
+func (c *GrpcClient) GetOnlineFeatures(ctx context.Context, req *http.GetOnlineFeaturesRequest) (*http.GetOnlineFeaturesResponse, error) {
 	if len(req.Features) == 0 {
 		return nil, fmt.Errorf("features are required")
 	}
@@ -123,7 +123,7 @@ func (c *GrpcClient) GetOnlineFeatures(ctx context.Context, req *feast.GetOnline
 		return nil, fmt.Errorf("response row count mismatch: expected %d, got %d", len(req.EntityRows), len(rows))
 	}
 
-	featureVectors := make([]feast.FeatureVector, len(rows))
+	featureVectors := make([]http.FeatureVector, len(rows))
 	featureNames := req.Features
 
 	for i := 0; i < len(rows); i++ {
@@ -139,32 +139,32 @@ func (c *GrpcClient) GetOnlineFeatures(ctx context.Context, req *feast.GetOnline
 			}
 		}
 
-		featureVectors[i] = feast.FeatureVector{
+		featureVectors[i] = http.FeatureVector{
 			Values:    values,
 			EntityRow: req.EntityRows[i],
 		}
 	}
 
-	return &feast.GetOnlineFeaturesResponse{
+	return &http.GetOnlineFeaturesResponse{
 		FeatureVectors: featureVectors,
 		Metadata:       make(map[string]interface{}),
 	}, nil
 }
 
-func (c *GrpcClient) GetHistoricalFeatures(ctx context.Context, req *feast.GetHistoricalFeaturesRequest) (*feast.GetHistoricalFeaturesResponse, error) {
+func (c *GrpcClient) GetHistoricalFeatures(ctx context.Context, req *http.GetHistoricalFeaturesRequest) (*http.GetHistoricalFeaturesResponse, error) {
 	return nil, fmt.Errorf("历史特征获取暂不支持，请使用 HTTP 客户端")
 }
 
-func (c *GrpcClient) Materialize(ctx context.Context, req *feast.MaterializeRequest) error {
+func (c *GrpcClient) Materialize(ctx context.Context, req *http.MaterializeRequest) error {
 	return fmt.Errorf("特征物化暂不支持，请使用 HTTP 客户端")
 }
 
-func (c *GrpcClient) ListFeatures(ctx context.Context) ([]feast.Feature, error) {
+func (c *GrpcClient) ListFeatures(ctx context.Context) ([]http.Feature, error) {
 	return nil, fmt.Errorf("列出特征暂不支持，请使用 HTTP 客户端")
 }
 
-func (c *GrpcClient) GetFeatureService(ctx context.Context) (*feast.FeatureServiceInfo, error) {
-	return &feast.FeatureServiceInfo{
+func (c *GrpcClient) GetFeatureService(ctx context.Context) (*http.FeatureServiceInfo, error) {
+	return &http.FeatureServiceInfo{
 		Endpoint:     c.Endpoint,
 		Project:      c.Project,
 		FeatureViews: []string{},
@@ -212,4 +212,4 @@ func convertFromSDKValue(val interface{}) interface{} {
 	}
 }
 
-var _ feast.Client = (*GrpcClient)(nil)
+var _ http.Client = (*GrpcClient)(nil)

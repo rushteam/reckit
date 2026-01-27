@@ -1,73 +1,30 @@
-package feast
+package http
 
 import (
 	"context"
 	"time"
 )
 
-// Client 是 Feast Feature Store 的客户端接口（遵循 DDD 原则，高内聚低耦合）。
+// Client 是 Feast Feature Store 的客户端接口。
 //
-// Feast 是一个开源的 Feature Store，提供：
-//   - 离线特征存储（Offline Store）：用于训练数据
-//   - 在线特征存储（Online Store）：用于实时预测
-//   - Feature Server：提供特征服务
-//   - 特征注册和管理
-//
-// 使用方式：
-//   - 方式1：使用扩展包实现（推荐）
-//     - HTTP 客户端：go get github.com/rushteam/reckit/ext/feast/http
-//     - gRPC 客户端：go get github.com/rushteam/reckit/ext/feast/grpc
-//   - 方式2：自行实现此接口（参考扩展包实现）
+// 注意：此接口位于扩展包中，是基础设施层接口。
+// 领域层应使用 feature.FeatureService 接口。
 //
 // 参考：https://github.com/feast-dev/feast
 type Client interface {
 	// GetOnlineFeatures 获取在线特征（用于实时预测）
-	//
-	// 参数：
-	//   - features: 特征名称列表，例如 ["driver_hourly_stats:conv_rate", "driver_hourly_stats:acc_rate"]
-	//   - entityRows: 实体行，例如 [{"driver_id": 1001}]
-	//
-	// 返回：
-	//   - FeatureVector: 特征向量，key 为特征名称，value 为特征值
-	//   - error: 错误信息
 	GetOnlineFeatures(ctx context.Context, req *GetOnlineFeaturesRequest) (*GetOnlineFeaturesResponse, error)
 
 	// GetHistoricalFeatures 获取历史特征（用于训练数据）
-	//
-	// 参数：
-	//   - entityDF: 实体数据框（包含实体 ID 和时间戳）
-	//   - features: 特征名称列表
-	//   - startTime: 开始时间
-	//   - endTime: 结束时间
-	//
-	// 返回：
-	//   - DataFrame: 历史特征数据框
-	//   - error: 错误信息
 	GetHistoricalFeatures(ctx context.Context, req *GetHistoricalFeaturesRequest) (*GetHistoricalFeaturesResponse, error)
 
 	// Materialize 将特征物化到在线存储
-	//
-	// 参数：
-	//   - startTime: 开始时间
-	//   - endTime: 结束时间
-	//   - featureViews: 特征视图列表（可选，为空则物化所有）
-	//
-	// 返回：
-	//   - error: 错误信息
 	Materialize(ctx context.Context, req *MaterializeRequest) error
 
 	// ListFeatures 列出所有可用的特征
-	//
-	// 返回：
-	//   - []Feature: 特征列表
-	//   - error: 错误信息
 	ListFeatures(ctx context.Context) ([]Feature, error)
 
 	// GetFeatureService 获取特征服务信息
-	//
-	// 返回：
-	//   - FeatureServiceInfo: 特征服务信息
-	//   - error: 错误信息
 	GetFeatureService(ctx context.Context) (*FeatureServiceInfo, error)
 
 	// Close 关闭客户端连接
@@ -107,8 +64,6 @@ type FeatureVector struct {
 // GetHistoricalFeaturesRequest 获取历史特征请求
 type GetHistoricalFeaturesRequest struct {
 	// EntityDF 实体数据框（包含实体 ID 和时间戳）
-	// 格式：[]map[string]interface{}，例如：
-	//   [{"driver_id": 1001, "event_timestamp": "2021-04-12T10:59:42Z"}]
 	EntityDF []map[string]interface{}
 
 	// Features 特征名称列表
@@ -127,7 +82,6 @@ type GetHistoricalFeaturesRequest struct {
 // GetHistoricalFeaturesResponse 获取历史特征响应
 type GetHistoricalFeaturesResponse struct {
 	// DataFrame 历史特征数据框
-	// 格式：[]map[string]interface{}，包含实体列、时间戳列和特征列
 	DataFrame []map[string]interface{}
 
 	// Metadata 元数据
@@ -182,11 +136,6 @@ type FeatureServiceInfo struct {
 	OfflineStore string
 }
 
-// ClientFactory 是 Feast 客户端工厂接口（用于依赖注入）。
-type ClientFactory interface {
-	NewClient(ctx context.Context, endpoint string, project string, opts ...ClientOption) (Client, error)
-}
-
 // ClientOption Feast 客户端配置选项
 type ClientOption func(*ClientConfig)
 
@@ -211,7 +160,6 @@ type ClientConfig struct {
 // AuthConfig 认证配置
 type AuthConfig struct {
 	// Type 认证类型：basic, bearer, api_key, static
-	// static 用于 gRPC 的静态 Token 认证
 	Type string
 
 	// Username 用户名（basic auth）
@@ -241,14 +189,7 @@ func WithAuth(auth *AuthConfig) ClientOption {
 	}
 }
 
-// WithGRPC 配置选项：使用 gRPC 客户端（扩展包）
-func WithGRPC() ClientOption {
-	return func(c *ClientConfig) {
-		c.UseGRPC = true
-	}
-}
-
-// WithHTTP 配置选项：使用 HTTP 客户端（扩展包）
+// WithHTTP 配置选项：使用 HTTP 客户端
 func WithHTTP() ClientOption {
 	return func(c *ClientConfig) {
 		c.UseGRPC = false

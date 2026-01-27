@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/rushteam/reckit/core"
-	"github.com/rushteam/reckit/feast"
 	"github.com/rushteam/reckit/feature"
 	"github.com/rushteam/reckit/model"
 	"github.com/rushteam/reckit/pipeline"
@@ -23,7 +22,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// 1. 创建 Feast 客户端（扩展包）
+	// 1. 创建 Feast 客户端（扩展包，基础设施层）
 	// 方式 A：使用 HTTP 客户端（扩展包）
 	// 安装：go get github.com/rushteam/reckit/ext/feast/http
 	// feastClient, err := feasthttp.NewClient(
@@ -64,13 +63,13 @@ func main() {
 		ItemEntityKey: "item_id",
 	}
 
-	// 3. 创建适配器（将 Feast Client 适配为 FeatureService）
-	// 适配器位于扩展包中
+	// 3. 创建适配器（将 Feast 基础设施层接口适配为 feature.FeatureService 领域层接口）
+	// 适配器位于扩展包中，这是推荐的使用方式
 	adapter := feasthttp.NewFeatureServiceAdapter(feastClient, mapping)
 
-	// 4. 创建特征注入节点
+	// 4. 创建特征注入节点（使用领域层接口 feature.FeatureService）
 	enrichNode := &feature.EnrichNode{
-		FeatureService:     adapter,
+		FeatureService:     adapter, // adapter 实现了 feature.FeatureService 接口
 		UserFeaturePrefix:  "user_",
 		ItemFeaturePrefix:  "item_",
 		CrossFeaturePrefix: "cross_",
@@ -124,51 +123,28 @@ func main() {
 		fmt.Printf("%d. ItemID=%s, Score=%.4f\n", i+1, item.ID, item.Score)
 	}
 
-	// 10. 演示直接使用 Feast 客户端
-	fmt.Println("\n=== 直接使用 Feast 客户端 ===")
+	// 10. 演示直接使用 feature.FeatureService（推荐方式）
+	fmt.Println("\n=== 使用 feature.FeatureService（领域层接口） ===")
 
-	// 获取在线特征
-	onlineReq := &feast.GetOnlineFeaturesRequest{
-		Features: []string{
-			"user_stats:age",
-			"user_stats:gender",
-		},
-		EntityRows: []map[string]interface{}{
-			{"user_id": 1001},
-			{"user_id": 1002},
-		},
-	}
-
-	onlineResp, err := feastClient.GetOnlineFeatures(ctx, onlineReq)
+	// 获取用户特征
+	userFeatures, err := adapter.GetUserFeatures(ctx, "1001")
 	if err != nil {
-		log.Printf("获取在线特征失败: %v", err)
+		log.Printf("获取用户特征失败: %v", err)
 	} else {
-		fmt.Println("在线特征:")
-		for i, fv := range onlineResp.FeatureVectors {
-			fmt.Printf("  Entity %d: %+v\n", i+1, fv.Values)
+		fmt.Println("用户特征:")
+		for k, v := range userFeatures {
+			fmt.Printf("  %s: %v\n", k, v)
 		}
 	}
 
-	// 列出所有特征
-	features, err := feastClient.ListFeatures(ctx)
+	// 批量获取物品特征
+	itemFeatures, err := adapter.BatchGetItemFeatures(ctx, []string{"1", "2", "3"})
 	if err != nil {
-		log.Printf("列出特征失败: %v", err)
+		log.Printf("批量获取物品特征失败: %v", err)
 	} else {
-		fmt.Printf("\n可用特征（共 %d 个）:\n", len(features))
-		for _, f := range features {
-			fmt.Printf("  - %s (%s)\n", f.Name, f.ValueType)
+		fmt.Println("\n物品特征:")
+		for itemID, features := range itemFeatures {
+			fmt.Printf("  Item %s: %+v\n", itemID, features)
 		}
-	}
-
-	// 获取特征服务信息
-	info, err := feastClient.GetFeatureService(ctx)
-	if err != nil {
-		log.Printf("获取特征服务信息失败: %v", err)
-	} else {
-		fmt.Printf("\n特征服务信息:\n")
-		fmt.Printf("  Endpoint: %s\n", info.Endpoint)
-		fmt.Printf("  Project: %s\n", info.Project)
-		fmt.Printf("  Online Store: %s\n", info.OnlineStore)
-		fmt.Printf("  Offline Store: %s\n", info.OfflineStore)
 	}
 }

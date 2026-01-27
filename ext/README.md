@@ -34,7 +34,7 @@ var s core.Store = store
 
 ### 2. Feast HTTP (`ext/feast/http`)
 
-Feast HTTP 客户端实现。
+Feast HTTP 客户端实现，通过适配器适配为 `feature.FeatureService`。
 
 **使用扩展包**：
 ```bash
@@ -43,19 +43,31 @@ go get github.com/rushteam/reckit/ext/feast/http
 
 ```go
 import (
-    "github.com/rushteam/reckit/feast"
+    "github.com/rushteam/reckit/feature"
     feasthttp "github.com/rushteam/reckit/ext/feast/http"
 )
 
-client, err := feasthttp.NewClient("http://localhost:6566", "my_project")
-var c feast.Client = client
+// 1. 创建 Feast 客户端（基础设施层）
+feastClient, _ := feasthttp.NewClient("http://localhost:6566", "my_project")
+
+// 2. 创建特征映射配置
+mapping := &feasthttp.FeatureMapping{
+    UserFeatures: []string{"user_stats:age", "user_stats:gender"},
+    ItemFeatures: []string{"item_stats:price", "item_stats:category"},
+}
+
+// 3. 创建适配器（适配为领域层接口）
+featureService := feasthttp.NewFeatureServiceAdapter(feastClient, mapping)
+
+// 4. 作为 feature.FeatureService 使用（领域层接口）
+var fs feature.FeatureService = featureService
 ```
 
-**或自行实现**：参考 `ext/feast/http/http_client.go`，实现 `feast.Client` 接口。
+**或自行实现**：参考 `ext/feast/http/adapter.go`，自行实现 `feature.FeatureService` 接口。
 
 ### 3. Feast gRPC (`ext/feast/grpc`)
 
-Feast gRPC 客户端实现（基于官方 SDK）。
+Feast gRPC 客户端实现（基于官方 SDK），通过适配器适配为 `feature.FeatureService`。
 
 **使用扩展包**：
 ```bash
@@ -64,15 +76,28 @@ go get github.com/rushteam/reckit/ext/feast/grpc
 
 ```go
 import (
-    "github.com/rushteam/reckit/feast"
+    "github.com/rushteam/reckit/feature"
+    feasthttp "github.com/rushteam/reckit/ext/feast/http"
     feastgrpc "github.com/rushteam/reckit/ext/feast/grpc"
 )
 
-client, err := feastgrpc.NewGrpcClient("localhost", 6565, "my_project")
-var c feast.Client = client
+// 1. 创建 Feast gRPC 客户端（基础设施层）
+feastClient, _ := feastgrpc.NewGrpcClient("localhost", 6565, "my_project")
+
+// 2. 创建特征映射配置（使用 HTTP 包的 FeatureMapping）
+mapping := &feasthttp.FeatureMapping{
+    UserFeatures: []string{"user_stats:age", "user_stats:gender"},
+    ItemFeatures: []string{"item_stats:price", "item_stats:category"},
+}
+
+// 3. 创建适配器（适配为领域层接口）
+featureService := feasthttp.NewFeatureServiceAdapter(feastClient, mapping)
+
+// 4. 作为 feature.FeatureService 使用（领域层接口）
+var fs feature.FeatureService = featureService
 ```
 
-**或自行实现**：参考 `ext/feast/grpc/grpc_client.go`，实现 `feast.Client` 接口。
+**或自行实现**：参考 `ext/feast/http/adapter.go`，自行实现 `feature.FeatureService` 接口。
 
 ### 4. Milvus Vector (`ext/vector/milvus`)
 
@@ -102,16 +127,17 @@ var annService vector.ANNService = milvusService
 以下具体实现已从核心包迁移到扩展包：
 
 - `store/redis.go` → `ext/store/redis/redis.go`
-- `feast/http_client.go` → `ext/feast/http/http_client.go`
-- `feast/factory.go` → `ext/feast/http/factory.go`
-- `feast/adapter.go` → `ext/feast/http/adapter.go`
-- `feast/grpc_client.go` → `ext/feast/grpc/grpc_client.go`
+- `feast/` → 整个包移至扩展包（`ext/feast/http` 和 `ext/feast/grpc`）
 - `vector/milvus.go` → `ext/vector/milvus/milvus.go`
 - `vector/milvus_client.go` → `ext/vector/milvus/milvus_client.go`
 
 核心包现在只包含：
-- 接口定义（`core.Store`、`feast.Client`、`vector.ANNService`）
+- 领域层接口（`core.Store`、`feature.FeatureService`、`vector.ANNService`）
 - 无外部依赖的实现（`store.MemoryStore`）
+
+**架构说明**：
+- `feature.FeatureService` 是领域层接口，推荐使用
+- Feast 是基础设施层实现，应通过适配器适配为 `feature.FeatureService` 使用
 
 ## 优势
 

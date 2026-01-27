@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/milvus-io/milvus-sdk-go/v2/client"
-	"github.com/milvus-io/milvus-sdk-go/v2/entity"
+	"github.com/milvus-io/milvus/client/v2"
+	"github.com/milvus-io/milvus/client/v2/entity"
 )
 
 // MilvusClient 是 Milvus SDK 客户端的接口抽象。
@@ -30,12 +30,13 @@ type DefaultMilvusClientFactory struct{}
 
 // NewClient 创建 Milvus SDK 客户端
 func (f *DefaultMilvusClientFactory) NewClient(ctx context.Context, address, username, password, database string, timeout time.Duration) (MilvusClient, error) {
-	milvusClient, err := client.NewClient(ctx, client.Config{
+	config := &client.ClientConfig{
 		Address:  address,
 		Username: username,
 		Password: password,
 		DBName:   database,
-	})
+	}
+	milvusClient, err := client.New(ctx, config)
 	if err != nil {
 		return nil, fmt.Errorf("create milvus client: %w", err)
 	}
@@ -44,7 +45,7 @@ func (f *DefaultMilvusClientFactory) NewClient(ctx context.Context, address, use
 
 // MilvusSDKClientAdapter 是 Milvus SDK 客户端的适配器。
 type MilvusSDKClientAdapter struct {
-	client client.Client
+	client *client.Client
 }
 
 func (a *MilvusSDKClientAdapter) Search(ctx context.Context, collection string, vectors [][]float32, topK int64, metricType string, searchParams map[string]interface{}, filter string) ([]string, []float64, []float64, error) {
