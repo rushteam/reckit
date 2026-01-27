@@ -14,12 +14,12 @@ import (
 type ANN struct {
 	Store      VectorStore // 向量存储（可以是 Redis、内存、向量数据库等）
 	Key        string      // 向量索引 key，例如 "embedding:items"
-	UserVector []float64   // 用户向量（如果提供，优先使用；否则从 rctx 获取）
-	TopK       int         // 返回 TopK 相似物品
-	Metric     string      // 距离度量：cosine / euclidean
+	UserEmbedding []float64   // 用户向量（如果提供，优先使用；否则从 rctx 获取）
+	TopK          int         // 返回 TopK 相似物品
+	Metric        string      // 距离度量：cosine / euclidean
 
-	// UserVectorExtractor 从 RecommendContext 提取用户向量（可选）
-	UserVectorExtractor func(rctx *core.RecommendContext) []float64
+	// UserEmbeddingExtractor 从 RecommendContext 提取用户向量（可选）
+	UserEmbeddingExtractor func(rctx *core.RecommendContext) []float64
 }
 
 // VectorStore 是向量存储接口（简化版）。
@@ -48,24 +48,24 @@ func (r *ANN) Recall(
 	}
 
 	// 1. 获取用户向量
-	userVector := r.UserVector
-	if len(userVector) == 0 {
-		if r.UserVectorExtractor != nil {
-			userVector = r.UserVectorExtractor(rctx)
+	userEmbedding := r.UserEmbedding
+	if len(userEmbedding) == 0 {
+		if r.UserEmbeddingExtractor != nil {
+			userEmbedding = r.UserEmbeddingExtractor(rctx)
 		} else if rctx != nil && rctx.User != nil {
 			// 假设用户画像中存了向量（实际工程中常用）
 			// 这里仅为示例
 		} else if rctx != nil && rctx.UserProfile != nil {
 			// 从 UserProfile 获取用户向量
-			if uv, ok := rctx.UserProfile["user_vector"]; ok {
+			if uv, ok := rctx.UserProfile["user_embedding"]; ok {
 				if vec, ok := uv.([]float64); ok {
-					userVector = vec
+					userEmbedding = vec
 				} else if vec, ok := uv.([]interface{}); ok {
 					// 转换为 []float64
-					userVector = make([]float64, 0, len(vec))
+					userEmbedding = make([]float64, 0, len(vec))
 					for _, v := range vec {
 						if fv, ok := v.(float64); ok {
-							userVector = append(userVector, fv)
+							userEmbedding = append(userEmbedding, fv)
 						}
 					}
 				}
@@ -74,15 +74,15 @@ func (r *ANN) Recall(
 	}
 
 	// 如果仍然没有，尝试通过 UserID 从 Store 获取
-	if len(userVector) == 0 && rctx != nil && rctx.UserID != "" {
+	if len(userEmbedding) == 0 && rctx != nil && rctx.UserID != "" {
 		var err error
-		userVector, err = r.Store.GetVector(ctx, rctx.UserID)
+		userEmbedding, err = r.Store.GetVector(ctx, rctx.UserID)
 		if err != nil {
 			// 忽略错误，可能用户没有向量
 		}
 	}
 
-	if len(userVector) == 0 {
+	if len(userEmbedding) == 0 {
 		return nil, nil
 	}
 
@@ -97,7 +97,7 @@ func (r *ANN) Recall(
 	var err error
 
 	// 优先尝试 Search 方法（高性能）
-	ids, scores, err = r.Store.Search(ctx, userVector, topK, r.Metric)
+	ids, scores, err = r.Store.Search(ctx, userEmbedding, topK, r.Metric)
 	if err != nil {
 		// 如果 Search 不支持或报错，尝试暴力搜索（ListVectors）
 		allVectors, err2 := r.Store.ListVectors(ctx)
@@ -115,9 +115,9 @@ func (r *ANN) Recall(
 		for itemID, itemVec := range allVectors {
 			var sim float64
 			if r.Metric == "euclidean" {
-				sim = 1.0 / (1.0 + euclideanDistanceVector(userVector, itemVec))
+				sim = 1.0 / (1.0 + euclideanDistanceVector(userEmbedding, itemVec))
 			} else {
-				sim = cosineSimilarityVectorForANN(userVector, itemVec)
+				sim = cosineSimilarityVectorForANN(userEmbedding, itemVec)
 			}
 			results = append(results, scoredItem{itemID: itemID, score: sim})
 		}
@@ -144,7 +144,9 @@ func (r *ANN) Recall(
 		it := core.NewItem(id)
 		it.Score = scores[i]
 		it.PutLabel("recall_source", utils.Label{Value: "ann", Source: "recall"})
-		it.PutLabel("ann_metric", utils.Label{Value: r.Metric, Source: "recall"})
+		if r.Metric != "" {
+			it.PutLabel("recall_metric", utils.Label{Value: r.Metric, Source: "recall"})
+		}
 		out = append(out, it)
 	}
 

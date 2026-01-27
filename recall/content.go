@@ -34,8 +34,8 @@ type ContentRecall struct {
 	// TopK 返回 TopK 个物品
 	TopK int
 
-	// SimilarityMetric 相似度度量方式：cosine / jaccard / tfidf
-	SimilarityMetric string
+	// Metric 距离度量方式：cosine / jaccard / tfidf
+	Metric string
 
 	// UserPreferencesKey 从 RecommendContext 获取用户偏好的 key
 	// 如果为空，则从 Store 获取
@@ -99,7 +99,7 @@ func (r *ContentRecall) Recall(
 	}
 	scores := make([]scoredItem, 0)
 
-	metric := r.SimilarityMetric
+	metric := r.Metric
 	if metric == "" {
 		metric = "cosine"
 	}
@@ -148,7 +148,7 @@ func (r *ContentRecall) Recall(
 		it := core.NewItem(s.itemID)
 		it.Score = s.score
 		it.PutLabel("recall_source", utils.Label{Value: "content", Source: "recall"})
-		it.PutLabel("content_metric", utils.Label{Value: metric, Source: "recall"})
+		it.PutLabel("recall_metric", utils.Label{Value: metric, Source: "recall"})
 		out = append(out, it)
 	}
 

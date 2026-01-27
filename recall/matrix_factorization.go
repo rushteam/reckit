@@ -49,12 +49,12 @@ type MFRecall struct {
 	// TopK 返回 TopK 个物品
 	TopK int
 
-	// UserVectorKey 从 RecommendContext 获取用户隐向量的 key
+	// UserEmbeddingKey 从 RecommendContext 获取用户隐向量的 key
 	// 如果为空，则从 Store 获取
-	UserVectorKey string
+	UserEmbeddingKey string
 
-	// UserVectorExtractor 从 RecommendContext 提取用户隐向量（可选）
-	UserVectorExtractor func(rctx *core.RecommendContext) []float64
+	// UserEmbeddingExtractor 从 RecommendContext 提取用户隐向量（可选）
+	UserEmbeddingExtractor func(rctx *core.RecommendContext) []float64
 }
 
 func (r *MFRecall) Name() string {
@@ -70,23 +70,23 @@ func (r *MFRecall) Recall(
 	}
 
 	// 获取用户隐向量
-	var userVector []float64
+	var userEmbedding []float64
 	var err error
 
-	// 优先从 UserVectorExtractor 获取
-	if r.UserVectorExtractor != nil {
-		userVector = r.UserVectorExtractor(rctx)
-	} else if r.UserVectorKey != "" && rctx.UserProfile != nil {
+	// 优先从 UserEmbeddingExtractor 获取
+	if r.UserEmbeddingExtractor != nil {
+		userEmbedding = r.UserEmbeddingExtractor(rctx)
+	} else if r.UserEmbeddingKey != "" && rctx.UserProfile != nil {
 		// 从 Context 获取
-		if uv, ok := rctx.UserProfile[r.UserVectorKey]; ok {
+		if uv, ok := rctx.UserProfile[r.UserEmbeddingKey]; ok {
 			if vec, ok := uv.([]float64); ok {
-				userVector = vec
+				userEmbedding = vec
 			} else if vec, ok := uv.([]interface{}); ok {
 				// 转换为 []float64
-				userVector = make([]float64, 0, len(vec))
+				userEmbedding = make([]float64, 0, len(vec))
 				for _, v := range vec {
 					if fv, ok := v.(float64); ok {
-						userVector = append(userVector, fv)
+						userEmbedding = append(userEmbedding, fv)
 					}
 				}
 			}
@@ -94,14 +94,14 @@ func (r *MFRecall) Recall(
 	}
 
 	// 如果从 Context 获取失败，从 Store 获取
-	if len(userVector) == 0 {
-		userVector, err = r.Store.GetUserVector(ctx, rctx.UserID)
+	if len(userEmbedding) == 0 {
+		userEmbedding, err = r.Store.GetUserVector(ctx, rctx.UserID)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	if len(userVector) == 0 {
+	if len(userEmbedding) == 0 {
 		return nil, nil
 	}
 
@@ -120,7 +120,7 @@ func (r *MFRecall) Recall(
 
 	for itemID, itemVector := range allItemVectors {
 		// 计算点积：用户向量 · 物品向量
-		score := dotProduct(userVector, itemVector)
+		score := dotProduct(userEmbedding, itemVector)
 		scores = append(scores, scoredItem{
 			itemID: itemID,
 			score:  score,

@@ -63,7 +63,7 @@ func (r *Word2VecRecall) Recall(
 	}
 
 	// 1. 获取用户向量
-	var userVector []float64
+	var userEmbedding []float64
 	var err error
 
 	switch r.Mode {
@@ -81,7 +81,7 @@ func (r *Word2VecRecall) Recall(
 				return nil, nil
 			}
 		}
-		userVector = r.Model.EncodeSequence(sequence)
+		userEmbedding = r.Model.EncodeSequence(sequence)
 
 	case "text":
 		fallthrough
@@ -102,12 +102,12 @@ func (r *Word2VecRecall) Recall(
 				for _, t := range texts {
 					combinedText += t + " "
 				}
-				userVector = r.Model.EncodeText(combinedText)
+				userEmbedding = r.Model.EncodeText(combinedText)
 			}
 		}
 	}
 
-	if len(userVector) == 0 {
+	if len(userEmbedding) == 0 {
 		return nil, nil
 	}
 
@@ -163,7 +163,7 @@ func (r *Word2VecRecall) Recall(
 		}
 
 		// 计算相似度
-		score := r.Model.Similarity(userVector, itemVector)
+		score := r.Model.Similarity(userEmbedding, itemVector)
 		if score > 0 {
 			scores = append(scores, scoredItem{
 				itemID: itemID,

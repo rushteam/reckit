@@ -22,7 +22,7 @@ import (
 //	python train/train_dssm.py
 //	uvicorn service.dssm_server:app --host 0.0.0.0 --port 8083
 type DSSMRecall struct {
-	QueryEmbeddingURL string
+	Endpoint string // HTTP 服务端点，例如 "http://localhost:8083/query_embedding"
 	Timeout           time.Duration
 	Client            *http.Client
 
@@ -53,11 +53,11 @@ func (r *DSSMRecall) Recall(ctx context.Context, rctx *core.RecommendContext) ([
 		return nil, nil
 	}
 
-	emb, err := r.fetchQueryEmbedding(ctx, qf)
+	queryEmbedding, err := r.fetchQueryEmbedding(ctx, qf)
 	if err != nil {
 		return nil, fmt.Errorf("dssm query embedding: %w", err)
 	}
-	if len(emb) == 0 {
+	if len(queryEmbedding) == 0 {
 		return nil, nil
 	}
 
@@ -65,16 +65,16 @@ func (r *DSSMRecall) Recall(ctx context.Context, rctx *core.RecommendContext) ([
 	if topK <= 0 {
 		topK = 100
 	}
-	coll := r.Collection
-	if coll == "" {
-		coll = "dssm_docs"
+	collection := r.Collection
+	if collection == "" {
+		collection = "dssm_docs"
 	}
 	metric := r.Metric
 	if metric == "" {
 		metric = "cosine"
 	}
 
-	req := &core.VectorSearchRequest{Collection: coll, Vector: emb, TopK: topK, Metric: metric}
+	req := &core.VectorSearchRequest{Collection: collection, Vector: queryEmbedding, TopK: topK, Metric: metric}
 	res, err := r.VectorService.Search(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("dssm vector search: %w", err)
@@ -92,8 +92,8 @@ func (r *DSSMRecall) getQueryFeatures(ctx context.Context, rctx *core.RecommendC
 }
 
 func (r *DSSMRecall) fetchQueryEmbedding(ctx context.Context, qf map[string]float64) ([]float64, error) {
-	if r.QueryEmbeddingURL == "" {
-		return nil, fmt.Errorf("query_embedding url is required")
+	if r.Endpoint == "" {
+		return nil, fmt.Errorf("endpoint is required")
 	}
 	client := r.Client
 	if client == nil {
@@ -109,7 +109,7 @@ func (r *DSSMRecall) fetchQueryEmbedding(ctx context.Context, qf map[string]floa
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, "POST", r.QueryEmbeddingURL, bytes.NewBuffer(raw))
+	req, err := http.NewRequestWithContext(ctx, "POST", r.Endpoint, bytes.NewBuffer(raw))
 	if err != nil {
 		return nil, err
 	}
@@ -146,6 +146,9 @@ func (r *DSSMRecall) convertToItems(result *core.VectorSearchResult) []*core.Ite
 		}
 		it.PutLabel("recall_source", utils.Label{Value: "dssm", Source: "recall"})
 		it.PutLabel("recall_type", utils.Label{Value: "vector_search", Source: "recall"})
+		if r.Metric != "" {
+			it.PutLabel("recall_metric", utils.Label{Value: r.Metric, Source: "recall"})
+		}
 		items = append(items, it)
 	}
 	return items

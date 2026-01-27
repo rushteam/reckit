@@ -22,10 +22,10 @@ import (
 //	python train/train_youtube_dnn.py
 //	uvicorn service.youtube_dnn_server:app --host 0.0.0.0 --port 8082
 type YouTubeDNNRecall struct {
-	FeatureService   feature.FeatureService
-	UserEmbeddingURL string // 例如 "http://localhost:8082/user_embedding"
-	Timeout          time.Duration
-	Client           *http.Client
+	FeatureService feature.FeatureService
+	Endpoint       string // HTTP 服务端点，例如 "http://localhost:8082/user_embedding"
+	Timeout        time.Duration
+	Client         *http.Client
 
 	VectorService core.VectorService
 	TopK          int
@@ -38,8 +38,8 @@ type YouTubeDNNRecall struct {
 
 // youtubeUserEmbReq 与 Python /user_embedding 请求一致
 type youtubeUserEmbReq struct {
-	UserFeatures     map[string]float64 `json:"user_features"`
-	HistoryItemIDs   []string           `json:"history_item_ids"`
+	UserFeatures   map[string]float64 `json:"user_features"`
+	HistoryItemIDs []string           `json:"history_item_ids"`
 }
 
 // youtubeUserEmbResp 与 Python 响应一致
@@ -56,11 +56,11 @@ func (r *YouTubeDNNRecall) Recall(ctx context.Context, rctx *core.RecommendConte
 	}
 	hist := r.getHistory(rctx)
 
-	emb, err := r.fetchUserEmbedding(ctx, userFeat, hist)
+	userEmbedding, err := r.fetchUserEmbedding(ctx, userFeat, hist)
 	if err != nil {
 		return nil, fmt.Errorf("youtube_dnn user embedding: %w", err)
 	}
-	if len(emb) == 0 {
+	if len(userEmbedding) == 0 {
 		return nil, nil
 	}
 
@@ -79,7 +79,7 @@ func (r *YouTubeDNNRecall) Recall(ctx context.Context, rctx *core.RecommendConte
 
 	req := &core.VectorSearchRequest{
 		Collection: collection,
-		Vector:     emb,
+		Vector:     userEmbedding,
 		TopK:       topK,
 		Metric:     metric,
 	}
@@ -117,8 +117,8 @@ func (r *YouTubeDNNRecall) getHistory(rctx *core.RecommendContext) []string {
 }
 
 func (r *YouTubeDNNRecall) fetchUserEmbedding(ctx context.Context, userFeat map[string]float64, hist []string) ([]float64, error) {
-	if r.UserEmbeddingURL == "" {
-		return nil, fmt.Errorf("user_embedding url is required")
+	if r.Endpoint == "" {
+		return nil, fmt.Errorf("endpoint is required")
 	}
 	client := r.Client
 	if client == nil {
@@ -137,7 +137,7 @@ func (r *YouTubeDNNRecall) fetchUserEmbedding(ctx context.Context, userFeat map[
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, "POST", r.UserEmbeddingURL, bytes.NewBuffer(raw))
+	req, err := http.NewRequestWithContext(ctx, "POST", r.Endpoint, bytes.NewBuffer(raw))
 	if err != nil {
 		return nil, err
 	}

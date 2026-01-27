@@ -330,7 +330,12 @@ func (r *TwoTowerRecall) convertToItems(result *core.VectorSearchResult) []*core
 		// 添加召回来源标签
 		item.PutLabel("recall_source", utils.Label{Value: "two_tower", Source: "recall"})
 		item.PutLabel("recall_type", utils.Label{Value: "vector_search", Source: "recall"})
-		item.PutLabel("recall_collection", utils.Label{Value: r.Collection, Source: "recall"})
+		if r.Collection != "" {
+			item.PutLabel("recall_collection", utils.Label{Value: r.Collection, Source: "recall"})
+		}
+		if r.Metric != "" {
+			item.PutLabel("recall_metric", utils.Label{Value: r.Metric, Source: "recall"})
+		}
 
 		items = append(items, item)
 	}

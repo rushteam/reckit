@@ -67,7 +67,7 @@ func (r *BERTRecall) Recall(
 	}
 
 	// 1. 获取用户向量
-	var userVector []float64
+	var userEmbedding []float64
 	var err error
 
 	switch r.Mode {
@@ -77,7 +77,7 @@ func (r *BERTRecall) Recall(
 		if err != nil || query == "" {
 			return nil, nil
 		}
-		userVector, err = r.Model.EncodeText(ctx, query)
+		userEmbedding, err = r.Model.EncodeText(ctx, query)
 		if err != nil {
 			return nil, err
 		}
@@ -105,12 +105,12 @@ func (r *BERTRecall) Recall(
 					return nil, err
 				}
 				// 对多个文本向量求平均（或使用其他聚合方式）
-				userVector = r.aggregateVectors(vectors)
+				userEmbedding = r.aggregateVectors(vectors)
 			}
 		}
 	}
 
-	if len(userVector) == 0 {
+	if len(userEmbedding) == 0 {
 		return nil, nil
 	}
 
@@ -198,7 +198,7 @@ func (r *BERTRecall) Recall(
 		// 计算相似度
 		for j, itemID := range itemIDs {
 			if j < len(vectors) {
-				score := r.Model.Similarity(userVector, vectors[j])
+				score := r.Model.Similarity(userEmbedding, vectors[j])
 				if score > 0 {
 					scores = append(scores, scoredItem{
 						itemID: itemID,
