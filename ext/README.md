@@ -1,11 +1,11 @@
 # 扩展包目录
 
-此目录包含所有具体实现的扩展包，每个扩展包都有独立的 `go.mod` 文件，独立管理依赖。
+此目录包含所有具体实现的扩展包。**每个扩展程序（ext 第一层下的一个“外部依赖”）只有一个 `go.mod`**，其子目录为子包，无需单独 go.mod。
 
 ## 设计原则
 
 - **核心包无外部依赖**：核心包 `github.com/rushteam/reckit` 只保留工具库（CEL、YAML、sync），不依赖具体实现
-- **扩展包独立管理**：每个扩展包有独立的 `go.mod`，可以管理自己的依赖版本
+- **扩展程序一个 go.mod**：ext 第一层即每个扩展程序（如 `ext/feast`、`ext/store/redis`、`ext/vector/milvus`）单独一个 go.mod，子目录为子包，不单独 go.mod
 - **用户按需引入**：用户只引入需要的扩展包，避免不必要的依赖
 - **可自行实现**：用户可以使用扩展包，也可以参考其实现自行实现对应接口
 
@@ -32,72 +32,47 @@ var s core.Store = store
 
 **或自行实现**：参考 `ext/store/redis/redis.go`，实现 `core.Store` 或 `core.KeyValueStore` 接口。
 
-### 2. Feast HTTP (`ext/feast/http`)
+### 2. Feast (`ext/feast`)
 
-Feast HTTP 客户端实现，通过适配器适配为 `feature.FeatureService`。
+Feast 特征存储客户端，**一个 go.mod**，子包 `common`、`http`、`grpc` 无单独 go.mod。
 
-**使用扩展包**：
+**使用扩展包**（安装整个 Feast 扩展）：
 ```bash
-go get github.com/rushteam/reckit/ext/feast/http
+go get github.com/rushteam/reckit/ext/feast
 ```
 
+**HTTP 子包**：
 ```go
 import (
-    "github.com/rushteam/reckit/feature"
+    "github.com/rushteam/reckit/core"
     feasthttp "github.com/rushteam/reckit/ext/feast/http"
+    feastcommon "github.com/rushteam/reckit/ext/feast/common"
 )
 
-// 1. 创建 Feast 客户端（基础设施层）
 feastClient, _ := feasthttp.NewClient("http://localhost:6566", "my_project")
-
-// 2. 创建特征映射配置
-mapping := &feasthttp.FeatureMapping{
+mapping := &feastcommon.FeatureMapping{
     UserFeatures: []string{"user_stats:age", "user_stats:gender"},
     ItemFeatures: []string{"item_stats:price", "item_stats:category"},
 }
-
-// 3. 创建适配器（适配为领域层接口）
 featureService := feasthttp.NewFeatureServiceAdapter(feastClient, mapping)
-
-// 4. 作为 feature.FeatureService 使用（领域层接口）
-var fs feature.FeatureService = featureService
+var fs core.FeatureService = featureService
 ```
 
-**或自行实现**：参考 `ext/feast/http/adapter.go`，自行实现 `feature.FeatureService` 接口。
-
-### 3. Feast gRPC (`ext/feast/grpc`)
-
-Feast gRPC 客户端实现（基于官方 SDK），通过适配器适配为 `feature.FeatureService`。
-
-**使用扩展包**：
-```bash
-go get github.com/rushteam/reckit/ext/feast/grpc
-```
-
+**gRPC 子包**（推荐生产环境）：
 ```go
 import (
-    "github.com/rushteam/reckit/feature"
-    feasthttp "github.com/rushteam/reckit/ext/feast/http"
+    "github.com/rushteam/reckit/core"
     feastgrpc "github.com/rushteam/reckit/ext/feast/grpc"
+    feastcommon "github.com/rushteam/reckit/ext/feast/common"
 )
 
-// 1. 创建 Feast gRPC 客户端（基础设施层）
-feastClient, _ := feastgrpc.NewGrpcClient("localhost", 6565, "my_project")
-
-// 2. 创建特征映射配置（使用 HTTP 包的 FeatureMapping）
-mapping := &feasthttp.FeatureMapping{
-    UserFeatures: []string{"user_stats:age", "user_stats:gender"},
-    ItemFeatures: []string{"item_stats:price", "item_stats:category"},
-}
-
-// 3. 创建适配器（适配为领域层接口）
-featureService := feasthttp.NewFeatureServiceAdapter(feastClient, mapping)
-
-// 4. 作为 feature.FeatureService 使用（领域层接口）
-var fs feature.FeatureService = featureService
+feastClient, _ := feastgrpc.NewClient("localhost", 6565, "my_project")
+mapping := &feastcommon.FeatureMapping{...}
+featureService := feastgrpc.NewFeatureServiceAdapter(feastClient, mapping)
+var fs core.FeatureService = featureService
 ```
 
-**或自行实现**：参考 `ext/feast/http/adapter.go`，自行实现 `feature.FeatureService` 接口。
+**或自行实现**：参考 `ext/feast/http/feast.go` 或 `ext/feast/grpc/feast.go`，自行实现 `core.FeatureService` 接口。
 
 ### 4. Milvus Vector (`ext/vector/milvus`)
 
@@ -135,13 +110,14 @@ var dbService core.VectorDatabaseService = milvusService
 - 无外部依赖的实现（`store.MemoryStore`）
 
 **架构说明**：
-- `feature.FeatureService` 是领域层接口，推荐使用
-- Feast 是基础设施层实现，应通过适配器适配为 `feature.FeatureService` 使用
+- `core.FeatureService` 是领域层接口，推荐使用
+- Feast 是基础设施层实现，应通过适配器适配为 `core.FeatureService` 使用
+- `ext/feast/common` 包含共享的类型和接口（`Client`、`FeatureMapping` 等）
 
 ## 优势
 
 1. **核心包轻量**：无外部依赖，只保留工具库
-2. **版本独立**：每个扩展包可以管理自己的依赖版本
+2. **扩展一个 go.mod**：每个扩展程序（一种外部依赖）一个 go.mod，子目录为子包，结构清晰
 3. **按需引入**：用户只引入需要的扩展包
 4. **易于扩展**：用户可以创建自己的扩展包实现接口
 5. **灵活选择**：可以使用扩展包，也可以参考其实现自行实现接口

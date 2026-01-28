@@ -1,4 +1,4 @@
-package http
+package common
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 // Client 是 Feast Feature Store 的客户端接口。
 //
 // 注意：此接口位于扩展包中，是基础设施层接口。
-// 领域层应使用 feature.FeatureService 接口。
+// 领域层应使用 core.FeatureService 接口。
 //
 // 参考：https://github.com/feast-dev/feast
 type Client interface {
@@ -134,6 +134,24 @@ type FeatureServiceInfo struct {
 
 	// OfflineStore 离线存储类型
 	OfflineStore string
+}
+
+// FeatureMapping 特征映射配置
+type FeatureMapping struct {
+	// UserFeatures 用户特征列表，例如 ["user_stats:age", "user_stats:gender"]
+	UserFeatures []string
+
+	// ItemFeatures 物品特征列表，例如 ["item_stats:price", "item_stats:category"]
+	ItemFeatures []string
+
+	// RealtimeFeatures 实时特征列表，例如 ["interaction:click_count", "interaction:view_count"]
+	RealtimeFeatures []string
+
+	// UserEntityKey 用户实体键名，默认 "user_id"
+	UserEntityKey string
+
+	// ItemEntityKey 物品实体键名，默认 "item_id"
+	ItemEntityKey string
 }
 
 // ClientOption Feast 客户端配置选项
