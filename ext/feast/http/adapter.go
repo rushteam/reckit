@@ -326,7 +326,7 @@ func (a *FeatureServiceAdapter) BatchGetRealtimeFeatures(ctx context.Context, pa
 // Close 关闭特征服务（实现 core.FeatureService 接口）
 func (a *FeatureServiceAdapter) Close(ctx context.Context) error {
 	// http.Client 接口的 Close() 不接受 context，直接调用即可
-	return a.client.Close(ctx)
+	return a.client.Close()
 }
 
 // convertToFloat64 将 interface{} 转换为 float64
