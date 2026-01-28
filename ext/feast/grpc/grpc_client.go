@@ -175,7 +175,7 @@ func (c *GrpcClient) GetFeatureService(ctx context.Context) (*http.FeatureServic
 }
 
 // Close 关闭客户端连接（实现 http.Client 接口）
-func (c *GrpcClient) Close(ctx context.Context) error {
+func (c *GrpcClient) Close() error {
 	if c.client != nil {
 		// Feast SDK 的 gRPC 客户端没有显式的 Close 方法，设置为 nil 即可
 		c.client = nil
