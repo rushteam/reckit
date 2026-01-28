@@ -5,13 +5,13 @@ import (
 	"fmt"
 
 	"github.com/rushteam/reckit/core"
-	"github.com/rushteam/reckit/feature"
 )
 
 // FeatureServiceAdapter 将 Feast Client 适配为 core.FeatureService 接口。
 //
 // 注意：此实现位于扩展包中，需要单独引入：
-//   go get github.com/rushteam/reckit/ext/feast/http
+//
+//	go get github.com/rushteam/reckit/ext/feast/http
 //
 // 这是推荐的使用方式：通过适配器将 Feast（基础设施层）适配为 core.FeatureService（领域层）。
 type FeatureServiceAdapter struct {
@@ -326,7 +326,7 @@ func (a *FeatureServiceAdapter) BatchGetRealtimeFeatures(ctx context.Context, pa
 // Close 关闭特征服务（实现 core.FeatureService 接口）
 func (a *FeatureServiceAdapter) Close(ctx context.Context) error {
 	// http.Client 接口的 Close() 不接受 context，直接调用即可
-	return a.client.Close()
+	return a.client.Close(ctx)
 }
 
 // convertToFloat64 将 interface{} 转换为 float64

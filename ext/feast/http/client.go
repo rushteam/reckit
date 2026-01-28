@@ -28,7 +28,7 @@ type Client interface {
 	GetFeatureService(ctx context.Context) (*FeatureServiceInfo, error)
 
 	// Close 关闭客户端连接
-	Close() error
+	Close(ctx context.Context) error
 }
 
 // GetOnlineFeaturesRequest 获取在线特征请求

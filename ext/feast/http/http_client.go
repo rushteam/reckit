@@ -13,7 +13,8 @@ import (
 // HTTPClient 是 Feast Feature Store 的 HTTP 客户端实现。
 //
 // 注意：此实现位于扩展包中，需要单独引入：
-//   go get github.com/rushteam/reckit/ext/feast/http
+//
+//	go get github.com/rushteam/reckit/ext/feast/http
 type HTTPClient struct {
 	// Endpoint 服务端点，例如 "http://localhost:6566"
 	Endpoint string
@@ -67,8 +68,8 @@ func (c *HTTPClient) GetOnlineFeatures(ctx context.Context, req *GetOnlineFeatur
 
 	// 2. 构建请求体（Feast HTTP API 格式）
 	body := map[string]interface{}{
-		"features":          req.Features,
-		"entities":          req.EntityRows,
+		"features":           req.Features,
+		"entities":           req.EntityRows,
 		"full_feature_names": false,
 	}
 	if req.Project != "" {
@@ -371,7 +372,7 @@ func (c *HTTPClient) GetFeatureService(ctx context.Context) (*FeatureServiceInfo
 }
 
 // Close 关闭连接（实现 Client 接口）
-func (c *HTTPClient) Close() error {
+func (c *HTTPClient) Close(ctx context.Context) error {
 	// HTTP 客户端不需要显式关闭
 	return nil
 }
