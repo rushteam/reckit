@@ -26,7 +26,42 @@ type UserHistory struct {
 	// 0 表示考虑所有历史
 	TimeWindow int64
 
-	// EnableSimilarExtend 是否启用相似物品扩展
+	// EnableSimilarExtend 是否启用相似物品扩展（I2I 召回）。
+	//
+	// 开启后，会通过 SimilarItemStore.GetSimilarItems() 将用户历史物品扩展为相似物品，
+	// 实现 I2I (Item-to-Item) 召回，推荐用户未交互过但可能感兴趣的物品。
+	//
+	// 与 I2IRecall 的对比：
+	//   - UserHistory + EnableSimilarExtend：
+	//     * 本质：I2I 接口模式，依赖外部实现 SimilarItemStore
+	//     * 输入：用户历史 item 列表
+	//     * 输出：相似 item 列表
+	//     * 实现方式：外部提供 I2I 数据源（预计算索引、向量检索等）
+	//     * 性能：依赖外部实现，可使用预计算索引（性能更好）
+	//     * 灵活性：高，可切换不同 I2I 数据源
+	//     * 适用场景：生产环境推荐，使用预计算的 I2I 索引
+	//
+	//   - I2IRecall (ItemBasedCF)：
+	//     * 本质：I2I 完整实现，内部通过协同过滤计算相似度
+	//     * 输入：用户历史 item
+	//     * 输出：相似 item
+	//     * 实现方式：内部实时计算物品相似度（Cosine/Pearson）
+	//     * 性能：实时计算，可能较慢
+	//     * 灵活性：低，固定协同过滤算法
+	//     * 适用场景：小规模数据或需要实时计算的场景
+	//
+	// 使用示例：
+	//   // 方式 1：使用预计算的 I2I 索引（推荐）
+	//   userHistoryRecall := &recall.UserHistory{
+	//       Store:               &PrecomputedI2IStore{store: redisStore},
+	//       EnableSimilarExtend: true,  // 开启 I2I
+	//   }
+	//
+	//   // 方式 2：直接使用 I2IRecall（实时计算）
+	//   i2iRecall := &recall.I2IRecall{
+	//       Store:                cfStore,
+	//       SimilarityCalculator: &recall.CosineSimilarity{},
+	//   }
 	EnableSimilarExtend bool
 }
 
