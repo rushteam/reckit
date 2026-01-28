@@ -12,10 +12,10 @@ import (
 	"github.com/rushteam/reckit/pipeline"
 	"github.com/rushteam/reckit/rank"
 	"github.com/rushteam/reckit/recall"
-	
+
 	// Feast 扩展包
-	feasthttp "github.com/rushteam/reckit/ext/feast/http"
 	feastgrpc "github.com/rushteam/reckit/ext/feast/grpc"
+	feasthttp "github.com/rushteam/reckit/ext/feast/http"
 )
 
 func main() {
@@ -29,7 +29,7 @@ func main() {
 	// 	"http://localhost:6566", // Feast Feature Server 端点
 	// 	"my_project",             // 项目名称
 	// )
-	
+
 	// 方式 B：使用 gRPC 客户端（扩展包，官方 SDK，性能更好，推荐生产环境）
 	// 安装：go get github.com/rushteam/reckit/ext/feast/grpc
 	feastClient, err := feastgrpc.NewGrpcClient(
@@ -37,7 +37,7 @@ func main() {
 		6565,         // gRPC 端口（默认 6565）
 		"my_project", // 项目名称
 	)
-	
+
 	if err != nil {
 		log.Fatalf("创建 Feast 客户端失败: %v", err)
 	}
@@ -65,7 +65,7 @@ func main() {
 	// 3. 创建适配器（将 Feast 基础设施层接口适配为 feature.FeatureService 领域层接口）
 	// 适配器位于扩展包中，这是推荐的使用方式
 	adapter := feasthttp.NewFeatureServiceAdapter(feastClient, mapping)
-	
+
 	// 关闭适配器（适配器会关闭底层客户端）
 	defer func() {
 		if err := adapter.Close(context.Background()); err != nil {
