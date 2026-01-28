@@ -372,7 +372,7 @@ func (c *HTTPClient) GetFeatureService(ctx context.Context) (*FeatureServiceInfo
 }
 
 // Close 关闭连接（实现 Client 接口）
-func (c *HTTPClient) Close() error {
+func (c *HTTPClient) Close(ctx context.Context) error {
 	// HTTP 客户端不需要显式关闭
 	return nil
 }
