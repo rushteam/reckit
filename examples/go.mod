@@ -4,8 +4,7 @@ go 1.25.5
 
 require (
 	github.com/rushteam/reckit v0.0.0
-	github.com/rushteam/reckit/ext/feast/grpc v0.0.0-20260127131547-3524f739aabc
-	github.com/rushteam/reckit/ext/feast/http v0.0.0-20260127131547-3524f739aabc
+	github.com/rushteam/reckit/ext/feast v0.0.0
 	github.com/rushteam/reckit/ext/store/redis v0.0.0-20260127131547-3524f739aabc
 	github.com/rushteam/reckit/ext/vector/milvus v0.0.0-20260127131547-3524f739aabc
 	github.com/twmb/franz-go v1.16.1
@@ -151,3 +150,4 @@ require (
 )
 
 replace github.com/rushteam/reckit => ../
+replace github.com/rushteam/reckit/ext/feast => ../ext/feast

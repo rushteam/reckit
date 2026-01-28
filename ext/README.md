@@ -34,45 +34,32 @@ var s core.Store = store
 
 ### 2. Feast (`ext/feast`)
 
-Feast 特征存储客户端，**一个 go.mod**，子包 `common`、`http`、`grpc` 无单独 go.mod。
+Feast 特征存储客户端，所有代码在同一目录下，一个 go.mod。
 
-**使用扩展包**（安装整个 Feast 扩展）：
+**使用扩展包**：
 ```bash
 go get github.com/rushteam/reckit/ext/feast
 ```
 
-**HTTP 子包**：
 ```go
 import (
     "github.com/rushteam/reckit/core"
-    feasthttp "github.com/rushteam/reckit/ext/feast/http"
-    feastcommon "github.com/rushteam/reckit/ext/feast/common"
+    "github.com/rushteam/reckit/ext/feast"
 )
 
-feastClient, _ := feasthttp.NewClient("http://localhost:6566", "my_project")
-mapping := &feastcommon.FeatureMapping{
+// HTTP 或 gRPC 二选一
+client, _ := feast.NewHTTPClient("http://localhost:6566", "my_project")
+// client, _ := feast.NewGrpcClient("localhost", 6565, "my_project")
+
+mapping := &feast.FeatureMapping{
     UserFeatures: []string{"user_stats:age", "user_stats:gender"},
     ItemFeatures: []string{"item_stats:price", "item_stats:category"},
 }
-featureService := feasthttp.NewFeatureServiceAdapter(feastClient, mapping)
+featureService := feast.NewFeatureServiceAdapter(client, mapping)
 var fs core.FeatureService = featureService
 ```
 
-**gRPC 子包**（推荐生产环境）：
-```go
-import (
-    "github.com/rushteam/reckit/core"
-    feastgrpc "github.com/rushteam/reckit/ext/feast/grpc"
-    feastcommon "github.com/rushteam/reckit/ext/feast/common"
-)
-
-feastClient, _ := feastgrpc.NewClient("localhost", 6565, "my_project")
-mapping := &feastcommon.FeatureMapping{...}
-featureService := feastgrpc.NewFeatureServiceAdapter(feastClient, mapping)
-var fs core.FeatureService = featureService
-```
-
-**或自行实现**：参考 `ext/feast/http/feast.go` 或 `ext/feast/grpc/feast.go`，自行实现 `core.FeatureService` 接口。
+**或自行实现**：参考 `ext/feast/adapter.go`，自行实现 `core.FeatureService` 接口。
 
 ### 4. Milvus Vector (`ext/vector/milvus`)
 
@@ -101,7 +88,7 @@ var dbService core.VectorDatabaseService = milvusService
 以下具体实现已从核心包迁移到扩展包：
 
 - `store/redis.go` → `ext/store/redis/redis.go`
-- `feast/` → 整个包移至扩展包（`ext/feast/http` 和 `ext/feast/grpc`）
+- `feast/` → 扩展包 `ext/feast`（单目录，HTTP + gRPC）
 - `vector/milvus.go` → `ext/vector/milvus/milvus.go`
 - `vector/milvus_client.go` → `ext/vector/milvus/milvus_client.go`
 
@@ -112,7 +99,6 @@ var dbService core.VectorDatabaseService = milvusService
 **架构说明**：
 - `core.FeatureService` 是领域层接口，推荐使用
 - Feast 是基础设施层实现，应通过适配器适配为 `core.FeatureService` 使用
-- `ext/feast/common` 包含共享的类型和接口（`Client`、`FeatureMapping` 等）
 
 ## 优势
 
