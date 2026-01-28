@@ -41,7 +41,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("创建 Feast 客户端失败: %v", err)
 	}
-	defer feastClient.Close(ctx)
 
 	// 2. 创建特征映射配置
 	mapping := &feasthttp.FeatureMapping{
@@ -66,6 +65,13 @@ func main() {
 	// 3. 创建适配器（将 Feast 基础设施层接口适配为 feature.FeatureService 领域层接口）
 	// 适配器位于扩展包中，这是推荐的使用方式
 	adapter := feasthttp.NewFeatureServiceAdapter(feastClient, mapping)
+	
+	// 关闭适配器（适配器会关闭底层客户端）
+	defer func() {
+		if err := adapter.Close(context.Background()); err != nil {
+			log.Printf("关闭特征服务失败: %v", err)
+		}
+	}()
 
 	// 4. 创建特征注入节点（使用领域层接口 feature.FeatureService）
 	enrichNode := &feature.EnrichNode{

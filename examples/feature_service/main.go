@@ -14,6 +14,9 @@ import (
 	"github.com/rushteam/reckit/rank"
 	"github.com/rushteam/reckit/recall"
 	"github.com/rushteam/reckit/store"
+	
+	// Redis Store 扩展包
+	redisstore "github.com/rushteam/reckit/ext/store/redis"
 )
 
 func main() {
@@ -22,7 +25,7 @@ func main() {
 
 	// 1. 初始化 Store（使用 core.Store 接口）
 	var s core.Store
-	redisStore, err := store.NewRedisStore("localhost:6379", 0)
+	redisStore, err := redisstore.NewRedisStore("localhost:6379", 0)
 	if err != nil {
 		log.Printf("Redis 连接失败，使用内存 Store: %v", err)
 		s = store.NewMemoryStore()

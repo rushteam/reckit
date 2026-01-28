@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"github.com/rushteam/reckit/core"
+	milvus "github.com/rushteam/reckit/ext/vector/milvus"
 	"github.com/rushteam/reckit/feature"
 	"github.com/rushteam/reckit/pipeline"
 	"github.com/rushteam/reckit/recall"
 	"github.com/rushteam/reckit/service"
 	"github.com/rushteam/reckit/store"
-	milvus "github.com/rushteam/reckit/ext/vector/milvus"
 )
 
 func main() {
@@ -67,7 +67,7 @@ func main() {
 
 	// ========== 4. 创建向量检索服务 ==========
 	// 方式1：使用 Milvus（推荐）
-	milvusService := milvus.NewMilvusService(
+	milvusService, _ := milvus.NewMilvusService(
 		"localhost:19530", // Milvus 地址
 		milvus.WithMilvusDatabase("default"),
 		milvus.WithMilvusTimeout(10),

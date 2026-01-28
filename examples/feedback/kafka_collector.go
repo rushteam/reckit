@@ -66,27 +66,43 @@ func NewKafkaCollector(config KafkaCollectorConfig) (*KafkaCollector, error) {
 	opts := []kgo.Opt{
 		kgo.SeedBrokers(config.Brokers...),
 		kgo.ClientID(config.ClientID),
-		kgo.RequiredAcks(config.RequiredAcks),
-		kgo.RetryMaxAttempts(config.MaxRetries),
 	}
 
-	// 启用幂等性（如果配置）
-	if config.Idempotent {
-		opts = append(opts, kgo.EnableIdempotent())
-	} else {
+	// 设置 RequiredAcks（转换为 kgo.Acks 类型）
+	var acks kgo.Acks
+	switch config.RequiredAcks {
+	case 0:
+		acks = kgo.NoAck()
+	case 1:
+		acks = kgo.LeaderAck()
+	case -1:
+		acks = kgo.AllISRAcks()
+	default:
+		acks = kgo.LeaderAck() // 默认使用 LeaderAck
+	}
+	opts = append(opts, kgo.RequiredAcks(acks))
+
+	// 设置重试次数（使用 RecordRetries）
+	if config.MaxRetries > 0 {
+		opts = append(opts, kgo.RecordRetries(config.MaxRetries))
+	}
+
+	// 启用/禁用幂等性（如果配置）
+	if !config.Idempotent {
 		opts = append(opts, kgo.DisableIdempotentWrite())
 	}
+	// 默认启用幂等性，无需额外配置
 
 	// 设置压缩
 	switch config.Compression {
 	case "gzip":
-		opts = append(opts, kgo.ProducerBatchCompression(kgo.CompressionGzip))
+		opts = append(opts, kgo.ProducerBatchCompression(kgo.GzipCompression()))
 	case "snappy":
-		opts = append(opts, kgo.ProducerBatchCompression(kgo.CompressionSnappy))
+		opts = append(opts, kgo.ProducerBatchCompression(kgo.SnappyCompression()))
 	case "lz4":
-		opts = append(opts, kgo.ProducerBatchCompression(kgo.CompressionLz4))
+		opts = append(opts, kgo.ProducerBatchCompression(kgo.Lz4Compression()))
 	case "zstd":
-		opts = append(opts, kgo.ProducerBatchCompression(kgo.CompressionZstd))
+		opts = append(opts, kgo.ProducerBatchCompression(kgo.ZstdCompression()))
 	}
 
 	// 创建 franzgo 客户端
@@ -297,7 +313,7 @@ func (c *KafkaCollector) Close() error {
 		c.wg.Wait()
 
 		// 关闭 Kafka 客户端
-		err = c.client.Close()
+		c.client.Close()
 	})
 	return err
 }

@@ -15,6 +15,9 @@ import (
 	"github.com/rushteam/reckit/rank"
 	"github.com/rushteam/reckit/recall"
 	"github.com/rushteam/reckit/store"
+	
+	// Redis Store 扩展包
+	redisstore "github.com/rushteam/reckit/ext/store/redis"
 )
 
 // FeatureVersionMetadata 特征版本元数据
@@ -70,17 +73,29 @@ type VersionConfig struct {
 // VersionedFeatureService 版本化特征服务
 // 支持多版本特征管理、灰度发布、版本降级
 type VersionedFeatureService struct {
-	services map[string]feature.FeatureService
+	services map[string]core.FeatureService
 	config   *VersionConfig
 	registry *FeatureVersionRegistry
 }
 
 // NewVersionedFeatureService 创建版本化特征服务
 func NewVersionedFeatureService(
-	services map[string]feature.FeatureService,
+	services map[string]core.FeatureService,
 	config *VersionConfig,
 	registry *FeatureVersionRegistry,
 ) *VersionedFeatureService {
+	if services == nil {
+		services = make(map[string]core.FeatureService)
+	}
+	if config == nil {
+		config = &VersionConfig{
+			DefaultVersion: "",
+			TrafficSplit:   make(map[string]float64),
+		}
+	}
+	if registry == nil {
+		registry = NewFeatureVersionRegistry()
+	}
 	return &VersionedFeatureService{
 		services: services,
 		config:   config,
@@ -308,7 +323,7 @@ func createVersionedFeatureService(store core.Store) *VersionedFeatureService {
 
 	// 创建版本化特征服务
 	versionedService := NewVersionedFeatureService(
-		map[string]feature.FeatureService{
+		map[string]core.FeatureService{
 			"v1": v1Service,
 			"v2": v2Service,
 		},
@@ -380,7 +395,7 @@ func main() {
 
 	// 1. 初始化 Store
 	var s core.Store
-	redisStore, err := store.NewRedisStore("localhost:6379", 0)
+	redisStore, err := redisstore.NewRedisStore("localhost:6379", 0)
 	if err != nil {
 		log.Printf("Redis 连接失败，使用内存 Store: %v", err)
 		s = store.NewMemoryStore()

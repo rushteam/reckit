@@ -127,6 +127,47 @@ func (m *MockContentStore) GetAllItems(ctx context.Context) ([]string, error) {
 	return items, nil
 }
 
+// Name 实现 core.RecallDataStore 接口
+func (m *MockContentStore) Name() string {
+	return "mock_content_store"
+}
+
+// GetUserItems 实现 core.RecallDataStore 接口（协同过滤）
+func (m *MockContentStore) GetUserItems(ctx context.Context, userID string) (map[string]float64, error) {
+	// MockContentStore 不支持用户物品交互，返回空
+	return make(map[string]float64), nil
+}
+
+// GetItemUsers 实现 core.RecallDataStore 接口（协同过滤）
+func (m *MockContentStore) GetItemUsers(ctx context.Context, itemID string) (map[string]float64, error) {
+	// MockContentStore 不支持物品用户交互，返回空
+	return make(map[string]float64), nil
+}
+
+// GetAllUsers 实现 core.RecallDataStore 接口
+func (m *MockContentStore) GetAllUsers(ctx context.Context) ([]string, error) {
+	// MockContentStore 不支持所有用户列表，返回空
+	return []string{}, nil
+}
+
+// GetUserVector 实现 core.RecallDataStore 接口（矩阵分解）
+func (m *MockContentStore) GetUserVector(ctx context.Context, userID string) ([]float64, error) {
+	// MockContentStore 不支持用户向量，返回空
+	return []float64{}, nil
+}
+
+// GetItemVector 实现 core.RecallDataStore 接口（矩阵分解）
+func (m *MockContentStore) GetItemVector(ctx context.Context, itemID string) ([]float64, error) {
+	// MockContentStore 不支持物品向量，返回空
+	return []float64{}, nil
+}
+
+// GetAllItemVectors 实现 core.RecallDataStore 接口（矩阵分解）
+func (m *MockContentStore) GetAllItemVectors(ctx context.Context) (map[string][]float64, error) {
+	// MockContentStore 不支持物品向量，返回空
+	return make(map[string][]float64), nil
+}
+
 // MockWord2VecStore 实现 Word2VecStore 接口（物品 name/desc 文本、用户序列）
 type MockWord2VecStore struct {
 	itemTexts map[string]string   // itemID -> 文本（name + desc）
