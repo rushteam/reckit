@@ -51,19 +51,16 @@ func main() {
 	// featureService := feature.NewBaseFeatureService(redisProvider)
 
 	// ========== 3. 创建用户塔推理服务 ==========
-	// 方式1：使用 TorchServe（推荐，支持 PyTorch 模型）
-	// 注意：service.NewTorchServeClient() 返回的是 core.MLService 接口的实现
+	// 统一使用 TorchServe 协议：Python 双塔服务与 TorchServe 均通过 NewTorchServeClient 调用
+	// Python 服务：uvicorn service.two_tower_server:app --port 8085，模型名 two_tower
 	userTowerService := service.NewTorchServeClient(
-		"http://localhost:8080", // TorchServe REST API 端点
-		"user_tower",            // 模型名称
+		"http://localhost:8085", // Python 双塔服务或 TorchServe 端点
+		"two_tower",             // 模型名（Python 服务路由 /predictions/two_tower）
 		service.WithTorchServeTimeout(5*time.Second),
 	)
 
 	// 方式2：使用 TensorFlow Serving
 	// userTowerService := service.NewTFServingClient(...)
-
-	// 方式3：使用自定义 ONNX Runtime 服务
-	// userTowerService := service.NewCustomMLService(...)
 
 	// ========== 4. 创建向量检索服务 ==========
 	// 方式1：使用 Milvus（推荐）

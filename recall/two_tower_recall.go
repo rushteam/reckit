@@ -191,7 +191,6 @@ func (r *TwoTowerRecall) getUserFeatures(
 	return defaultExtractor.Extract(ctx, rctx)
 }
 
-
 // runUserTower 运行用户塔推理，返回 User Embedding
 func (r *TwoTowerRecall) runUserTower(
 	ctx context.Context,

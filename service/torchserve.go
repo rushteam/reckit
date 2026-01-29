@@ -12,27 +12,23 @@ import (
 	"github.com/rushteam/reckit/core"
 )
 
-// TorchServeClient 是 TorchServe 的客户端实现。
+// TorchServeClient 是 TorchServe 协议的客户端实现。
 //
-// TorchServe 支持两种协议：
+// 协议统一：本客户端同时用于对接 TorchServe 与项目内 Python 推理服务（如 two_tower_server），
+// 二者均暴露 POST /predictions/{model_name}、GET /ping，请求体 {"data": [...]}，响应 {"predictions": [...]}。
+//
+// TorchServe 原生：
 //   - REST API：端口 8080（推理）、8081（管理）
 //   - gRPC API：端口 7070（需要额外配置）
 //
-// 工程特征：
-//   - 实时性：好（REST API 低延迟）
-//   - 可扩展性：强（支持多模型、版本控制）
-//   - 性能：高（支持批量推理）
-//   - 功能：完整（支持模型管理、A/B 测试）
-//
 // 使用场景：
-//   - PyTorch 模型推理
-//   - TorchScript 模型推理
-//   - 大规模模型服务
+//   - TorchServe 部署的 PyTorch / TorchScript 模型
+//   - Python 双塔服务：uvicorn service.two_tower_server:app --port 8085，模型名 two_tower
 //
-// REST API 格式：
-//   - 推理端点：POST /predictions/{model_name}
-//   - 请求体：JSON 对象或数组（根据模型 Handler 定义）
-//   - 响应：直接返回预测结果（格式由模型 Handler 决定）
+// REST 约定：
+//   - 推理：POST {Endpoint}/predictions/{ModelName}，Body: {"data": [feature_dict, ...]}
+//   - 健康：GET {Endpoint}/ping
+//   - 响应：数组或 {"predictions": [...]}，解析为 []float64
 type TorchServeClient struct {
 	// Endpoint 服务端点
 	// REST: "http://localhost:8080"

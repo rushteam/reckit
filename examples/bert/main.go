@@ -19,7 +19,7 @@ func main() {
 	// 方式1：使用 TorchServe
 	torchServeClient := service.NewTorchServeClient(
 		"http://localhost:8080", // TorchServe 端点
-		"bert-base",              // 模型名称
+		"bert-base",             // 模型名称
 		service.WithTorchServeTimeout(5*time.Second),
 	)
 

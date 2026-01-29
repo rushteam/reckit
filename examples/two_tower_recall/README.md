@@ -2,6 +2,8 @@
 
 本示例展示如何使用双塔模型进行召回，采用 **PyTorch 训练 + Golang 推理** 的架构。
 
+**从训练到 Go 调用的最小示例**：见 [TWO_TOWER_MINIMAL.md](./TWO_TOWER_MINIMAL.md)（Python 训练 → 启动 two_tower_server → Go 统一使用 `NewTorchServeClient`）。
+
 ## 架构设计
 
 ```
@@ -39,7 +41,21 @@ Item IDs
 
 ### 1. 准备模型服务
 
-#### 启动 TorchServe（用户塔推理）
+#### 方式 A：Python 双塔服务（最小示例，推荐先跑通）
+
+Python 双塔服务与 TorchServe 使用同一协议，Go 端统一用 `NewTorchServeClient`。
+
+```bash
+# 1. 训练（无数据会自动生成）
+python train/train_two_tower.py
+
+# 2. 启动推理服务（暴露 /predictions/two_tower、/ping）
+uvicorn service.two_tower_server:app --host 0.0.0.0 --port 8085
+```
+
+Go 端：`service.NewTorchServeClient("http://localhost:8085", "two_tower", ...)`。详见 [TWO_TOWER_MINIMAL.md](./TWO_TOWER_MINIMAL.md)。
+
+#### 方式 B：启动 TorchServe（用户塔推理）
 
 ```bash
 # 1. 将 PyTorch 模型转换为 TorchScript
@@ -137,11 +153,13 @@ featureService := feature.NewRedisFeatureService(
 
 ### 模型服务配置
 
+Python 双塔服务与 TorchServe 协议统一，均使用 `NewTorchServeClient`：
+
 ```go
-// TorchServe
+// Python 双塔服务（two_tower_server，最小示例）或 TorchServe
 userTowerService := service.NewTorchServeClient(
-    "http://localhost:8080",
-    "user_tower",
+    "http://localhost:8085", // Python 服务；或 "http://localhost:8080" 为 TorchServe
+    "two_tower",             // 模型名（Python 路由 /predictions/two_tower）
     service.WithTorchServeTimeout(5*time.Second),
 )
 
