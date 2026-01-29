@@ -85,10 +85,10 @@ async def health():
 
 @app.get("/ping")
 async def ping():
-    """TorchServe 风格健康检查，供 Go TorchServeClient.Health 调用。"""
+    """TorchServe 风格健康检查，与 TorchServe Inference API 一致：返回 {"status": "Healthy"}。"""
     if model_loader is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
-    return ""
+    return {"status": "Healthy"}
 
 
 @app.get("/metrics")

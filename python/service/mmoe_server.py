@@ -98,6 +98,14 @@ async def health():
     return {"status": "healthy", "model_loaded": True}
 
 
+@app.get("/ping")
+async def ping():
+    """TorchServe 风格健康检查，与 TorchServe Inference API 一致：返回 {"status": "Healthy"}。"""
+    if model_loader is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    return {"status": "Healthy"}
+
+
 @app.get("/metrics")
 async def prometheus_metrics():
     return metrics.metrics_response()
@@ -133,7 +141,9 @@ async def reload_model(request: Request):
 
 
 class PredictRequest(BaseModel):
-    features_list: list[dict[str, float]]
+    """兼容 features_list（旧）与 data（统一协议）。"""
+    features_list: list[dict[str, float]] = []
+    data: list[dict[str, float]] = []
 
 
 class TaskScores(BaseModel):
@@ -143,22 +153,66 @@ class TaskScores(BaseModel):
 
 
 class PredictResponse(BaseModel):
-    scores_list: list[TaskScores]
+    """兼容 scores_list（旧）与 predictions（统一协议），二者同源。"""
+    scores_list: list[TaskScores] = []
+    predictions: list[TaskScores] = []
+
+
+class TorchServePredictRequest(BaseModel):
+    """统一请求体：{"data": [{"feature_a": 0.1, ...}, ...]}"""
+    data: list[dict[str, float]] = []
+
+
+class TorchServePredictResponse(BaseModel):
+    """统一响应体：{"predictions": [{"ctr", "watch_time", "gmv"}, ...]}（多任务每条为对象）"""
+    predictions: list[TaskScores]
+
+
+def _predict_multi_task(features_list: list[dict[str, float]]):
+    with model_lock:
+        return model_loader.predict_multi_task(features_list)
+
+
+@app.post("/predictions/{model_name}", response_model=TorchServePredictResponse)
+async def predictions_unified(model_name: str, request: TorchServePredictRequest):
+    """统一协议：POST /predictions/{model_name}，请求 {"data": [...]}，响应 {"predictions": [{"ctr","watch_time","gmv"}, ...]}。模型名建议 mmoe。"""
+    if model_loader is None:
+        metrics.inc_predict_requests("503")
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    if not request.data:
+        raise HTTPException(status_code=400, detail="data 不能为空")
+    status = "200"
+    try:
+        with metrics.predict_latency_histogram():
+            out = _predict_multi_task(request.data)
+            predictions = [TaskScores(ctr=x["ctr"], watch_time=x["watch_time"], gmv=x["gmv"]) for x in out]
+        metrics.inc_predict_requests(status)
+        return TorchServePredictResponse(predictions=predictions)
+    except ValueError as e:
+        metrics.inc_predict_requests("400")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        metrics.inc_predict_requests("500")
+        logger.exception("predictions failed")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/predict", response_model=PredictResponse)
 async def predict(request: PredictRequest):
+    """兼容旧协议 features_list/scores_list 与统一协议 data/predictions。"""
     if model_loader is None:
         metrics.inc_predict_requests("503")
         raise HTTPException(status_code=503, detail="Model not loaded")
+    features_list = request.data if request.data else request.features_list
+    if not features_list:
+        raise HTTPException(status_code=400, detail="features_list 或 data 不能为空")
     status = "200"
     try:
         with metrics.predict_latency_histogram():
-            with model_lock:
-                out = model_loader.predict_multi_task(request.features_list)
-                scores_list = [{"ctr": x["ctr"], "watch_time": x["watch_time"], "gmv": x["gmv"]} for x in out]
-            metrics.inc_predict_requests(status)
-            return PredictResponse(scores_list=[TaskScores(**s) for s in scores_list])
+            out = _predict_multi_task(features_list)
+            lst = [TaskScores(ctr=x["ctr"], watch_time=x["watch_time"], gmv=x["gmv"]) for x in out]
+        metrics.inc_predict_requests(status)
+        return PredictResponse(scores_list=lst, predictions=lst)
     except ValueError as e:
         status = "400"
         metrics.inc_predict_requests(status)

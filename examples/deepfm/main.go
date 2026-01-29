@@ -58,7 +58,7 @@ func main() {
 
 	// 创建 DeepFM RPC 模型（调用 Python 服务）
 	// 注意：需要先启动 DeepFM 服务 (python service/deepfm_server.py)
-	deepfmModel := model.NewRPCModel("deepfm", "http://localhost:8080/predict", 5*time.Second)
+	deepfmModel := model.NewRPCModel("deepfm", "http://localhost:8080/predictions/deepfm", 5*time.Second)
 
 	// 构建 Pipeline（使用 Python DeepFM 模型）
 	p := &pipeline.Pipeline{

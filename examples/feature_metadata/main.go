@@ -108,7 +108,7 @@ func main() {
 	}
 
 	// 创建 RPC 模型
-	xgbModel := model.NewRPCModel("xgboost", "http://localhost:8080/predict", 5*time.Second)
+	xgbModel := model.NewRPCModel("xgboost", "http://localhost:8080/predictions/xgb", 5*time.Second)
 
 	// 构建 Pipeline
 	p := &pipeline.Pipeline{

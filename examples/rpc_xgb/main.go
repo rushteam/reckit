@@ -58,7 +58,7 @@ func main() {
 
 	// 创建 XGBoost RPC 模型（调用 Python 服务）
 	// 注意：需要先启动 Python 服务 (python service/server.py)
-	xgbModel := model.NewRPCModel("xgboost", "http://localhost:8080/predict", 5*time.Second)
+	xgbModel := model.NewRPCModel("xgboost", "http://localhost:8080/predictions/xgb", 5*time.Second)
 
 	// 构建 Pipeline（使用 Python XGBoost 模型）
 	p := &pipeline.Pipeline{

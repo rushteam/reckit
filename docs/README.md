@@ -34,6 +34,7 @@
 - [用户画像文档](./USER_PROFILE.md) - 用户画像的使用和管理
 
 ### 训练与部署
+- [模型服务协议约束](./MODEL_SERVICE_PROTOCOL.md) - Python 模型服务必遵协议（TorchServe 传输、TorchServeClient、框架接口区分）
 - [训练流程自动化](./TRAINING_AUTOMATION.md) - 工业级训练流程自动化指南（数据、编排、版本、发布、监控）
 - [Python 生产工业级补充建议](./PYTHON_PRODUCTION_GUIDE.md) - 推理服务与训练的可观测性、安全、可靠性、CI/CD 等补充建议
 

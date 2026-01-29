@@ -40,6 +40,8 @@ model_loader_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(model_loader_module)
 ModelLoader = model_loader_module.ModelLoader
 
+from service.domain.protocol import TorchServePredictRequest, TorchServePredictResponse
+from service.app.predict import run_batch_predict
 from service.middleware import RequestIDMiddleware
 from service import metrics
 
@@ -94,15 +96,15 @@ async def startup_event():
         raise
 
 
-# 请求/响应模型（与 Go 端协议对齐）
+# 旧接口 /predict 兼容用
 class PredictRequest(BaseModel):
-    """批量预测请求（与 Go RPCModel 协议对齐）"""
-    features_list: list[dict[str, float]]  # 特征字典列表，例如 [{"ctr": 0.15, "cvr": 0.08, ...}, ...]
+    features_list: list[dict[str, float]] = []
+    data: list[dict[str, float]] = []
 
 
 class PredictResponse(BaseModel):
-    """批量预测响应（与 Go RPCModel 协议对齐）"""
-    scores: list[float]  # 预测分数列表
+    scores: list[float] = []
+    predictions: list[float] = []
 
 
 @app.get("/")
@@ -123,6 +125,14 @@ async def health():
     if model_loader is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
     return {"status": "healthy", "model_loaded": True}
+
+
+@app.get("/ping")
+async def ping():
+    """TorchServe 风格健康检查，与 TorchServe Inference API 一致：返回 {"status": "Healthy"}。"""
+    if model_loader is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    return {"status": "Healthy"}
 
 
 @app.get("/metrics")
@@ -190,10 +200,41 @@ async def reload_model(request: Request):
             raise HTTPException(status_code=500, detail=f"Model reload failed: {str(e)}")
 
 
+def _predict_scores(features_list: list[dict[str, float]]):
+    with model_lock:
+        return run_batch_predict(model_loader, features_list)
+
+
+@app.post("/predictions/{model_name}", response_model=TorchServePredictResponse)
+async def predictions_unified(model_name: str, request: TorchServePredictRequest):
+    """
+    统一协议：POST /predictions/{model_name}，请求 {"data": [...]}，响应 {"predictions": [...]}。
+    本服务模型名建议为 xgb。
+    """
+    if model_loader is None:
+        metrics.inc_predict_requests("503")
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    if not request.data:
+        raise HTTPException(status_code=400, detail="data 不能为空")
+    status = "200"
+    try:
+        with metrics.predict_latency_histogram():
+            scores = _predict_scores(request.data)
+        metrics.inc_predict_requests(status)
+        return TorchServePredictResponse(predictions=scores)
+    except ValueError as e:
+        metrics.inc_predict_requests("400")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        metrics.inc_predict_requests("500")
+        logger.exception("predictions failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/predict", response_model=PredictResponse)
 async def predict(request: PredictRequest):
     """
-    批量预测接口（与 Go RPCModel 协议对齐）。
+    批量预测接口；兼容 features_list（旧）与 data（统一协议），返回 scores 与 predictions（同源）。
     支持 /metrics 统计请求数与耗时。
     """
     if model_loader is None:
@@ -201,15 +242,18 @@ async def predict(request: PredictRequest):
         logger.error("模型未加载，无法进行预测")
         raise HTTPException(status_code=503, detail="Model not loaded")
 
+    features_list = request.data if request.data else request.features_list
+    if not features_list:
+        raise HTTPException(status_code=400, detail="features_list 或 data 不能为空")
+
     status = "200"
     try:
         with metrics.predict_latency_histogram():
-            with model_lock:
-                logger.debug("收到批量预测请求，样本数: %d", len(request.features_list))
-                scores = model_loader.predict(request.features_list)
-                logger.debug("批量预测完成，返回分数数量: %d", len(scores))
-            metrics.inc_predict_requests(status)
-            return PredictResponse(scores=scores)
+            logger.debug("收到批量预测请求，样本数: %d", len(features_list))
+            scores = _predict_scores(features_list)
+            logger.debug("批量预测完成，返回分数数量: %d", len(scores))
+        metrics.inc_predict_requests(status)
+        return PredictResponse(scores=scores, predictions=scores)
     except ValueError as e:
         status = "400"
         metrics.inc_predict_requests(status)

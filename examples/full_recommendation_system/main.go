@@ -659,11 +659,11 @@ func main() {
 	var rankNode pipeline.Node
 	switch strings.ToLower(*rankModel) {
 	case "xgb", "xgboost":
-		rpcModel := model.NewRPCModel("xgboost", "http://localhost:8080/predict", 5*time.Second)
+		rpcModel := model.NewRPCModel("xgboost", "http://localhost:8080/predictions/xgb", 5*time.Second)
 		rankNode = &rank.RPCNode{Model: rpcModel, StripFeaturePrefix: false}
 		fmt.Printf("✅ 排序模型: XGBoost (RPC http://localhost:8080)\n")
 	case "deepfm":
-		rpcModel := model.NewRPCModel("deepfm", "http://localhost:8080/predict", 10*time.Second)
+		rpcModel := model.NewRPCModel("deepfm", "http://localhost:8080/predictions/deepfm", 10*time.Second)
 		rankNode = &rank.RPCNode{Model: rpcModel, StripFeaturePrefix: false}
 		fmt.Printf("✅ 排序模型: DeepFM (RPC http://localhost:8080)\n")
 	default:

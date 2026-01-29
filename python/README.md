@@ -1,6 +1,6 @@
 # Python ML 训练与服务
 
-本目录包含机器学习模型的训练和推理服务代码，与 Go 端的 `RPCModel` 协议对齐，实现端到端的推荐系统闭环。
+本目录包含机器学习模型的训练和推理服务代码。**协议以 Reckit 为准**，见仓库 [docs/MODEL_SERVICE_PROTOCOL.md](../docs/MODEL_SERVICE_PROTOCOL.md)。
 
 **支持的模型**：
 - **XGBoost**：树模型，训练快、推理快（`train/train_xgb.py` + `service/server.py`）
@@ -24,10 +24,12 @@ python/
 │   ├── features.py   # 特征配置
 │   └── DEEPFM_README.md  # DeepFM 使用说明
 ├── service/          # 推理服务
-│   ├── server.py     # XGBoost FastAPI HTTP 服务（支持 /reload 热更新）
-│   ├── deepfm_server.py  # DeepFM FastAPI HTTP 服务（支持 /reload 热更新）
-│   ├── model_loader.py  # XGBoost 模型加载器
-│   └── deepfm_model_loader.py  # DeepFM 模型加载器
+│   ├── domain/       # 协议约定（TorchServe 请求/响应）
+│   ├── app/          # 用例（批量预测等）
+│   ├── server.py     # XGBoost 推理入口
+│   ├── deepfm_server.py, mmoe_server.py, two_tower_server.py, ...
+│   ├── *_model_loader.py  # 各模型加载与推理
+│   └── README.md     # 使用说明（协议约束见 reckit docs）
 ├── scripts/          # 训练自动化脚本
 │   ├── run_training.sh  # 训练流水线主脚本
 │   ├── evaluate.py      # 模型评估与门控

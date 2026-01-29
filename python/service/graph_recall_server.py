@@ -92,6 +92,12 @@ async def health():
     return {"status": "healthy"}
 
 
+@app.get("/ping")
+async def ping():
+    """TorchServe 风格健康检查，与 TorchServe Inference API 一致：返回 {"status": "Healthy"}。"""
+    return {"status": "Healthy"}
+
+
 @app.get("/metrics")
 async def prometheus_metrics():
     return metrics.metrics_response()

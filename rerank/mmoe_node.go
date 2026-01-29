@@ -26,10 +26,10 @@ import (
 //	python train/train_mmoe.py
 //	uvicorn service.mmoe_server:app --host 0.0.0.0 --port 8081
 //
-// 使用示例：
+// 使用示例（推荐统一协议 /predictions/mmoe）：
 //
 //	node := &rerank.MMoENode{
-//	    Endpoint:       "http://localhost:8081/predict",
+//	    Endpoint:       "http://localhost:8081/predictions/mmoe",
 //	    Timeout:        5 * time.Second,
 //	    WeightCTR:      1.0,
 //	    WeightWatchTime: 0.01,
@@ -49,9 +49,9 @@ type MMoENode struct {
 	StripFeaturePrefix bool
 }
 
-// mmoePredictReq 与 Python /predict 请求格式一致
+// mmoePredictReq 统一协议：{"data": [...]}，与 Python POST /predictions/mmoe 一致
 type mmoePredictReq struct {
-	FeaturesList []map[string]float64 `json:"features_list"`
+	Data []map[string]float64 `json:"data"`
 }
 
 // taskScores 与 Python TaskScores 一致
@@ -61,9 +61,9 @@ type taskScores struct {
 	GMV       float64 `json:"gmv"`
 }
 
-// mmoePredictResp 与 Python /predict 响应格式一致
+// mmoePredictResp 统一协议：{"predictions": [{"ctr","watch_time","gmv"}, ...]}，与 Python 一致
 type mmoePredictResp struct {
-	ScoresList []taskScores `json:"scores_list"`
+	Predictions []taskScores `json:"predictions"`
 }
 
 func (n *MMoENode) Name() string { return "rerank.mmoe" }
@@ -106,7 +106,7 @@ func (n *MMoENode) Process(
 		return items, nil
 	}
 
-	reqBody := mmoePredictReq{FeaturesList: featuresList}
+	reqBody := mmoePredictReq{Data: featuresList}
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("mmoe marshal request: %w", err)
@@ -131,13 +131,14 @@ func (n *MMoENode) Process(
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("mmoe decode response: %w", err)
 	}
-	if len(result.ScoresList) != len(valid) {
-		return nil, fmt.Errorf("mmoe scores count mismatch: want %d got %d", len(valid), len(result.ScoresList))
+	scoresList := result.Predictions
+	if len(scoresList) != len(valid) {
+		return nil, fmt.Errorf("mmoe scores count mismatch: want %d got %d", len(valid), len(scoresList))
 	}
 
 	wCTR, wWatch, wGMV := n.WeightCTR, n.WeightWatchTime, n.WeightGMV
 	for i, it := range valid {
-		s := result.ScoresList[i]
+		s := scoresList[i]
 		score := wCTR*s.CTR + wWatch*s.WatchTime + wGMV*s.GMV
 		it.Score = score
 		it.PutLabel("rerank_model", utils.Label{Value: "mmoe", Source: "rerank"})

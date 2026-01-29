@@ -564,6 +564,7 @@ func (n *MyRankNode) Process(ctx context.Context, rctx *core.RecommendContext, i
 8. **UserProfile 扩展属性**：通过 `Extras map[string]any` 存储自定义属性
    - `GetExtraFloat64`、`GetExtraInt`、`GetExtraString` - 带类型转换的获取方法
    - `core.GetExtraAs[T]` - 泛型方法，用于精确类型匹配（不进行数值转换）
+9. **模型服务协议**：在需要约定时尽量采用 [KServe v2（Open Inference Protocol）](https://kserve.github.io/website/master/modelserving/data_plane/v2_protocol/) 标准；详见 `python/service/KSERVE_V2_ALIGNMENT.md`。
 
 ## 常用操作
 
@@ -896,5 +897,6 @@ normalized := scaler.Normalize(features)
 - `docs/FEATURE_PROCESSING.md` - 特征处理文档（归一化、编码等）
 - `docs/ENCODER_INTERFACE_DESIGN.md` - 编码器接口设计说明
 - `docs/USER_PROFILE.md` - 用户画像文档（包含扩展属性 Extras 的使用）
+- `docs/MODEL_SERVICE_PROTOCOL.md` - 模型服务协议约束（Python 服务参考；传输统一为 TorchServeClient）
 - `pkg/conv/README.md` - 类型转换与泛型工具文档
 - `ext/README.md` - 扩展包使用指南

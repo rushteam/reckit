@@ -11,9 +11,13 @@ import (
 
 // RPCModel 是通过 RPC/HTTP 调用外部模型服务的 RankModel 实现。
 // 支持 GBDT、XGBoost、TensorFlow Serving、TorchServe 等。
+//
+// 统一协议：Endpoint 为完整 URL，如 "http://localhost:8080/predictions/xgb"；
+// 请求体 {"data": [{"feature_a": 0.1, ...}, ...]}，响应体 {"predictions": [0.85, ...]}。
+// 仅支持该协议，不兼容旧格式（features_list/scores）。
 type RPCModel struct {
 	name     string
-	Endpoint string // 例如 "http://localhost:8080/predict"
+	Endpoint string // 如 "http://localhost:8080/predictions/xgb" 或 "http://localhost:8080/predictions/deepfm"
 	Timeout  time.Duration
 	Client   *http.Client
 }
@@ -49,13 +53,7 @@ func (m *RPCModel) Predict(features map[string]float64) (float64, error) {
 }
 
 // PredictBatch 调用远程模型服务进行批量预测。
-// 请求格式（JSON）：
-//
-//	{"features_list": [{"ctr": 0.15, "cvr": 0.08, ...}, ...]}
-//
-// 响应格式（JSON）：
-//
-//	{"scores": [0.85, 0.72, ...]}
+// 统一协议：请求 {"data": [...]}，响应 {"predictions": [...]}。
 func (m *RPCModel) PredictBatch(featuresList []map[string]float64) ([]float64, error) {
 	if m.Client == nil {
 		m.Client = &http.Client{Timeout: m.Timeout}
@@ -65,10 +63,7 @@ func (m *RPCModel) PredictBatch(featuresList []map[string]float64) ([]float64, e
 		return []float64{}, nil
 	}
 
-	// 构建请求
-	reqBody := map[string]any{
-		"features_list": featuresList,
-	}
+	reqBody := map[string]any{"data": featuresList}
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
@@ -80,7 +75,6 @@ func (m *RPCModel) PredictBatch(featuresList []map[string]float64) ([]float64, e
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	// 发送请求
 	resp, err := m.Client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("rpc call: %w", err)
@@ -88,25 +82,19 @@ func (m *RPCModel) PredictBatch(featuresList []map[string]float64) ([]float64, e
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, fmt.Errorf("rpc error: status=%d, read body failed: %w", resp.StatusCode, err)
-		}
+		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("rpc error: status=%d, body=%s", resp.StatusCode, string(body))
 	}
 
-	// 解析响应
 	var result struct {
-		Scores []float64 `json:"scores"`
+		Predictions []float64 `json:"predictions"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
-
-	if len(result.Scores) != len(featuresList) {
-		return nil, fmt.Errorf("response scores count mismatch: expected %d, got %d", len(featuresList), len(result.Scores))
+	if len(result.Predictions) != len(featuresList) {
+		return nil, fmt.Errorf("response predictions count mismatch: expected %d, got %d", len(featuresList), len(result.Predictions))
 	}
-
-	return result.Scores, nil
+	return result.Predictions, nil
 }
 

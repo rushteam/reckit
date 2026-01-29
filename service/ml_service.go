@@ -22,10 +22,9 @@ type ServiceConfig struct {
 	// Type 服务类型
 	Type ServiceType
 
-	// Endpoint 服务端点
+	// Endpoint 服务端点（不含路径，TorchServe 客户端会拼 /predictions/{ModelName}）
 	// TF Serving: "localhost:8500" (gRPC) 或 "http://localhost:8501" (REST)
-	// TorchServe: "http://localhost:8080"
-	// Custom: "http://localhost:8080/predict"
+	// TorchServe / 自研 Python 服务: "http://localhost:8080"，推荐统一使用 POST /predictions/{model_name}
 	Endpoint string
 
 	// ModelName 模型名称
