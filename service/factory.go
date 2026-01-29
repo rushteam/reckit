@@ -8,6 +8,37 @@ import (
 	"github.com/rushteam/reckit/core"
 )
 
+// 本包为 core.MLService 的实现；接口与请求/响应类型在 core 包。
+// 创建实例请使用 NewMLService(config)，或直接 NewTorchServeClient / NewTFServingClient。
+
+// ServiceType 服务类型
+type ServiceType string
+
+const (
+	ServiceTypeTFServing  ServiceType = "tf_serving"  // TensorFlow Serving
+	ServiceTypeTorchServe ServiceType = "torch_serve" // TorchServe / 自研 Python（POST /predictions/{model_name}）
+)
+
+// ServiceConfig 服务配置（工厂 NewMLService 入参）
+type ServiceConfig struct {
+	Type       ServiceType
+	Endpoint   string // 不含路径；TorchServe 客户端会拼 /predictions/{ModelName}
+	ModelName  string
+	ModelVersion string
+	Timeout    int    // 秒
+	Auth       *AuthConfig
+	Params     map[string]interface{}
+}
+
+// AuthConfig 认证配置
+type AuthConfig struct {
+	Type     string
+	Username string
+	Password string
+	Token    string
+	APIKey   string
+}
+
 // NewMLService 根据配置创建 MLService 实例（工厂方法）。
 // 返回 core.MLService 接口。
 func NewMLService(config *ServiceConfig) (core.MLService, error) {

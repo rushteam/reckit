@@ -108,15 +108,26 @@ func (f *NodeFactory) Unregister(nodeType string) {
 }
 
 // Build 根据类型和配置构建 Node（线程安全）。
+// 若 nodeType 未注册，返回错误并附带已支持类型列表，便于排查配置错误。
 func (f *NodeFactory) Build(nodeType string, config map[string]interface{}) (Node, error) {
 	f.mutex.RLock()
 	builder, ok := f.builders[nodeType]
+	supported := f.listRegisteredTypesLocked()
 	f.mutex.RUnlock()
-	
+
 	if !ok {
-		return nil, fmt.Errorf("unknown node type: %s", nodeType)
+		return nil, fmt.Errorf("unknown node type %q (supported: %v)", nodeType, supported)
 	}
 	return builder(config)
+}
+
+// listRegisteredTypesLocked 在已持读锁时返回已注册类型列表（调用方需持有 f.mutex.RLock）。
+func (f *NodeFactory) listRegisteredTypesLocked() []string {
+	types := make([]string, 0, len(f.builders))
+	for t := range f.builders {
+		types = append(types, t)
+	}
+	return types
 }
 
 // ListRegisteredTypes 返回所有已注册的 Node 类型（线程安全）。

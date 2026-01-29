@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/rushteam/reckit/config"
+	_ "github.com/rushteam/reckit/config/builders" // 触发内置 Node 的 init 注册
 	"github.com/rushteam/reckit/core"
 	"github.com/rushteam/reckit/pipeline"
 )
