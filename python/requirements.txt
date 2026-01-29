@@ -1,5 +1,6 @@
-# Python ML 训练与服务依赖
-# 用于 XGBoost 模型训练和 HTTP 推理服务
+# Python ML 训练与服务依赖（已迁移至 pyproject.toml）
+# 推荐：cd python && uv sync  或  uv lock && uv sync
+# 备用：pip install -r requirements.txt
 
 # 机器学习
 xgboost>=2.0.0

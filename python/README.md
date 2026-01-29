@@ -27,6 +27,7 @@ python/
 │   ├── domain/       # 协议约定（TorchServe 请求/响应）
 │   ├── app/          # 用例（批量预测等）
 │   ├── server.py     # XGBoost 推理入口
+│   ├── unified_server.py  # 统一推理入口（单进程多模型，按 model_name 分发；双塔用 user_tower/item_tower）
 │   ├── deepfm_server.py, mmoe_server.py, two_tower_server.py, ...
 │   ├── *_model_loader.py  # 各模型加载与推理
 │   └── README.md     # 使用说明（协议约束见 reckit docs）
@@ -46,20 +47,29 @@ python/
 │   ├── test_model_loader.py  # 模型加载器测试
 │   ├── test_server.py        # 服务器测试
 │   └── test_integration.py   # 集成测试
-├── requirements.txt  # Python 依赖
-├── Dockerfile        # Docker 镜像构建文件
-├── docker-compose.yml # Docker Compose 配置
+├── pyproject.toml    # 项目与依赖（uv）
+├── uv.lock           # 锁文件（可选，本地运行 uv lock 生成）
+├── requirements.txt  # 已迁移至 pyproject.toml，仅作参考
+├── Dockerfile        # Docker 镜像（uv + 统一服务）
+├── docker-compose.yml # Docker Compose（统一服务）
 └── README.md         # 本文件
 ```
 
 ## 快速开始
 
-### 1. 安装依赖
+### 1. 安装依赖（uv）
+
+本目录使用 [uv](https://docs.astral.sh/uv/) 管理依赖，依赖声明在 `pyproject.toml`。
 
 ```bash
 cd python
-pip install -r requirements.txt
+# 安装 uv：https://docs.astral.sh/uv/getting-started/installation/
+uv sync
+# 可选：生成锁文件便于复现
+uv lock
 ```
+
+若未使用 uv，可沿用 `pip install -r requirements.txt`（与 pyproject.toml 内容一致，仅作备用）。
 
 ### 2. 训练模型
 
@@ -132,7 +142,18 @@ python train/train_xgb.py --data-source doris --doris-query "SELECT * FROM db.ta
 
 ### 3. 启动推理服务
 
-#### XGBoost 服务
+#### 统一服务（推荐）
+
+单进程多模型，按 `model_name` 分发；双塔用 `user_tower` / `item_tower`。
+
+```bash
+ENABLED_MODELS=xgb,deepfm,mmoe,user_tower,item_tower,youtube_dnn,dssm,graph_recall \
+  uvicorn service.unified_server:app --host 0.0.0.0 --port 8080 --timeout-keep-alive 30
+```
+
+Go 端统一访问同一端口，例如：`/predictions/xgb`、`/predictions/deepfm`、`/predictions/user_tower`、`/predictions/item_tower`、`/predictions/mmoe` 等。
+
+#### XGBoost 服务（单模型）
 
 ```bash
 # 方式 1: 使用 uvicorn（推荐加 --timeout-keep-alive 30 便于优雅退出）
@@ -142,7 +163,7 @@ uvicorn service.server:app --host 0.0.0.0 --port 8080 --timeout-keep-alive 30
 python -m service.server
 ```
 
-#### DeepFM 服务
+#### DeepFM 服务（单模型）
 
 ```bash
 uvicorn service.deepfm_server:app --host 0.0.0.0 --port 8080 --timeout-keep-alive 30
@@ -285,17 +306,22 @@ pytest tests/ -v
 
 ## Docker 部署
 
+镜像使用 **uv** 安装依赖，默认启动 **统一推理服务**（`service.unified_server`），通过 `POST /predictions/{model_name}` 按模型名分发。
+
 ### 构建镜像
 
 ```bash
-docker build -t reckit-xgboost-service .
+docker build -t reckit-unified-service .
 ```
 
 ### 使用 Docker Compose
 
 ```bash
-# 启动服务
+# 启动统一服务（默认仅启用 xgb）
 docker-compose up -d
+
+# 启用多个模型
+ENABLED_MODELS=xgb,deepfm,mmoe,user_tower,item_tower docker-compose up -d
 
 # 查看日志
 docker-compose logs -f
@@ -308,6 +334,7 @@ docker-compose down
 
 - `PORT`: 服务端口（默认: 8080）
 - `HOST`: 服务地址（默认: 0.0.0.0）
+- `ENABLED_MODELS`: 启用的模型，逗号分隔（默认: xgb）。可选：xgb, deepfm, mmoe, user_tower, item_tower, youtube_dnn, dssm, graph_recall
 - `MODEL_VERSION`: 模型版本（可选）
 
 ## 新功能特性

@@ -1,25 +1,24 @@
 version: '3.8'
 
 services:
-  xgboost-service:
+  unified-service:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: reckit-xgboost-service
+    container_name: reckit-unified-service
     ports:
       - "8080:8080"
     environment:
       - PORT=8080
       - HOST=0.0.0.0
+      - ENABLED_MODELS=${ENABLED_MODELS:-xgb,deepfm,mmoe,user_tower,item_tower,youtube_dnn,dssm,graph_recall}
       - MODEL_VERSION=${MODEL_VERSION:-latest}
     volumes:
-      # 挂载模型目录（可选，用于热更新）
       - ./model:/app/model:ro
-      # 挂载数据目录（可选）
       - ./data:/app/data:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/ping')"]
       interval: 30s
       timeout: 10s
       retries: 3

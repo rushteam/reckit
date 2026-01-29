@@ -17,6 +17,7 @@ type ServiceType string
 const (
 	ServiceTypeTFServing  ServiceType = "tf_serving"  // TensorFlow Serving
 	ServiceTypeTorchServe ServiceType = "torch_serve" // TorchServe / 自研 Python（POST /predictions/{model_name}）
+	ServiceTypeKServe     ServiceType = "kserve"     // KServe V1/V2 协议（/v1/models/:predict 或 /v2/models/.../infer）
 )
 
 // ServiceConfig 服务配置（工厂 NewMLService 入参）
@@ -83,6 +84,21 @@ func NewMLService(config *ServiceConfig) (core.MLService, error) {
 		}
 		return NewTorchServeClient(config.Endpoint, config.ModelName, opts...), nil
 
+	case ServiceTypeKServe:
+		opts := []KServeOption{
+			WithKServeTimeout(timeout),
+		}
+		if config.ModelVersion != "" {
+			opts = append(opts, WithKServeVersion(config.ModelVersion))
+		}
+		if config.Auth != nil {
+			opts = append(opts, WithKServeAuth(config.Auth))
+		}
+		if p := getConfigString(config.Params, "protocol"); p == "v1" || p == "v2" {
+			opts = append(opts, WithKServeProtocol(p))
+		}
+		return NewKServeClient(config.Endpoint, config.ModelName, opts...), nil
+
 	default:
 		return nil, fmt.Errorf("unsupported service type: %s", config.Type)
 	}
@@ -98,6 +114,19 @@ func isGRPCEndpoint(endpoint string) bool {
 // hasHTTPPrefix 检查是否包含 HTTP 前缀
 func hasHTTPPrefix(s string) bool {
 	return len(s) > 7 && (s[:7] == "http://" || s[:8] == "https://")
+}
+
+// getConfigString 从 Params 中取字符串
+func getConfigString(m map[string]interface{}, key string) string {
+	if m == nil {
+		return ""
+	}
+	v, ok := m[key]
+	if !ok {
+		return ""
+	}
+	s, _ := v.(string)
+	return s
 }
 
 // ValidateConfig 验证服务配置

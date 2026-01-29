@@ -108,7 +108,48 @@ resp, err := torchService.Predict(ctx, &core.MLPredictRequest{
 err := torchService.Health(ctx)
 ```
 
-### 3. ANN Service
+### 3. KServe（V1/V2 协议）
+
+**协议**：
+- **V1**：POST /v1/models/{model_name}:predict，请求 `instances`/`inputs`，响应 `predictions`
+- **V2**（Open Inference Protocol）：POST /v2/models/{model_name}/infer，请求 `inputs` 张量，响应 `outputs`
+
+适用于 KServe、ModelMesh 或兼容 KServe 协议的自建推理服务。
+
+**使用示例**：
+
+```go
+import "github.com/rushteam/reckit/core"
+import "github.com/rushteam/reckit/service"
+
+// 默认 V2 协议
+var kserveService core.MLService = service.NewKServeClient(
+    "http://localhost:8000",
+    "my_model",
+    service.WithKServeVersion("1"),
+    service.WithKServeTimeout(30*time.Second),
+)
+
+// 使用 V1 协议
+kserveService = service.NewKServeClient(
+    "http://localhost:8000",
+    "my_model",
+    service.WithKServeProtocol(service.KServeV1),
+)
+
+// 批量预测（Features 或 Instances）
+resp, err := kserveService.Predict(ctx, &core.MLPredictRequest{
+    Features: []map[string]float64{
+        {"feature1": 0.1, "feature2": 0.2},
+        {"feature1": 0.3, "feature2": 0.4},
+    },
+})
+
+// 健康检查：V1 GET /v1/models/{model}，V2 GET /v2/health/ready
+err := kserveService.Health(ctx)
+```
+
+### 4. ANN Service
 
 **协议**：HTTP/REST
 
@@ -158,9 +199,20 @@ torchConfig := &service.ServiceConfig{
     Timeout:     30,
 }
 
+// KServe 配置（可选 Params: protocol = "v1" 或 "v2"）
+kserveConfig := &service.ServiceConfig{
+    Type:        service.ServiceTypeKServe,
+    Endpoint:    "http://localhost:8000",
+    ModelName:   "my_model",
+    ModelVersion: "1",
+    Timeout:     30,
+    Params:      map[string]interface{}{"protocol": "v2"},
+}
+
 // 创建服务（返回 core.MLService）
 mlService, err := service.NewMLService(config)
 torchService, err := service.NewMLService(torchConfig)
+kserveService, err := service.NewMLService(kserveConfig)
 if err != nil {
     // 处理错误
 }
@@ -296,6 +348,56 @@ POST /predictions/{model_name}
 }
 ```
 
+### KServe V1 REST API
+
+**请求格式**：
+```json
+POST /v1/models/{model_name}:predict
+{
+    "instances": [[f1, f2, ...], ...]
+}
+```
+或 `"inputs"` 等价于 `"instances"`。
+
+**响应格式**：
+```json
+{
+    "predictions": [score1, score2, ...]
+}
+```
+
+### KServe V2 (Open Inference Protocol) REST API
+
+**请求格式**：
+```json
+POST /v2/models/{model_name}/infer
+{
+    "inputs": [
+        {
+            "name": "input0",
+            "shape": [batch, dim],
+            "datatype": "FP64",
+            "data": [f1, f2, ...]
+        }
+    ]
+}
+```
+
+**响应格式**：
+```json
+{
+    "model_name": "mymodel",
+    "outputs": [
+        {
+            "name": "output0",
+            "shape": [batch],
+            "datatype": "FP32",
+            "data": [score1, score2, ...]
+        }
+    ]
+}
+```
+
 ### ANN Service HTTP API
 
 **请求格式**：
@@ -327,6 +429,7 @@ POST /v1/vector/search
 
 - **TensorFlow Serving REST API**：完全支持
 - **TorchServe REST API**：完全支持
+- **KServe V1/V2 协议**：完全支持（V1: /v1/models/:predict；V2: /v2/models/.../infer，健康检查 /v2/health/ready）
 - **ANN Service**：完全支持
 
 ### ⚠️ 部分实现
@@ -353,3 +456,5 @@ go run ./examples/ml_service
 - [TensorFlow Serving gRPC API](https://www.tensorflow.org/tfx/serving/api_rest)
 - [TorchServe 文档](https://pytorch.org/serve/)
 - [TorchServe REST API](https://pytorch.org/serve/rest_api.html)
+- [KServe V1 Protocol](https://kserve.github.io/website/latest/modelserving/data_plane/v1_protocol/)
+- [KServe V2 Protocol (Open Inference Protocol)](https://kserve.github.io/website/latest/modelserving/data_plane/v2_protocol/)
