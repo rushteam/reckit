@@ -4,8 +4,8 @@
 支持多种数据源，统一返回 pd.DataFrame，供 XGBoost、DeepFM 等训练脚本使用。
 
 数据源:
-  - file: 本地文件（CSV）
-  - oss:  对象存储 Parquet（AWS S3、阿里云 OSS、腾讯云 COS、MinIO 等）
+  - file: 本地文件（CSV、Parquet、JSON，与 oss 格式一致）
+  - oss:  对象存储（CSV、Parquet、JSON，与 file 格式一致，仅位置不同）
   - mysql: MySQL 协议（支持 MySQL、Doris、TiDB 等）
 
 用法:
@@ -14,16 +14,35 @@
   loader = get_loader("file", path="data/train_data.csv")
   df = loader.load()
 
-  # 或一步到位
   df = load_training_df("oss", path="s3://bucket/train.parquet", ...)
 """
 from __future__ import annotations
 
+import io
 import os
 from abc import ABC, abstractmethod
 from typing import Any
 
 import pandas as pd
+
+
+def _format_from_path(path: str) -> str:
+    """根据路径后缀推断格式：csv / parquet / json，默认 csv。"""
+    p = path.lower().split("?")[0]
+    if p.endswith(".parquet"):
+        return "parquet"
+    if p.endswith(".json") or p.endswith(".jsonl"):
+        return "json"
+    return "csv"
+
+
+def _resolve_format(path: str, format: str | None) -> str:
+    """优先使用 format 参数，为空时按路径后缀识别。"""
+    if format:
+        f = format.strip().lower()
+        if f in ("csv", "parquet", "json"):
+            return f
+    return _format_from_path(path)
 
 
 class TrainingDataLoader(ABC):
@@ -36,30 +55,37 @@ class TrainingDataLoader(ABC):
 
 
 class FileDataLoader(TrainingDataLoader):
-    """本地文件加载器（CSV）"""
+    """本地文件加载器，支持 CSV、Parquet、JSON（与 oss 支持格式一致）。"""
 
-    def __init__(self, path: str, **kwargs: Any) -> None:
+    def __init__(self, path: str, format: str | None = None, **kwargs: Any) -> None:
         self.path = path
-        self.kwargs = kwargs  # 透传给 pd.read_csv，如 sep, encoding
+        self.format = format  # 显式指定 csv/parquet/json，为空时按路径后缀识别
+        self.kwargs = kwargs
 
     def load(self) -> pd.DataFrame:
         if not os.path.exists(self.path):
             raise FileNotFoundError(f"数据文件不存在: {self.path}")
+        fmt = _resolve_format(self.path, self.format)
+        if fmt == "parquet":
+            return pd.read_parquet(self.path, **self.kwargs)
+        if fmt == "json":
+            return pd.read_json(self.path, **self.kwargs)
         return pd.read_csv(self.path, **self.kwargs)
 
 
-class OSSParquetLoader(TrainingDataLoader):
+class OSSDataLoader(TrainingDataLoader):
     """
-    对象存储 Parquet 加载器
+    对象存储数据加载器，支持格式与 file 一致：CSV、Parquet、JSON。
 
+    仅数据位置不同（OSS/S3），路径格式: s3://bucket/key 或 oss://bucket/key。
     支持 AWS S3、阿里云 OSS、腾讯云 COS、MinIO 等 S3 兼容协议。
-    路径格式: s3://bucket/key.parquet 或 oss://bucket/key.parquet（需配置 endpoint）。
     """
 
     def __init__(
         self,
         path: str,
         *,
+        format: str | None = None,
         endpoint_url: str | None = None,
         access_key: str | None = None,
         secret_key: str | None = None,
@@ -67,6 +93,7 @@ class OSSParquetLoader(TrainingDataLoader):
         **kwargs: Any,
     ) -> None:
         self.path = path
+        self.format = format  # 显式指定 csv/parquet/json，为空时按路径后缀识别
         self.endpoint_url = endpoint_url or os.environ.get("OSS_ENDPOINT_URL", "").strip() or None
         self.access_key = access_key or os.environ.get("AWS_ACCESS_KEY_ID", os.environ.get("OSS_ACCESS_KEY_ID", ""))
         self.secret_key = secret_key or os.environ.get("AWS_SECRET_ACCESS_KEY", os.environ.get("OSS_SECRET_ACCESS_KEY", ""))
@@ -75,46 +102,41 @@ class OSSParquetLoader(TrainingDataLoader):
 
     def load(self) -> pd.DataFrame:
         try:
-            import pyarrow.parquet as pq
-        except ImportError as e:
-            raise RuntimeError("读取 Parquet 需要安装: pip install pyarrow") from e
-
-        # 使用 s3fs（fsspec）支持 S3 / OSS 等；未安装时回退到 fsspec
-        use_s3fs = False
-        try:
             import s3fs
-            use_s3fs = True
-        except ImportError:
-            pass
+        except ImportError as e:
+            raise RuntimeError("读取 OSS/S3 需要安装: pip install s3fs") from e
 
-        if use_s3fs:
-            # oss:// -> s3://，s3fs 用 S3 兼容接口 + endpoint 访问 OSS
-            path = self.path
-            if path.startswith("oss://"):
-                path = "s3://" + path[6:]
+        path = self.path
+        if path.startswith("oss://"):
+            path = "s3://" + path[6:]
 
-            client_kwargs = {}
-            if self.endpoint_url:
-                client_kwargs["endpoint_url"] = self.endpoint_url
-            if self.region:
-                client_kwargs["region_name"] = self.region
+        client_kwargs: dict[str, Any] = {}
+        if self.endpoint_url:
+            client_kwargs["endpoint_url"] = self.endpoint_url
+        if self.region:
+            client_kwargs["region_name"] = self.region
 
-            fs = s3fs.S3FileSystem(
-                key=self.access_key or None,
-                secret=self.secret_key or None,
-                client_kwargs=client_kwargs if client_kwargs else None,
-            )
-            with fs.open(path, "rb") as f:
-                table = pq.read_table(f)
-        else:
-            # 本地路径或已挂载的卷
-            if self.path.startswith("s3://") or self.path.startswith("oss://"):
-                raise RuntimeError(
-                    "读取 OSS/S3 Parquet 需要安装: pip install s3fs pyarrow"
-                )
-            table = pq.read_table(self.path)
+        fs = s3fs.S3FileSystem(
+            key=self.access_key or None,
+            secret=self.secret_key or None,
+            client_kwargs=client_kwargs if client_kwargs else None,
+        )
+        with fs.open(path, "rb") as f:
+            data = f.read()
 
-        return table.to_pandas()
+        fmt = _resolve_format(self.path, self.format)
+        if fmt == "parquet":
+            try:
+                import pyarrow.parquet as pq
+            except ImportError as e:
+                raise RuntimeError("读取 Parquet 需要安装: pip install pyarrow") from e
+            table = pq.read_table(io.BytesIO(data))
+            return table.to_pandas()
+        if fmt == "json":
+            return pd.read_json(io.BytesIO(data), **self.kwargs)
+        kw = dict(self.kwargs)
+        encoding = kw.pop("encoding", "utf-8")
+        return pd.read_csv(io.BytesIO(data), encoding=encoding, **kw)
 
 
 class MysqlDataLoader(TrainingDataLoader):
@@ -175,6 +197,7 @@ class MysqlDataLoader(TrainingDataLoader):
 def get_loader(
     source: str,
     path: str | None = None,
+    format: str | None = None,
     query: str | None = None,
     table: str | None = None,
     database: str = "default",
@@ -191,8 +214,8 @@ def get_loader(
     """
     根据数据源类型返回对应的加载器。
 
-    - file:  path 必填，本地 CSV 路径。
-    - oss:   path 必填，如 s3://bucket/key.parquet；可选 endpoint_url, access_key, secret_key, region。
+    - file:  path 必填；format 可选，指定 csv/parquet/json，为空时按路径后缀识别。
+    - oss:   path 必填；format 可选，同上；可选 endpoint_url, access_key, secret_key, region。
     - mysql: query 或 table 必填；可选 database, host, port, user, password（支持 MySQL、Doris、TiDB 等）。
     - doris: 同 mysql。
     """
@@ -200,17 +223,22 @@ def get_loader(
     if s == "file":
         if not path:
             raise ValueError("file 数据源需要 path")
-        return FileDataLoader(path, **kwargs)
+        kw = dict(kwargs)
+        kw.pop("format", None)
+        return FileDataLoader(path, format=format, **kw)
     if s == "oss":
         if not path:
-            raise ValueError("oss 数据源需要 path（如 s3://bucket/key.parquet）")
-        return OSSParquetLoader(
+            raise ValueError("oss 数据源需要 path（如 s3://bucket/key.csv 或 key.parquet）")
+        kw = dict(kwargs)
+        kw.pop("format", None)
+        return OSSDataLoader(
             path,
+            format=format,
             endpoint_url=endpoint_url,
             access_key=access_key,
             secret_key=secret_key,
             region=region,
-            **kwargs,
+            **kw,
         )
     if s == "mysql" or s == "doris":  # doris 作为别名
         return MysqlDataLoader(
@@ -229,6 +257,7 @@ def get_loader(
 def load_training_df(
     source: str,
     path: str | None = None,
+    format: str | None = None,
     query: str | None = None,
     table: str | None = None,
     database: str = "default",
@@ -242,10 +271,11 @@ def load_training_df(
     region: str | None = None,
     **kwargs: Any,
 ) -> pd.DataFrame:
-    """根据数据源加载训练数据，返回 DataFrame。"""
+    """根据数据源加载训练数据，返回 DataFrame。format 可选，指定 csv/parquet/json，为空时按路径后缀识别。"""
     loader = get_loader(
         source,
         path=path,
+        format=format,
         query=query,
         table=table,
         database=database,
