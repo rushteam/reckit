@@ -21,7 +21,13 @@ func init() {
 	config.Register("recall.ann", BuildANNNode)
 	config.Register("rank.lr", BuildLRNode)
 	config.Register("rank.rpc", BuildRPCNode)
+	config.Register("rank.wide_deep", BuildWideDeepNode)
+	config.Register("rank.two_tower", BuildTwoTowerNode)
+	config.Register("rank.dnn", BuildDNNNode)
+	config.Register("rank.din", BuildDINNode)
 	config.Register("rerank.diversity", BuildDiversityNode)
+	config.Register("rerank.mmoe", BuildMMoENode)
+	config.Register("rerank.topn", BuildTopNNode)
 	config.Register("filter", BuildFilterNode)
 	config.Register("feature.enrich", BuildFeatureEnrichNode)
 }
@@ -81,7 +87,7 @@ func BuildHotNode(cfg map[string]interface{}) (pipeline.Node, error) {
 }
 
 func BuildANNNode(cfg map[string]interface{}) (pipeline.Node, error) {
-	return nil, fmt.Errorf("ann node not fully implemented (supported: recall.fanout, recall.hot, rank.lr, rank.rpc, rerank.diversity, filter, feature.enrich)")
+	return nil, fmt.Errorf("ann node not fully implemented: requires VectorService injection (supported types: %v)", config.SupportedTypes())
 }
 
 func BuildLRNode(cfg map[string]interface{}) (pipeline.Node, error) {
@@ -112,12 +118,112 @@ func BuildRPCNode(cfg map[string]interface{}) (pipeline.Node, error) {
 	return &rank.RPCNode{Model: rpcModel}, nil
 }
 
+func BuildWideDeepNode(cfg map[string]interface{}) (pipeline.Node, error) {
+	endpoint := conv.ConfigGet(cfg, "endpoint", "")
+	if endpoint == "" {
+		return nil, fmt.Errorf("endpoint not found")
+	}
+	timeout := 5 * time.Second
+	if sec := conv.ConfigGetInt64(cfg, "timeout", 5); sec > 0 {
+		timeout = time.Duration(sec) * time.Second
+	}
+	modelType := conv.ConfigGet(cfg, "model_type", "wide_deep")
+	if modelType == "" {
+		modelType = "wide_deep"
+	}
+	rpcModel := model.NewRPCModel(modelType, endpoint, timeout)
+	return &rank.WideDeepNode{Model: rpcModel}, nil
+}
+
+func BuildTwoTowerNode(cfg map[string]interface{}) (pipeline.Node, error) {
+	endpoint := conv.ConfigGet(cfg, "endpoint", "")
+	if endpoint == "" {
+		return nil, fmt.Errorf("endpoint not found")
+	}
+	timeout := 5 * time.Second
+	if sec := conv.ConfigGetInt64(cfg, "timeout", 5); sec > 0 {
+		timeout = time.Duration(sec) * time.Second
+	}
+	modelType := conv.ConfigGet(cfg, "model_type", "two_tower")
+	if modelType == "" {
+		modelType = "two_tower"
+	}
+	rpcModel := model.NewRPCModel(modelType, endpoint, timeout)
+	return &rank.TwoTowerNode{Model: rpcModel}, nil
+}
+
+func BuildDNNNode(cfg map[string]interface{}) (pipeline.Node, error) {
+	endpoint := conv.ConfigGet(cfg, "endpoint", "")
+	if endpoint == "" {
+		return nil, fmt.Errorf("endpoint not found")
+	}
+	timeout := 5 * time.Second
+	if sec := conv.ConfigGetInt64(cfg, "timeout", 5); sec > 0 {
+		timeout = time.Duration(sec) * time.Second
+	}
+	modelType := conv.ConfigGet(cfg, "model_type", "dnn")
+	if modelType == "" {
+		modelType = "dnn"
+	}
+	rpcModel := model.NewRPCModel(modelType, endpoint, timeout)
+	return &rank.DNNNode{Model: rpcModel}, nil
+}
+
+func BuildDINNode(cfg map[string]interface{}) (pipeline.Node, error) {
+	endpoint := conv.ConfigGet(cfg, "endpoint", "")
+	if endpoint == "" {
+		return nil, fmt.Errorf("endpoint not found")
+	}
+	timeout := 5 * time.Second
+	if sec := conv.ConfigGetInt64(cfg, "timeout", 5); sec > 0 {
+		timeout = time.Duration(sec) * time.Second
+	}
+	modelType := conv.ConfigGet(cfg, "model_type", "din")
+	if modelType == "" {
+		modelType = "din"
+	}
+	rpcModel := model.NewRPCModel(modelType, endpoint, timeout)
+	maxSeq := int(conv.ConfigGetInt64(cfg, "max_behavior_seq_len", 10))
+	if maxSeq <= 0 {
+		maxSeq = 10
+	}
+	return &rank.DINNode{Model: rpcModel, MaxBehaviorSeqLen: maxSeq}, nil
+}
+
 func BuildDiversityNode(cfg map[string]interface{}) (pipeline.Node, error) {
 	labelKey := conv.ConfigGet(cfg, "label_key", "category")
 	if labelKey == "" {
 		labelKey = "category"
 	}
 	return &rerank.Diversity{LabelKey: labelKey}, nil
+}
+
+func BuildMMoENode(cfg map[string]interface{}) (pipeline.Node, error) {
+	endpoint := conv.ConfigGet(cfg, "endpoint", "")
+	if endpoint == "" {
+		return nil, fmt.Errorf("endpoint not found")
+	}
+	timeout := 5 * time.Second
+	if sec := conv.ConfigGetInt64(cfg, "timeout", 5); sec > 0 {
+		timeout = time.Duration(sec) * time.Second
+	}
+	node := &rerank.MMoENode{
+		Endpoint:          endpoint,
+		Timeout:           timeout,
+		WeightCTR:         conv.ConfigGet(cfg, "weight_ctr", 1.0),
+		WeightWatchTime:   conv.ConfigGet(cfg, "weight_watch_time", 0.01),
+		WeightGMV:         conv.ConfigGet(cfg, "weight_gmv", 1e-6),
+		StripFeaturePrefix: conv.ConfigGet(cfg, "strip_feature_prefix", false),
+	}
+	return node, nil
+}
+
+func BuildTopNNode(cfg map[string]interface{}) (pipeline.Node, error) {
+	n := int(conv.ConfigGetInt64(cfg, "top_n", 0))
+	if n <= 0 {
+		n = int(conv.ConfigGetInt64(cfg, "n", 0))
+	}
+	return &rerank.TopNNode{N: n}, nil
 }
 
 func BuildFilterNode(cfg map[string]interface{}) (pipeline.Node, error) {

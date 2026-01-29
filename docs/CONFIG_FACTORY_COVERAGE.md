@@ -11,7 +11,13 @@
 | Recall | `recall.ann` | — | 仅注册，build 返回错误「ann node not fully implemented」 |
 | Rank | `rank.lr` | LRNode + LRModel | weights、bias |
 | Rank | `rank.rpc` | RPCNode + RPCModel | endpoint、timeout、model_type |
+| Rank | `rank.wide_deep` | WideDeepNode + RPCModel | endpoint、timeout、model_type |
+| Rank | `rank.two_tower` | TwoTowerNode + RPCModel | endpoint、timeout、model_type |
+| Rank | `rank.dnn` | DNNNode + RPCModel | endpoint、timeout、model_type |
+| Rank | `rank.din` | DINNode + RPCModel | endpoint、timeout、model_type、max_behavior_seq_len |
 | ReRank | `rerank.diversity` | Diversity | label_key |
+| ReRank | `rerank.mmoe` | MMoENode | endpoint、timeout、weight_ctr、weight_watch_time、weight_gmv、strip_feature_prefix |
+| ReRank | `rerank.topn` | TopNNode | top_n 或 n |
 | Filter | `filter` | FilterNode | filters 内 type: blacklist / user_block / exposed（storeAdapter 均为 nil） |
 | Feature | `feature.enrich` | EnrichNode | 仅前缀配置；未配置 FeatureService / 提取器 |
 
@@ -29,15 +35,7 @@
 
 ### Rank
 
-- **rank.wide_deep**（WideDeepNode）
-- **rank.two_tower**（TwoTowerNode）
-- **rank.dnn**（DNNNode）
-- **rank.din**（DINNode）
-
-### ReRank
-
-- **rerank.mmoe**（MMoENode）：需 Endpoint、Timeout、WeightCTR/WeightWatchTime/WeightGMV、可选 StripFeaturePrefix。
-- **rerank.topn**（TopNNode）：需 TopN。
+- **rank.wide_deep / rank.two_tower / rank.dnn / rank.din**：已支持，通过 endpoint、timeout、model_type（及 din 的 max_behavior_seq_len）从配置构建，底层使用 RPCModel 调用远程服务。
 
 ### Filter
 
@@ -53,9 +51,9 @@
 |------|--------|----------------|
 | Recall 顶层 Node | fanout、hot；ann 占位 | — |
 | Fanout 内 Source 类型 | hot | u2i、i2i、content、word2vec、bert、two_tower、youtube_dnn、dssm、graph、rpc、mf、user_history |
-| Rank | lr、rpc | wide_deep、two_tower、dnn、din |
-| ReRank | diversity | mmoe、topn |
+| Rank | lr、rpc、wide_deep、two_tower、dnn、din | — |
+| ReRank | diversity、mmoe、topn | — |
 | Filter | blacklist、user_block、exposed（无 Store） | 需 Store 时需代码注入 |
 | Feature | enrich（仅前缀） | FeatureService / 提取器需代码注入 |
 
-结论：**config/factory 未覆盖当前所有实现**。适合用配置驱动的仅有：Fanout（hot 源）、Hot、LR、RPC 排序、Diversity、以及无 Store 的 Filter 和仅前缀的 Enrich。其余 Node（含依赖 Store/MLService/VectorService/外部 HTTP 的召回与排序、MMoE、TopN、完整 Enrich）需在代码中构造并注入依赖，或扩展 factory 的 build 逻辑与配置约定。
+结论：**Rank、ReRank 已全部支持 config builder**。适合用配置驱动的有：Fanout（hot 源）、Hot、LR/RPC/WideDeep/TwoTower/DNN/DIN 排序、Diversity/MMoE/TopN 重排、无 Store 的 Filter 和仅前缀的 Enrich。未覆盖的主要为：Recall 内需 Store/MLService/VectorService 的源、需 Store 的 Filter、需注入 FeatureService 的 Enrich；这些需在代码中构造并注入依赖，或扩展 factory 的 build 逻辑与配置约定。
