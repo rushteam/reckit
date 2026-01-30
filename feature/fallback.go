@@ -34,11 +34,11 @@ func (f *DefaultFallbackStrategy) GetUserFeatures(ctx context.Context, userID st
 		}
 	}
 
-	// 从 Realtime 提取
-	if rctx.Realtime != nil {
-		for k, v := range rctx.Realtime {
+	// 从 Params 提取
+	if rctx.Params != nil {
+		for k, v := range rctx.Params {
 			if fv, ok := toFloat64(v); ok {
-				features["realtime_"+k] = fv
+				features[k] = fv
 			}
 		}
 	}
@@ -76,14 +76,15 @@ func (f *DefaultFallbackStrategy) GetItemFeatures(ctx context.Context, itemID st
 	return features, nil
 }
 
-func (f *DefaultFallbackStrategy) GetRealtimeFeatures(ctx context.Context, userID, itemID string, rctx *core.RecommendContext, item *core.Item) (map[string]float64, error) {
+// GetCrossFeatures 获取交叉特征（用户-物品交互特征）
+func (f *DefaultFallbackStrategy) GetCrossFeatures(ctx context.Context, userID, itemID string, rctx *core.RecommendContext, item *core.Item) (map[string]float64, error) {
 	features := make(map[string]float64)
 
 	// 组合用户和物品的基础特征
 	userFeatures, _ := f.GetUserFeatures(ctx, userID, rctx)
 	itemFeatures, _ := f.GetItemFeatures(ctx, itemID, item)
 
-	// 简单的实时特征：用户-物品交互
+	// 简单的交叉特征：用户-物品交互
 	for uk, uv := range userFeatures {
 		for ik, iv := range itemFeatures {
 			// 只对关键特征做交叉

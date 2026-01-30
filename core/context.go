@@ -19,8 +19,10 @@ type RecommendContext struct {
 	// 例如：新用户、重度用户、价格敏感等
 	Labels map[string]utils.Label
 
-	Realtime map[string]any
-	Params   map[string]any
+	// Params 请求级上下文参数，包含：
+	// - 请求参数：latitude, longitude, time_of_day, query, device_type 等
+	// - 实时特征：realtime_ctr, realtime_exposure 等（建议加 realtime_ 前缀区分）
+	Params map[string]any
 }
 
 // GetUserProfile 获取用户画像。

@@ -22,12 +22,12 @@ type FeatureExtractor interface {
 // 抽取策略（优先级顺序）：
 //   1. 从 UserProfile（强类型）提取：age, gender, interests
 //   2. 从 UserProfile (map 形式) 提取：所有可转换为 float64 的值
-//   3. 从 Realtime 提取：所有可转换为 float64 的值（添加 "realtime_" 前缀）
+//   3. 从 Params 提取：所有可转换为 float64 的值（可配置前缀）
 //
 // 字段命名：
 //   - UserProfile 字段：age, gender, interest_<tag>
 //   - UserProfile (map) 字段：保持原 key
-//   - Realtime 字段：realtime_<key>
+//   - Params 字段：<ParamsPrefix><key>（默认无前缀）
 type DefaultFeatureExtractor struct {
 	// FeatureService 特征服务（可选，如果设置则优先使用）
 	FeatureService core.FeatureService
@@ -35,14 +35,21 @@ type DefaultFeatureExtractor struct {
 	// FieldPrefix 字段前缀（可选，如 "user_"）
 	FieldPrefix string
 
-	// IncludeRealtime 是否包含实时特征
-	IncludeRealtime bool
+	// IncludeParams 是否包含 Params 特征
+	IncludeParams bool
+
+	// ParamsPrefix Params 字段前缀（默认空字符串，即不加前缀）
+	ParamsPrefix string
+
+	// ParamsKeys 指定需要提取的 Params key 列表（可选，为空则提取所有可转换的 float64 值）
+	ParamsKeys []string
 }
 
 // NewDefaultFeatureExtractor 创建默认特征抽取器
 func NewDefaultFeatureExtractor(opts ...DefaultFeatureExtractorOption) *DefaultFeatureExtractor {
 	extractor := &DefaultFeatureExtractor{
-		IncludeRealtime: true,
+		IncludeParams: true,  // 默认包含 Params
+		ParamsPrefix:  "",    // 默认无前缀
 	}
 	for _, opt := range opts {
 		opt(extractor)
@@ -67,10 +74,24 @@ func WithFieldPrefix(prefix string) DefaultFeatureExtractorOption {
 	}
 }
 
-// WithIncludeRealtime 设置是否包含实时特征
-func WithIncludeRealtime(include bool) DefaultFeatureExtractorOption {
+// WithIncludeParams 设置是否包含 Params 特征
+func WithIncludeParams(include bool) DefaultFeatureExtractorOption {
 	return func(e *DefaultFeatureExtractor) {
-		e.IncludeRealtime = include
+		e.IncludeParams = include
+	}
+}
+
+// WithParamsPrefix 设置 Params 字段前缀（默认 "params_"，设为空字符串则不加前缀）
+func WithParamsPrefix(prefix string) DefaultFeatureExtractorOption {
+	return func(e *DefaultFeatureExtractor) {
+		e.ParamsPrefix = prefix
+	}
+}
+
+// WithParamsKeys 设置需要提取的 Params key 列表（为空则提取所有可转换的 float64 值）
+func WithParamsKeys(keys []string) DefaultFeatureExtractorOption {
+	return func(e *DefaultFeatureExtractor) {
+		e.ParamsKeys = keys
 	}
 }
 
@@ -122,16 +143,34 @@ func (e *DefaultFeatureExtractor) extractFromContext(rctx *core.RecommendContext
 		}
 	}
 
-	// 从 Realtime 提取
-	if e.IncludeRealtime && rctx.Realtime != nil {
-		for k, v := range rctx.Realtime {
-			if fv, ok := conv.ToFloat64(v); ok {
-				features["realtime_"+k] = fv
-			}
-		}
+	// 从 Params 提取
+	if e.IncludeParams && rctx.Params != nil {
+		e.extractParamsFeatures(rctx.Params, features, e.ParamsPrefix)
 	}
 
 	return features
+}
+
+// extractParamsFeatures 从 Params 提取特征
+func (e *DefaultFeatureExtractor) extractParamsFeatures(params map[string]any, features map[string]float64, prefix string) {
+	// 如果指定了 ParamsKeys，只提取这些 key
+	if len(e.ParamsKeys) > 0 {
+		for _, key := range e.ParamsKeys {
+			if v, ok := params[key]; ok {
+				if fv, ok := conv.ToFloat64(v); ok {
+					features[prefix+key] = fv
+				}
+			}
+		}
+		return
+	}
+
+	// 否则提取所有可转换为 float64 的值
+	for k, v := range params {
+		if fv, ok := conv.ToFloat64(v); ok {
+			features[prefix+k] = fv
+		}
+	}
 }
 
 func (e *DefaultFeatureExtractor) applyPrefix(features map[string]float64) map[string]float64 {

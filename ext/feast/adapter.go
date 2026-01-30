@@ -149,69 +149,6 @@ func (a *FeatureServiceAdapter) BatchGetItemFeatures(ctx context.Context, itemID
 	return result, nil
 }
 
-// GetRealtimeFeatures 获取实时特征
-func (a *FeatureServiceAdapter) GetRealtimeFeatures(ctx context.Context, userID, itemID string) (map[string]float64, error) {
-	if len(a.featureMapping.RealtimeFeatures) == 0 {
-		return make(map[string]float64), nil
-	}
-	entityRows := []map[string]interface{}{{
-		a.featureMapping.UserEntityKey: userID,
-		a.featureMapping.ItemEntityKey: itemID,
-	}}
-	req := &GetOnlineFeaturesRequest{Features: a.featureMapping.RealtimeFeatures, EntityRows: entityRows}
-	resp, err := a.client.GetOnlineFeatures(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("feast get realtime features failed: %w", err)
-	}
-	if len(resp.FeatureVectors) == 0 {
-		return make(map[string]float64), nil
-	}
-	features := make(map[string]float64)
-	for k, v := range resp.FeatureVectors[0].Values {
-		if fv, ok := valueToFloat64(v); ok {
-			features[k] = fv
-		}
-	}
-	return features, nil
-}
-
-// BatchGetRealtimeFeatures 批量获取实时特征
-func (a *FeatureServiceAdapter) BatchGetRealtimeFeatures(ctx context.Context, pairs []core.FeatureUserItemPair) (map[core.FeatureUserItemPair]map[string]float64, error) {
-	if len(a.featureMapping.RealtimeFeatures) == 0 {
-		result := make(map[core.FeatureUserItemPair]map[string]float64)
-		for _, pair := range pairs {
-			result[pair] = make(map[string]float64)
-		}
-		return result, nil
-	}
-	entityRows := make([]map[string]interface{}, len(pairs))
-	for i, pair := range pairs {
-		entityRows[i] = map[string]interface{}{
-			a.featureMapping.UserEntityKey: pair.UserID,
-			a.featureMapping.ItemEntityKey: pair.ItemID,
-		}
-	}
-	req := &GetOnlineFeaturesRequest{Features: a.featureMapping.RealtimeFeatures, EntityRows: entityRows}
-	resp, err := a.client.GetOnlineFeatures(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("feast batch get realtime features failed: %w", err)
-	}
-	result := make(map[core.FeatureUserItemPair]map[string]float64)
-	for i, fv := range resp.FeatureVectors {
-		if i >= len(pairs) {
-			break
-		}
-		features := make(map[string]float64)
-		for k, v := range fv.Values {
-			if fv, ok := valueToFloat64(v); ok {
-				features[k] = fv
-			}
-		}
-		result[pairs[i]] = features
-	}
-	return result, nil
-}
-
 // Close 关闭特征服务
 func (a *FeatureServiceAdapter) Close(ctx context.Context) error {
 	return a.client.Close()

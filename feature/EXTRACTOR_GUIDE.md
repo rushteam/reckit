@@ -20,14 +20,14 @@ type FeatureExtractor interface {
 从 `RecommendContext` 中提取特征，支持：
 - 从 `UserProfile`（强类型）提取：`age`, `gender`, `interest_<tag>`
 - 从 `UserProfile` (map 形式) 提取：所有可转换为 `float64` 的值
-- 从 `Realtime` 提取：所有可转换为 `float64` 的值（添加 `realtime_` 前缀）
+- 从 `Params` 提取：所有可转换为 `float64` 的值（默认启用，无前缀）
 
 **使用示例**：
 
 ```go
 import "github.com/rushteam/reckit/feature"
 
-// 基础用法（无前缀）
+// 基础用法（默认从 Params 提取，无前缀）
 extractor := feature.NewDefaultFeatureExtractor()
 
 // 带前缀（如 "user_"）
@@ -41,9 +41,19 @@ extractor := feature.NewDefaultFeatureExtractor(
     feature.WithFieldPrefix("user_"),
 )
 
-// 不包含实时特征
+// Params 特征使用自定义前缀
 extractor := feature.NewDefaultFeatureExtractor(
-    feature.WithIncludeRealtime(false),
+    feature.WithParamsPrefix("ctx_"),  // 特征名为 ctx_<key>
+)
+
+// 只提取指定的 Params key
+extractor := feature.NewDefaultFeatureExtractor(
+    feature.WithParamsKeys([]string{"latitude", "longitude", "time_of_day"}),
+)
+
+// 不包含 Params 特征
+extractor := feature.NewDefaultFeatureExtractor(
+    feature.WithIncludeParams(false),
 )
 ```
 
@@ -79,18 +89,19 @@ customExtractor := feature.NewCustomFeatureExtractor(
 // 从 FeatureService 获取基础特征
 baseExtractor := feature.NewDefaultFeatureExtractor(
     feature.WithFeatureService(featureService),
+    feature.WithIncludeParams(false),  // 不从 Params 提取
 )
 
-// 从 Context 获取实时特征
-realtimeExtractor := feature.NewDefaultFeatureExtractor(
-    feature.WithIncludeRealtime(true),
+// 从 Params 获取上下文特征
+paramsExtractor := feature.NewDefaultFeatureExtractor(
+    feature.WithParamsPrefix("ctx_"),
 )
 
 // 组合
 compositeExtractor := feature.NewCompositeFeatureExtractor(
     "composite",
     baseExtractor,
-    realtimeExtractor,
+    paramsExtractor,
 )
 
 // 自定义合并策略（默认：后覆盖前）
@@ -190,7 +201,35 @@ twoTowerRecall := recall.NewTwoTowerRecall(
     recall.WithTwoTowerUserFeatureExtractor(extractor),
 )
 
-// 方式 2：使用自定义抽取器
+// 方式 2：从 Params 读取特征（适用于请求时传入上下文特征）
+extractor := feature.NewDefaultFeatureExtractor(
+    feature.WithParamsKeys([]string{"latitude", "longitude", "time_of_day", "device_type"}),
+)
+twoTowerRecall := recall.NewTwoTowerRecall(
+    nil,  // 不使用 FeatureService
+    userTowerService,
+    vectorService,
+    recall.WithTwoTowerUserFeatureExtractor(extractor),
+)
+
+// 调用时传入 Params
+rctx := &core.RecommendContext{
+    UserID: "user_123",
+    Params: map[string]any{
+        "latitude":    39.9042,
+        "longitude":   116.4074,
+        "time_of_day": 14.5,  // 14:30
+        "device_type": 1.0,   // 1=iOS, 2=Android
+    },
+}
+
+// 方式 3：组合 FeatureService 和 Params
+extractor := feature.NewDefaultFeatureExtractor(
+    feature.WithFeatureService(featureService),  // 基础用户特征
+    feature.WithParamsPrefix("ctx_"),            // Params 特征使用 ctx_ 前缀
+)
+
+// 方式 4：使用自定义抽取器
 customExtractor := feature.NewCustomFeatureExtractor(
     "my_extractor",
     func(ctx context.Context, rctx *core.RecommendContext) (map[string]float64, error) {

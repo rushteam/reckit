@@ -20,9 +20,8 @@ func (f *FeatureServiceFactory) CreateFromStore(
 	opts ...ServiceOption,
 ) core.FeatureService {
 	keyPrefix := KeyPrefix{
-		User:     "user:features:",
-		Item:     "item:features:",
-		Realtime: "realtime:features:",
+		User: "user:features:",
+		Item: "item:features:",
 	}
 
 	provider := NewStoreFeatureProvider(store, keyPrefix)

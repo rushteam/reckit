@@ -45,9 +45,6 @@ func IsFeatureServiceUnavailable(err error) bool {
 // 示例：
 //   var featureService core.FeatureService = NewBaseFeatureService(...)
 
-// UserItemPair 用户-物品对，用于实时特征查询（兼容性类型别名）
-type UserItemPair = core.FeatureUserItemPair
-
 // FeatureProvider 是特征提供者的抽象接口，采用策略模式。
 // 不同的特征源（Redis、HTTP、Memory）实现此接口。
 //
@@ -75,12 +72,6 @@ type FeatureProvider interface {
 
 	// BatchGetItemFeatures 批量获取物品特征
 	BatchGetItemFeatures(ctx context.Context, itemIDs []string) (map[string]map[string]float64, error)
-
-	// GetRealtimeFeatures 获取实时特征
-	GetRealtimeFeatures(ctx context.Context, userID, itemID string) (map[string]float64, error)
-
-	// BatchGetRealtimeFeatures 批量获取实时特征
-	BatchGetRealtimeFeatures(ctx context.Context, pairs []UserItemPair) (map[UserItemPair]map[string]float64, error)
 }
 
 // FeatureMonitor 是特征监控接口，用于监控特征质量、分布、缺失率等。
@@ -149,7 +140,4 @@ type FallbackStrategy interface {
 
 	// GetItemFeatures 获取物品特征（降级方案）
 	GetItemFeatures(ctx context.Context, itemID string, item *core.Item) (map[string]float64, error)
-
-	// GetRealtimeFeatures 获取实时特征（降级方案）
-	GetRealtimeFeatures(ctx context.Context, userID, itemID string, rctx *core.RecommendContext, item *core.Item) (map[string]float64, error)
 }

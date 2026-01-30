@@ -18,9 +18,8 @@ type StoreFeatureProvider struct {
 
 // KeyPrefix 定义特征存储的 key 前缀
 type KeyPrefix struct {
-	User     string // 用户特征前缀，例如 "user:features:"
-	Item     string // 物品特征前缀，例如 "item:features:"
-	Realtime string // 实时特征前缀，例如 "realtime:features:"
+	User string // 用户特征前缀，例如 "user:features:"
+	Item string // 物品特征前缀，例如 "item:features:"
 }
 
 // FeatureSerializer 是特征序列化接口，支持不同的序列化格式（JSON、MsgPack等）
@@ -51,9 +50,6 @@ func NewStoreFeatureProvider(store core.Store, keyPrefix KeyPrefix) *StoreFeatur
 	}
 	if keyPrefix.Item == "" {
 		keyPrefix.Item = "item:features:"
-	}
-	if keyPrefix.Realtime == "" {
-		keyPrefix.Realtime = "realtime:features:"
 	}
 
 	return &StoreFeatureProvider{
@@ -167,49 +163,3 @@ func (p *StoreFeatureProvider) BatchGetItemFeatures(ctx context.Context, itemIDs
 	return result, nil
 }
 
-func (p *StoreFeatureProvider) GetRealtimeFeatures(ctx context.Context, userID, itemID string) (map[string]float64, error) {
-	key := fmt.Sprintf("%s%s:%s", p.keyPrefix.Realtime, userID, itemID)
-	data, err := p.store.Get(ctx, key)
-	if err != nil {
-		if core.IsStoreNotFound(err) {
-			return nil, ErrFeatureNotFound
-		}
-		return nil, err
-	}
-
-	return p.serializer.Deserialize(data)
-}
-
-func (p *StoreFeatureProvider) BatchGetRealtimeFeatures(ctx context.Context, pairs []UserItemPair) (map[UserItemPair]map[string]float64, error) {
-	if len(pairs) == 0 {
-		return make(map[UserItemPair]map[string]float64), nil
-	}
-
-	// 构建 keys
-	keys := make([]string, len(pairs))
-	pairToKey := make(map[string]UserItemPair, len(pairs))
-	for i, pair := range pairs {
-		key := fmt.Sprintf("%s%s:%s", p.keyPrefix.Realtime, pair.UserID, pair.ItemID)
-		keys[i] = key
-		pairToKey[key] = pair
-	}
-
-	// 批量获取
-	dataMap, err := p.store.BatchGet(ctx, keys)
-	if err != nil {
-		return nil, err
-	}
-
-	// 反序列化
-	result := make(map[UserItemPair]map[string]float64)
-	for key, data := range dataMap {
-		pair := pairToKey[key]
-		features, err := p.serializer.Deserialize(data)
-		if err != nil {
-			continue // 跳过反序列化失败的特征
-		}
-		result[pair] = features
-	}
-
-	return result, nil
-}

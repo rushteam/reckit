@@ -12,7 +12,9 @@ import "context"
 // 使用场景：
 //   - 获取用户特征：用户画像、历史行为等
 //   - 获取物品特征：物品属性、统计特征等
-//   - 获取实时特征：用户-物品交互特征、上下文特征等
+//
+// 注意：请求级上下文特征（如 latitude、time_of_day 等）应通过 RecommendContext.Params 传递，
+// 而不是通过 FeatureService 获取。
 //
 // 实现：
 //   - feature.BaseFeatureService 实现此接口
@@ -33,18 +35,6 @@ type FeatureService interface {
 	// BatchGetItemFeatures 批量获取物品特征（推荐使用，减少网络往返）
 	BatchGetItemFeatures(ctx context.Context, itemIDs []string) (map[string]map[string]float64, error)
 
-	// GetRealtimeFeatures 获取实时特征（用户-物品对）
-	GetRealtimeFeatures(ctx context.Context, userID, itemID string) (map[string]float64, error)
-
-	// BatchGetRealtimeFeatures 批量获取实时特征
-	BatchGetRealtimeFeatures(ctx context.Context, pairs []FeatureUserItemPair) (map[FeatureUserItemPair]map[string]float64, error)
-
 	// Close 关闭特征服务，释放资源
 	Close(ctx context.Context) error
-}
-
-// FeatureUserItemPair 用户-物品对，用于实时特征查询
-type FeatureUserItemPair struct {
-	UserID string
-	ItemID string
 }

@@ -279,11 +279,11 @@ func (n *EnrichNode) defaultUserFeatureExtractor(rctx *core.RecommendContext) ma
 			}
 		}
 
-		// 从 Realtime 提取实时特征
-		if rctx.Realtime != nil {
-			for k, v := range rctx.Realtime {
+		// 从 Params 提取上下文特征
+		if rctx.Params != nil {
+			for k, v := range rctx.Params {
 				if fv, ok := n.toFloat64(v); ok {
-					features["realtime_"+k] = fv
+					features[k] = fv
 				}
 			}
 		}

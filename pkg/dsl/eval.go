@@ -137,12 +137,11 @@ func (e *Eval) buildInput() map[string]interface{} {
 
 	// 构建 rctx map
 	rctx := map[string]interface{}{
-		"user_id":    e.rctx.UserID,
-		"device_id":  e.rctx.DeviceID,
-		"scene":      e.rctx.Scene,
+		"user_id":      e.rctx.UserID,
+		"device_id":    e.rctx.DeviceID,
+		"scene":        e.rctx.Scene,
 		"user_profile": e.rctx.UserProfile,
-		"realtime":   e.rctx.Realtime,
-		"params":     e.rctx.Params,
+		"params":       e.rctx.Params,
 	}
 
 	// 为了兼容旧的语法，提供 label 作为顶层访问
