@@ -189,9 +189,6 @@ func (r *RPCRecall) buildDefaultRequest(rctx *core.RecommendContext, topK int) m
 		if rctx.UserProfile != nil {
 			req["user_profile"] = rctx.UserProfile
 		}
-		if rctx.Realtime != nil {
-			req["realtime"] = rctx.Realtime
-		}
 		if rctx.Params != nil {
 			req["params"] = rctx.Params
 		}
