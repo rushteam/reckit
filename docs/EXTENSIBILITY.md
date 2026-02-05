@@ -198,6 +198,6 @@ fanout := &recall.Fanout{
 
 ## 相关文档
 
-- [接口与实现完整分析](./INTERFACES_AND_IMPLEMENTATIONS.md) - 所有接口的详细定义
-- [架构设计文档](./ARCHITECTURE.md) - 架构设计说明
-- [Pipeline 功能特性](./PIPELINE_FEATURES.md) - Pipeline 功能介绍
+- [架构设计](./ARCHITECTURE.md) - 架构设计说明
+- [Feature 模块](./FEATURE_MODULE.md) - 特征模块职责
+- [召回算法](./RECALL_ALGORITHMS.md) - 召回算法使用

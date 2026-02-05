@@ -716,10 +716,10 @@ twoTowerModel.SimilarityType = "cosine" // 余弦相似度
 
 ## 七、相关文档
 
-- [模型选型指南](./MODEL_SELECTION.md) - 双塔模型选型说明
-- [排序模型文档](./RANK_MODELS.md) - 双塔模型使用示例
-- [特征处理文档](./FEATURE_PROCESSING.md) - 特征工程指南
-- [特征一致性文档](./FEATURE_CONSISTENCY.md) - 训练与在线一致性
+- [Feature 模块](./FEATURE_MODULE.md) - Extractor/Service/EnrichNode 职责
+- [排序模型](./RANK_MODELS.md) - 双塔模型使用示例
+- [特征处理](./FEATURE_PROCESSING.md) - 特征工程指南
+- [召回算法](./RECALL_ALGORITHMS.md) - 双塔召回使用
 
 ## 八、示例代码
 

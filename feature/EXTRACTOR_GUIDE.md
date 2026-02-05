@@ -1,275 +1,51 @@
 # 特征抽取器使用指南
 
-## 概述
+> **注意**：本文档已整合到 [docs/FEATURE_MODULE.md](../docs/FEATURE_MODULE.md)。
+> 
+> 请参考 [Feature 模块指南](../docs/FEATURE_MODULE.md) 了解 Extractor、Service、EnrichNode 的完整职责和使用方法。
 
-作为推荐脚手架，不同模型可能需要不同的特征抽取逻辑。Reckit 提供了统一的 `FeatureExtractor` 接口，支持灵活自定义特征抽取策略。
+## 快速参考
 
-## 核心接口
+### DefaultFeatureExtractor
 
-```go
-type FeatureExtractor interface {
-    Extract(ctx context.Context, rctx *core.RecommendContext) (map[string]float64, error)
-    Name() string
-}
-```
-
-## 内置实现
-
-### 1. DefaultFeatureExtractor（默认抽取器）
-
-从 `RecommendContext` 中提取特征，支持：
-- 从 `UserProfile`（强类型）提取：`age`, `gender`, `interest_<tag>`
-- 从 `UserProfile` (map 形式) 提取：所有可转换为 `float64` 的值
-- 从 `Params` 提取：所有可转换为 `float64` 的值（默认启用，无前缀）
-
-**使用示例**：
+从 `RecommendContext` 中提取特征。
 
 ```go
-import "github.com/rushteam/reckit/feature"
-
-// 基础用法（默认从 Params 提取，无前缀）
+// 默认用法（从 Params 提取，无前缀）
 extractor := feature.NewDefaultFeatureExtractor()
 
-// 带前缀（如 "user_"）
+// 自定义前缀
 extractor := feature.NewDefaultFeatureExtractor(
-    feature.WithFieldPrefix("user_"),
+    feature.WithParamsPrefix("ctx_"),
 )
 
-// 优先使用 FeatureService
-extractor := feature.NewDefaultFeatureExtractor(
-    feature.WithFeatureService(featureService),
-    feature.WithFieldPrefix("user_"),
-)
-
-// Params 特征使用自定义前缀
-extractor := feature.NewDefaultFeatureExtractor(
-    feature.WithParamsPrefix("ctx_"),  // 特征名为 ctx_<key>
-)
-
-// 只提取指定的 Params key
+// 只提取指定的 key
 extractor := feature.NewDefaultFeatureExtractor(
     feature.WithParamsKeys([]string{"latitude", "longitude", "time_of_day"}),
 )
 
-// 不包含 Params 特征
-extractor := feature.NewDefaultFeatureExtractor(
-    feature.WithIncludeParams(false),
-)
-```
-
-### 2. CustomFeatureExtractor（自定义抽取器）
-
-完全自定义抽取逻辑：
-
-```go
-customExtractor := feature.NewCustomFeatureExtractor(
-    "my_custom",
-    func(ctx context.Context, rctx *core.RecommendContext) (map[string]float64, error) {
-        features := make(map[string]float64)
-        // 自定义逻辑：从多个源组合特征
-        if rctx.User != nil {
-            features["age"] = float64(rctx.User.Age)
-            // ... 其他逻辑
-        }
-        // 从外部服务获取特征
-        externalFeatures, _ := externalService.GetFeatures(ctx, rctx.UserID)
-        for k, v := range externalFeatures {
-            features["external_"+k] = v
-        }
-        return features, nil
-    },
-)
-```
-
-### 3. CompositeFeatureExtractor（组合抽取器）
-
-从多个抽取器组合特征：
-
-```go
-// 从 FeatureService 获取基础特征
-baseExtractor := feature.NewDefaultFeatureExtractor(
-    feature.WithFeatureService(featureService),
-    feature.WithIncludeParams(false),  // 不从 Params 提取
-)
-
-// 从 Params 获取上下文特征
-paramsExtractor := feature.NewDefaultFeatureExtractor(
-    feature.WithParamsPrefix("ctx_"),
-)
-
-// 组合
-compositeExtractor := feature.NewCompositeFeatureExtractor(
-    "composite",
-    baseExtractor,
-    paramsExtractor,
-)
-
-// 自定义合并策略（默认：后覆盖前）
-compositeExtractor.WithMergeFunc(func(featuresList []map[string]float64) map[string]float64 {
-    result := make(map[string]float64)
-    for _, features := range featuresList {
-        for k, v := range features {
-            // 自定义合并逻辑：加权平均
-            if old, ok := result[k]; ok {
-                result[k] = (old + v) / 2.0
-            } else {
-                result[k] = v
-            }
-        }
-    }
-    return result
-})
-```
-
-### 4. QueryFeatureExtractor（Query 特征抽取器）
-
-用于 DSSM 等 Query-Doc 匹配场景：
-
-```go
-// 基础用法：从 Params["query_features"] 获取
-queryExtractor := feature.NewQueryFeatureExtractor()
-
-// 自定义 key
-queryExtractor := feature.NewQueryFeatureExtractor(
-    feature.WithQueryFeaturesKey("my_query_features"),
-)
-
-// 从 query 文本构建特征
-queryExtractor := feature.NewQueryFeatureExtractor(
-    feature.WithQueryTextKey("query"),
-    feature.WithTextFeatureBuilder(func(queryText string) map[string]float64 {
-        // 文本特征化：词频、TF-IDF 等
-        features := make(map[string]float64)
-        words := strings.Fields(queryText)
-        for _, word := range words {
-            features["word_"+word] = 1.0
-        }
-        return features
-    }),
-)
-```
-
-### 5. HistoryExtractor（历史行为抽取器）
-
-用于 YouTube DNN 等需要历史序列的场景：
-
-```go
-// 基础用法：从 User.RecentClicks 获取
-historyExtractor := feature.NewHistoryExtractor()
-
-// 自定义 key 和最大长度
-historyExtractor := feature.NewHistoryExtractor(
-    feature.WithHistoryKey("recent_views"),
-    feature.WithMaxLength(100),
-)
-
-// 完全自定义
-historyExtractor := feature.NewHistoryExtractor(
-    feature.WithCustomHistoryExtractor(func(rctx *core.RecommendContext) []string {
-        // 自定义逻辑：从多个源组合历史
-        var history []string
-        if rctx.User != nil {
-            history = append(history, rctx.User.RecentClicks...)
-        }
-        if rctx.Params != nil {
-            if views, ok := rctx.Params["recent_views"].([]string); ok {
-                history = append(history, views...)
-            }
-        }
-        return history
-    }),
-)
-```
-
-## 在召回源中使用
-
-### TwoTowerRecall
-
-```go
-import "github.com/rushteam/reckit/recall"
-import "github.com/rushteam/reckit/feature"
-
-// 方式 1：使用默认抽取器（带前缀）
+// 使用 FeatureService
 extractor := feature.NewDefaultFeatureExtractor(
     feature.WithFeatureService(featureService),
-    feature.WithFieldPrefix("user_"),
 )
+```
+
+### 在双塔召回中使用
+
+```go
+extractor := feature.NewDefaultFeatureExtractor(
+    feature.WithParamsKeys([]string{"latitude", "longitude"}),
+)
+
 twoTowerRecall := recall.NewTwoTowerRecall(
-    featureService,
+    nil,
     userTowerService,
     vectorService,
     recall.WithTwoTowerUserFeatureExtractor(extractor),
 )
-
-// 方式 2：从 Params 读取特征（适用于请求时传入上下文特征）
-extractor := feature.NewDefaultFeatureExtractor(
-    feature.WithParamsKeys([]string{"latitude", "longitude", "time_of_day", "device_type"}),
-)
-twoTowerRecall := recall.NewTwoTowerRecall(
-    nil,  // 不使用 FeatureService
-    userTowerService,
-    vectorService,
-    recall.WithTwoTowerUserFeatureExtractor(extractor),
-)
-
-// 调用时传入 Params
-rctx := &core.RecommendContext{
-    UserID: "user_123",
-    Params: map[string]any{
-        "latitude":    39.9042,
-        "longitude":   116.4074,
-        "time_of_day": 14.5,  // 14:30
-        "device_type": 1.0,   // 1=iOS, 2=Android
-    },
-}
-
-// 方式 3：组合 FeatureService 和 Params
-extractor := feature.NewDefaultFeatureExtractor(
-    feature.WithFeatureService(featureService),  // 基础用户特征
-    feature.WithParamsPrefix("ctx_"),            // Params 特征使用 ctx_ 前缀
-)
-
-// 方式 4：使用自定义抽取器
-customExtractor := feature.NewCustomFeatureExtractor(
-    "my_extractor",
-    func(ctx context.Context, rctx *core.RecommendContext) (map[string]float64, error) {
-        // 自定义逻辑
-        return features, nil
-    },
-)
-twoTowerRecall := recall.NewTwoTowerRecall(
-    featureService,
-    userTowerService,
-    vectorService,
-    recall.WithTwoTowerUserFeatureExtractor(customExtractor),
-)
 ```
 
-## 特征抽取器适配
+## 详细文档
 
-`WithTwoTowerUserFeatureExtractor` 等函数支持传入 `FeatureExtractor` 接口或符合签名的函数。
-
-```go
-// 推荐方式
-extractor := feature.NewDefaultFeatureExtractor(...)
-recall.WithTwoTowerUserFeatureExtractor(extractor)
-
-// 函数方式
-recall.WithTwoTowerUserFeatureExtractor(func(ctx context.Context, rctx *core.RecommendContext) (map[string]float64, error) {
-    // ...
-    return features, nil
-})
-```
-
-## 最佳实践
-
-1. **优先使用 FeatureService**：如果已有 `FeatureService`，优先使用 `DefaultFeatureExtractor` 配合 `FeatureService`。
-2. **字段命名一致性**：使用 `WithFieldPrefix` 保持字段命名与训练时一致（如 `user_age`, `item_ctr`）。
-3. **组合多个源**：使用 `CompositeFeatureExtractor` 从多个源组合特征。
-4. **自定义逻辑**：对于复杂场景，使用 `CustomFeatureExtractor` 完全自定义。
-
-## 相关文档
-
-- [特征服务文档](./README.md)
-- [双塔召回指南](../docs/TWO_TOWER_GUIDE.md)
-- [架构设计文档](../docs/ARCHITECTURE.md)
+- [Feature 模块指南](../docs/FEATURE_MODULE.md) - 完整的模块职责和使用说明
+- [特征处理](../docs/FEATURE_PROCESSING.md) - 特征归一化、编码等

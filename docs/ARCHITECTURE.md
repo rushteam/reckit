@@ -1,61 +1,27 @@
-# Reckit 架构设计文档
+# Reckit 架构设计
 
-## 设计原则
+## 概述
 
-### 1. 通用框架，高度解耦
-- **框架层**：使用 `string` 作为通用的 ID 类型，支持 UUID、数字 ID、以及任何字符串格式。
-- **不可修改**：框架代码保持通用，具体项目通过实现接口或注入依赖来扩展逻辑。
+Reckit 是一个工业级推荐系统工具库，采用 **Pipeline + Node** 架构，通过接口抽象实现高度可扩展性。
 
-### 2. 设计模式充分运用
+**设计目标**：
+- **Golang**：负责高并发推荐服务、低延迟在线推理、统计计算
+- **PyTorch/TensorFlow**：负责深度模型训练、复杂梯度更新
 
-#### 策略模式（Strategy Pattern）
-- `FeatureProvider`：不同的特征提供策略（Redis、Feast、Memory）。
-- `RankModel`：不同的排序模型策略（LR、DNN、Wide&Deep）。
-- `recall.Source`：不同的召回算法策略。
+## 核心架构
 
-#### 适配器模式（Adapter Pattern）
-- `FeatureServiceAdapter`：适配 Feast 到 FeatureService。
-- `VectorStoreAdapter`：适配 ANNService 到 VectorStore。
+```
+Request → Context → Recall → Filter → Rank → ReRank → Response
+                      ↓        ↓       ↓       ↓
+                   Source   Filter   Model   Diversity
+```
 
-#### 工厂模式（Factory Pattern）
-- `FeatureServiceFactory`：创建不同类型的特征服务。
-- `MLServiceFactory`：创建不同类型的 ML 服务。
-
-#### 装饰器模式（Decorator Pattern）
-- `FeatureCache`：为特征服务添加缓存。
-- `FeatureMonitor`：为特征服务添加监控。
-- `FallbackStrategy`：为特征服务添加降级。
-
-### 3. 高内聚低耦合（DDD 原则）
-
-#### 领域层（Domain Layer）
-- `core`：核心领域模型（RecommendContext, UserProfile, Item）。
-- `pipeline`：推荐流水线抽象。
-- `feature`：特征服务领域抽象。
-- `recall`：召回领域抽象。
-- `rank`：排序领域抽象。
-
-#### 基础设施层（Infrastructure Layer）
-- `store`：KV 存储实现。
-- `vector`：向量库集成（Milvus）。
-- `service`：机器学习服务集成（TF Serving）。
-- `feast`：Feature Store 集成。
-
-## ID 设计
-
-所有实体 ID（用户 ID、物品 ID）均统一使用 `string` 类型。
-
-**设计理由**：
-1. **通用性**：无需修改代码即可支持所有 ID 格式。
-2. **简单性**：直接使用原生类型，降低学习和使用成本。
-3. **互操作性**：JSON 序列化、存储索引、API 调用均有良好支持。
-
-## 架构层次
+### 架构层次
 
 ```
 ┌─────────────────────────────────────────┐
 │         应用层（Application）            │
-│  - 具体的业务逻辑 & 推荐流水线配置         │
+│  - 业务逻辑 & 推荐流水线配置              │
 └─────────────────┬───────────────────────┘
                   │
                   ▼
@@ -63,9 +29,9 @@
 │         领域层（Domain）                 │
 │  - core: Context, UserProfile, Item     │
 │  - pipeline: Pipeline, Node            │
-│  - feature: FeatureService              │
 │  - recall: Source                       │
 │  - rank: RankModel                      │
+│  - feature: FeatureService              │
 └─────────────────┬───────────────────────┘
                   │
                   ▼
@@ -73,33 +39,178 @@
 │      基础设施层（Infrastructure）        │
 │  - store: Redis, Memory                │
 │  - vector: Milvus                       │
-│  - service: TF Serving, ANN Service    │
-│  - feast: Feast Client                  │
+│  - service: TF Serving, TorchServe     │
+│  - ext/feast: Feast Client             │
 └─────────────────────────────────────────┘
 ```
 
-## 扩展性示例
+## 核心概念
 
-### 自定义召回算法
+### 1. RecommendContext
 
-具体项目只需实现 `recall.Source` 接口：
+推荐请求的上下文，贯穿整个 Pipeline。
 
 ```go
-type MyRecall struct {}
-func (r *MyRecall) Name() string { return "my_recall" }
-func (r *MyRecall) Recall(ctx context.Context, rctx *core.RecommendContext) ([]*core.Item, error) {
-    // 业务逻辑
+type RecommendContext struct {
+    UserID      string              // 用户 ID
+    DeviceID    string              // 设备 ID
+    Scene       string              // 场景（feed/search/detail）
+    User        *UserProfile        // 强类型用户画像
+    UserProfile map[string]any      // Map 形式用户画像
+    Labels      map[string]Label    // 用户级标签
+    Params      map[string]any      // 请求参数（latitude, time_of_day 等）
 }
 ```
 
-### 自定义排序特征注入
+### 2. Item
 
-通过 `EnrichNode` 的选项注入自定义逻辑：
+推荐物品，携带特征和标签。
 
 ```go
-node := &feature.EnrichNode{
-    UserFeatureExtractor: func(rctx *core.RecommendContext) map[string]float64 {
-        // 自定义提取逻辑
+type Item struct {
+    ID       string                 // 物品 ID
+    Score    float64                // 排序分数
+    Features map[string]float64     // 特征（供排序模型使用）
+    Meta     map[string]any         // 元数据
+    Labels   map[string]Label       // 标签（召回来源、模型名称等）
+}
+```
+
+### 3. Pipeline & Node
+
+Pipeline 由多个 Node 组成，Node 是处理单元。
+
+```go
+type Node interface {
+    Name() string
+    Kind() Kind  // recall / filter / rank / rerank
+    Process(ctx context.Context, rctx *RecommendContext, items []*Item) ([]*Item, error)
+}
+```
+
+### 4. UserProfile
+
+用户画像，包含静态属性、兴趣、行为等。
+
+```go
+type UserProfile struct {
+    UserID        string
+    Gender, Age   string, int
+    Interests     map[string]float64   // 长期兴趣
+    RecentClicks  []string             // 短期行为
+    Buckets       map[string]string    // A/B 实验桶
+    Extras        map[string]any       // 扩展属性
+}
+```
+
+## 设计原则
+
+### 1. 接口优先
+
+所有策略都通过接口实现，不使用字符串匹配。用户可以通过实现接口扩展功能。
+
+```go
+// 召回源接口
+type Source interface {
+    Name() string
+    Recall(ctx context.Context, rctx *RecommendContext) ([]*Item, error)
+}
+
+// 排序模型接口
+type RankModel interface {
+    Name() string
+    Predict(features map[string]float64) (float64, error)
+}
+
+// 过滤器接口
+type Filter interface {
+    Name() string
+    ShouldFilter(ctx context.Context, rctx *RecommendContext, item *Item) (bool, error)
+}
+```
+
+### 2. 策略模式
+
+不同场景使用不同策略，通过接口注入。
+
+| 策略接口 | 说明 | 内置实现 |
+|---------|------|---------|
+| `MergeStrategy` | 召回合并 | First, Union, Priority |
+| `ErrorHandler` | 错误处理 | Ignore, Retry, Fallback |
+| `SortStrategy` | 排序策略 | ScoreDesc, ScoreAsc, MultiField |
+| `SimilarityCalculator` | 相似度计算 | Cosine, Pearson |
+
+### 3. 通用 ID 类型
+
+所有 ID 使用 `string` 类型，支持 UUID、数字 ID、任意字符串。
+
+### 4. 无外部依赖
+
+核心包无外部依赖，具体实现位于 `ext/` 扩展包：
+- `ext/store/redis` - Redis 存储
+- `ext/feast` - Feast 特征服务
+- `ext/vector/milvus` - Milvus 向量库
+
+## Pipeline 生命周期
+
+### 常驻部分（服务启动时初始化）
+
+- Pipeline 实例
+- Store 连接
+- FeatureService
+- MLService 客户端
+- 配置参数（TopK、Timeout 等）
+
+### 请求部分（每次请求创建）
+
+- RecommendContext
+- UserProfile（从存储加载）
+- Items 列表
+
+```go
+// 初始化（服务启动时）
+pipeline := &pipeline.Pipeline{
+    Nodes: []pipeline.Node{
+        &recall.Fanout{Sources: sources},
+        &filter.FilterNode{Filters: filters},
+        &feature.EnrichNode{FeatureService: featureService},
+        &rank.DNNNode{Model: dnnModel},
     },
 }
+
+// 请求处理（每次请求）
+func HandleRequest(userID string) ([]*core.Item, error) {
+    rctx := &core.RecommendContext{
+        UserID: userID,
+        Params: map[string]any{"latitude": 39.9, "time_of_day": 14.5},
+    }
+    return pipeline.Run(ctx, rctx, nil)
+}
 ```
+
+## 目录结构
+
+```
+github.com/rushteam/reckit/
+├── core/           # 核心数据结构（Item, Context, UserProfile）
+├── pipeline/       # Pipeline 和 Node 接口
+├── recall/         # 召回模块（Source, Fanout, CF, ANN）
+├── filter/         # 过滤模块（Blacklist, Exposed）
+├── rank/           # 排序模块（LR, DNN, DIN, RPC）
+├── rerank/         # 重排模块（Diversity, TopN）
+├── model/          # 排序模型抽象
+├── feature/        # 特征服务
+├── service/        # ML 服务（TF Serving, TorchServe）
+├── store/          # 存储抽象（Memory）
+├── config/         # Pipeline 配置工厂
+├── pkg/            # 工具包（conv, dsl, utils）
+├── ext/            # 扩展包（Redis, Feast, Milvus）
+└── python/         # Python 训练和服务
+```
+
+## 相关文档
+
+- [扩展指南](./EXTENSIBILITY.md) - 如何扩展自定义功能
+- [Feature 模块](./FEATURE_MODULE.md) - 特征相关模块职责
+- [召回算法](./RECALL_ALGORITHMS.md) - 所有召回算法
+- [排序模型](./RANK_MODELS.md) - 所有排序模型
