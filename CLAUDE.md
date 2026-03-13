@@ -289,8 +289,8 @@ github.com/rushteam/reckit/
 ### 召回模块
 
 - `recall/source.go` - Source 接口
-- `recall/fanout.go` - 多路并发召回和去重合并策略（First/Union/Priority）
-- `recall/merge_strategy.go` - 混排合并策略（WeightedScore/Quota/Ratio/RoundRobin/Waterfall）
+- `recall/fanout.go` - 多路并发召回和去重合并策略（First/Union/Priority），Fanout 同时实现 Source 接口支持嵌套
+- `recall/merge_strategy.go` - 混排合并策略（WeightedScore/Quota/Ratio/RoundRobin/Waterfall）和组合策略（Chain）
 - `recall/collaborative_filtering.go` - U2I/I2I 协同过滤
 - `recall/ann.go` - Embedding ANN 召回
 - `recall/content.go` - 内容推荐
@@ -426,7 +426,91 @@ twoTowerRecall := recall.NewTwoTowerRecall(
 
 **详细文档**：见 `feature/EXTRACTOR_GUIDE.md`
 
-### 4. 自定义策略
+### 4. 使用内置合并策略
+
+```go
+// 加权分数：按源权重调整分数后排序
+fanout := &recall.Fanout{
+    Sources: sources, Dedup: true,
+    MergeStrategy: &recall.WeightedScoreMergeStrategy{
+        SourceWeights: map[string]float64{"recall.hot": 2.0, "recall.cf": 1.0, "recall.ann": 1.5},
+        TopN: 100,
+    },
+}
+
+// 固定配额：每源取固定数量
+fanout.MergeStrategy = &recall.QuotaMergeStrategy{
+    SourceQuotas: map[string]int{"recall.hot": 10, "recall.cf": 20, "recall.ann": 15},
+}
+
+// 比例配比：按比例分配总量
+fanout.MergeStrategy = &recall.RatioMergeStrategy{
+    SourceRatios: map[string]float64{"recall.hot": 0.2, "recall.cf": 0.3, "recall.ann": 0.5},
+    TotalLimit:   100,
+}
+
+// 轮询交叉：各源轮流取（适合信息流多样性）
+fanout.MergeStrategy = &recall.RoundRobinMergeStrategy{
+    SourceOrder: []string{"recall.cf", "recall.ann", "recall.hot"},
+    TopN: 50,
+}
+
+// 瀑布级联：高优先级源优先填满，不足时低优先级源兜底
+fanout.MergeStrategy = &recall.WaterfallMergeStrategy{
+    SourcePriority: []string{"recall.cf", "recall.ann", "recall.hot"},
+    TotalLimit:     100,
+    SourceLimits:   map[string]int{"recall.hot": 20}, // 热门最多 20 条
+}
+
+// 组合策略：先加权调分，再按配额截取
+fanout.MergeStrategy = &recall.ChainMergeStrategy{
+    Strategies: []recall.MergeStrategy{
+        &recall.WeightedScoreMergeStrategy{
+            SourceWeights: map[string]float64{"recall.hot": 2.0, "recall.cf": 1.0},
+        },
+        &recall.QuotaMergeStrategy{
+            SourceQuotas: map[string]int{"recall.hot": 10, "recall.cf": 30},
+        },
+    },
+}
+```
+
+### 5. 嵌套 Fanout（树形召回拓扑）
+
+Fanout 同时实现 Node 和 Source 接口，可嵌套在另一个 Fanout 中作为子召回源。
+通过 NodeName 区分不同层级（影响 recall_source label）。
+
+```go
+topFanout := &recall.Fanout{
+    NodeName: "recall.top",
+    Sources: []recall.Source{
+        &recall.Fanout{
+            NodeName: "recall.personalized",
+            Sources:  []recall.Source{cfRecall, annRecall},
+            Dedup:    true,
+            MergeStrategy: &recall.RatioMergeStrategy{
+                SourceRatios: map[string]float64{"recall.cf": 0.4, "recall.ann": 0.6},
+                TotalLimit:   60,
+            },
+        },
+        &recall.Fanout{
+            NodeName: "recall.non_personalized",
+            Sources:  []recall.Source{hotRecall, trendingRecall},
+            Dedup:    true,
+            MergeStrategy: &recall.FirstMergeStrategy{},
+        },
+    },
+    Dedup: true,
+    MergeStrategy: &recall.QuotaMergeStrategy{
+        SourceQuotas: map[string]int{
+            "recall.personalized":     60,
+            "recall.non_personalized": 30,
+        },
+    },
+}
+```
+
+### 6. 自定义策略
 
 ```go
 // 自定义合并策略
@@ -441,7 +525,7 @@ fanout := &recall.Fanout{
 }
 ```
 
-### 5. 动态注册 Node
+### 7. 动态注册 Node
 
 ```go
 factory := pipeline.NewNodeFactory()
