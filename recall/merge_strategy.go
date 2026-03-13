@@ -1,0 +1,406 @@
+package recall
+
+import (
+	"sort"
+
+	"github.com/rushteam/reckit/core"
+)
+
+// groupBySource 按 recall_source label 将 items 分组，保持组内原始顺序。
+func groupBySource(items []*core.Item) map[string][]*core.Item {
+	groups := make(map[string][]*core.Item)
+	for _, it := range items {
+		if it == nil {
+			continue
+		}
+		source := ""
+		if lbl, ok := it.Labels["recall_source"]; ok {
+			source = lbl.Value
+		}
+		groups[source] = append(groups[source], it)
+	}
+	return groups
+}
+
+// dedupItems 按 ID 去重，保留第一个出现的 item，合并后续重复 item 的 labels。
+func dedupItems(items []*core.Item) []*core.Item {
+	seen := make(map[string]*core.Item, len(items))
+	out := make([]*core.Item, 0, len(items))
+	for _, it := range items {
+		if it == nil {
+			continue
+		}
+		if old, ok := seen[it.ID]; ok {
+			for k, v := range it.Labels {
+				old.PutLabel(k, v)
+			}
+			continue
+		}
+		seen[it.ID] = it
+		out = append(out, it)
+	}
+	return out
+}
+
+// sortByScoreDesc 按 Score 降序排列（稳定排序，相同分数保持原始顺序）。
+func sortByScoreDesc(items []*core.Item) {
+	sort.SliceStable(items, func(i, j int) bool {
+		return items[i].Score > items[j].Score
+	})
+}
+
+// ChainMergeStrategy 将多个 MergeStrategy 串联执行，前一个策略的输出作为下一个的输入。
+// 适用于需要组合多种策略的场景，例如"先加权调分，再按配额截取"。
+//
+// dedup 仅传递给第一个策略，后续策略收到 dedup=false（避免重复去重）。
+type ChainMergeStrategy struct {
+	Strategies []MergeStrategy
+}
+
+func (s *ChainMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.Item {
+	for i, strategy := range s.Strategies {
+		if i == 0 {
+			items = strategy.Merge(items, dedup)
+		} else {
+			items = strategy.Merge(items, false)
+		}
+	}
+	return items
+}
+
+// WeightedScoreMergeStrategy 按召回源权重调整 item 分数，然后按分数降序排列。
+// 适用于通过权重控制各源贡献度的场景。
+type WeightedScoreMergeStrategy struct {
+	// SourceWeights 各召回源的权重乘数（source name -> weight multiplier）。
+	// 未配置的源使用 DefaultWeight。
+	SourceWeights map[string]float64
+
+	// DefaultWeight 未在 SourceWeights 中配置的源的默认权重，默认 1.0。
+	DefaultWeight float64
+
+	// TopN 合并后取前 N 个，0 表示不限制。
+	TopN int
+}
+
+func (s *WeightedScoreMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.Item {
+	if dedup {
+		items = dedupItems(items)
+	}
+
+	defaultW := s.DefaultWeight
+	if defaultW == 0 {
+		defaultW = 1.0
+	}
+
+	for _, it := range items {
+		w := defaultW
+		if s.SourceWeights != nil {
+			if lbl, ok := it.Labels["recall_source"]; ok {
+				if sw, ok := s.SourceWeights[lbl.Value]; ok {
+					w = sw
+				}
+			}
+		}
+		it.Score *= w
+	}
+
+	sortByScoreDesc(items)
+
+	if s.TopN > 0 && len(items) > s.TopN {
+		items = items[:s.TopN]
+	}
+	return items
+}
+
+// QuotaMergeStrategy 每个召回源取固定数量的 item。
+// 适用于明确知道各源应出多少条的场景（如运营配置）。
+type QuotaMergeStrategy struct {
+	// SourceQuotas 各源配额（source name -> 数量）。
+	SourceQuotas map[string]int
+
+	// DefaultQuota 未在 SourceQuotas 中配置的源的默认配额，0 表示不取。
+	DefaultQuota int
+}
+
+func (s *QuotaMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.Item {
+	if dedup {
+		items = dedupItems(items)
+	}
+
+	groups := groupBySource(items)
+
+	var out []*core.Item
+	for source, group := range groups {
+		quota := s.DefaultQuota
+		if s.SourceQuotas != nil {
+			if q, ok := s.SourceQuotas[source]; ok {
+				quota = q
+			}
+		}
+		if quota <= 0 {
+			continue
+		}
+
+		sortByScoreDesc(group)
+		if len(group) > quota {
+			group = group[:quota]
+		}
+		out = append(out, group...)
+	}
+
+	return out
+}
+
+// RatioMergeStrategy 按比例从各召回源取 item，总量由 TotalLimit 控制。
+// 适用于"hot 占 20%、cf 占 30%、ann 占 50%"的场景。
+type RatioMergeStrategy struct {
+	// SourceRatios 各源比例（source name -> 比例 0.0~1.0）。
+	// 比例之和不必为 1.0，内部会自动归一化。
+	SourceRatios map[string]float64
+
+	// TotalLimit 总数量限制，必须 > 0。
+	TotalLimit int
+}
+
+func (s *RatioMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.Item {
+	if s.TotalLimit <= 0 {
+		return nil
+	}
+	if dedup {
+		items = dedupItems(items)
+	}
+
+	groups := groupBySource(items)
+	for _, group := range groups {
+		sortByScoreDesc(group)
+	}
+
+	// 归一化比例
+	var totalRatio float64
+	for _, r := range s.SourceRatios {
+		if r > 0 {
+			totalRatio += r
+		}
+	}
+	if totalRatio == 0 {
+		totalRatio = 1.0
+	}
+
+	// 按比例分配配额（floor），收集余量
+	type sourceAlloc struct {
+		name     string
+		quota    int
+		fraction float64 // 小数部分，用于分配余量
+	}
+	allocs := make([]sourceAlloc, 0, len(s.SourceRatios))
+	allocated := 0
+	for source, ratio := range s.SourceRatios {
+		if ratio <= 0 {
+			continue
+		}
+		normalized := ratio / totalRatio
+		exact := normalized * float64(s.TotalLimit)
+		quota := int(exact)
+		allocs = append(allocs, sourceAlloc{
+			name:     source,
+			quota:    quota,
+			fraction: exact - float64(quota),
+		})
+		allocated += quota
+	}
+
+	// 余量分配给小数部分最大的源
+	remainder := s.TotalLimit - allocated
+	if remainder > 0 {
+		sort.SliceStable(allocs, func(i, j int) bool {
+			return allocs[i].fraction > allocs[j].fraction
+		})
+		for i := range allocs {
+			if remainder <= 0 {
+				break
+			}
+			allocs[i].quota++
+			remainder--
+		}
+	}
+
+	// 按配额从各源取 item
+	quotaMap := make(map[string]int, len(allocs))
+	for _, a := range allocs {
+		quotaMap[a.name] = a.quota
+	}
+
+	var out []*core.Item
+	totalTaken := 0
+	shortfall := 0
+
+	// 第一轮：按配额取
+	for source, quota := range quotaMap {
+		group := groups[source]
+		take := quota
+		if take > len(group) {
+			shortfall += take - len(group)
+			take = len(group)
+		}
+		out = append(out, group[:take]...)
+		totalTaken += take
+	}
+
+	// 第二轮：余量重分配（源内 item 不足时，从其他有余量的源补充）
+	if shortfall > 0 && totalTaken < s.TotalLimit {
+		need := s.TotalLimit - totalTaken
+		for source, group := range groups {
+			if need <= 0 {
+				break
+			}
+			taken := quotaMap[source]
+			if taken >= len(group) {
+				continue
+			}
+			extra := len(group) - taken
+			if extra > need {
+				extra = need
+			}
+			out = append(out, group[taken:taken+extra]...)
+			need -= extra
+		}
+	}
+
+	return out
+}
+
+// RoundRobinMergeStrategy 从各召回源轮流取 item，实现均匀交叉排列。
+// 适用于信息流等需要内容多样性的场景。
+type RoundRobinMergeStrategy struct {
+	// SourceOrder 轮询顺序（可选），未指定时按源首次出现的顺序。
+	SourceOrder []string
+
+	// TopN 合并后取前 N 个，0 表示不限制。
+	TopN int
+}
+
+func (s *RoundRobinMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.Item {
+	if dedup {
+		items = dedupItems(items)
+	}
+
+	groups := groupBySource(items)
+	for _, group := range groups {
+		sortByScoreDesc(group)
+	}
+
+	// 确定轮询顺序
+	order := s.SourceOrder
+	if len(order) == 0 {
+		seen := make(map[string]bool)
+		for _, it := range items {
+			source := ""
+			if lbl, ok := it.Labels["recall_source"]; ok {
+				source = lbl.Value
+			}
+			if !seen[source] {
+				order = append(order, source)
+				seen[source] = true
+			}
+		}
+	}
+
+	// 各源的取值游标
+	cursors := make(map[string]int, len(order))
+	var out []*core.Item
+
+	for {
+		added := false
+		for _, source := range order {
+			if s.TopN > 0 && len(out) >= s.TopN {
+				return out
+			}
+			group := groups[source]
+			idx := cursors[source]
+			if idx < len(group) {
+				out = append(out, group[idx])
+				cursors[source] = idx + 1
+				added = true
+			}
+		}
+		if !added {
+			break
+		}
+	}
+
+	if s.TopN > 0 && len(out) > s.TopN {
+		out = out[:s.TopN]
+	}
+	return out
+}
+
+// WaterfallMergeStrategy 高优先级源优先填满，不足时由低优先级源补充。
+// 适用于"优先用个性化结果，不够再用热门兜底"的场景。
+type WaterfallMergeStrategy struct {
+	// SourcePriority 源优先级顺序（高 -> 低），不在列表中的源排在最后。
+	SourcePriority []string
+
+	// TotalLimit 总数量限制，必须 > 0。
+	TotalLimit int
+
+	// SourceLimits 每源最大数量（可选），防止单源占满全部配额。
+	// 未配置的源无单独限制，受 TotalLimit 约束。
+	SourceLimits map[string]int
+}
+
+func (s *WaterfallMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.Item {
+	if s.TotalLimit <= 0 {
+		return nil
+	}
+	if dedup {
+		items = dedupItems(items)
+	}
+
+	groups := groupBySource(items)
+	for _, group := range groups {
+		sortByScoreDesc(group)
+	}
+
+	// 构建完整的优先级列表：显式指定的 + 未指定的（按首次出现顺序）
+	prioritySet := make(map[string]bool, len(s.SourcePriority))
+	order := make([]string, 0, len(groups))
+	for _, src := range s.SourcePriority {
+		if _, exists := groups[src]; exists {
+			order = append(order, src)
+			prioritySet[src] = true
+		}
+	}
+	for _, it := range items {
+		source := ""
+		if lbl, ok := it.Labels["recall_source"]; ok {
+			source = lbl.Value
+		}
+		if !prioritySet[source] {
+			order = append(order, source)
+			prioritySet[source] = true
+		}
+	}
+
+	var out []*core.Item
+	for _, source := range order {
+		if len(out) >= s.TotalLimit {
+			break
+		}
+		group := groups[source]
+		remaining := s.TotalLimit - len(out)
+
+		limit := remaining
+		if s.SourceLimits != nil {
+			if sl, ok := s.SourceLimits[source]; ok && sl < limit {
+				limit = sl
+			}
+		}
+		if limit > len(group) {
+			limit = len(group)
+		}
+
+		out = append(out, group[:limit]...)
+	}
+
+	return out
+}

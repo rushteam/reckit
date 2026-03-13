@@ -67,15 +67,93 @@ func BuildFanoutNode(cfg map[string]interface{}) (pipeline.Node, error) {
 	if n := conv.ConfigGetInt64(cfg, "max_concurrent", 0); n > 0 {
 		fanout.MaxConcurrent = int(n)
 	}
+	ms, err := buildMergeStrategy(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("merge_strategy: %w", err)
+	}
+	fanout.MergeStrategy = ms
+	return fanout, nil
+}
+
+func buildMergeStrategy(cfg map[string]interface{}) (recall.MergeStrategy, error) {
 	switch conv.ConfigGet(cfg, "merge_strategy", "") {
 	case "priority":
-		fanout.MergeStrategy = &recall.PriorityMergeStrategy{}
+		return &recall.PriorityMergeStrategy{}, nil
 	case "union":
-		fanout.MergeStrategy = &recall.UnionMergeStrategy{}
+		return &recall.UnionMergeStrategy{}, nil
+	case "weighted":
+		s := &recall.WeightedScoreMergeStrategy{
+			TopN:          int(conv.ConfigGetInt64(cfg, "top_n", 0)),
+			DefaultWeight: conv.ConfigGet(cfg, "default_weight", 1.0),
+		}
+		if sw, ok := cfg["source_weights"].(map[string]interface{}); ok {
+			s.SourceWeights = conv.MapToFloat64(sw)
+		}
+		return s, nil
+	case "quota":
+		s := &recall.QuotaMergeStrategy{
+			DefaultQuota: int(conv.ConfigGetInt64(cfg, "default_quota", 0)),
+		}
+		if sq, ok := cfg["source_quotas"].(map[string]interface{}); ok {
+			s.SourceQuotas = make(map[string]int, len(sq))
+			for k := range sq {
+				s.SourceQuotas[k] = int(conv.ConfigGetInt64(sq, k, 0))
+			}
+		}
+		return s, nil
+	case "ratio":
+		s := &recall.RatioMergeStrategy{
+			TotalLimit: int(conv.ConfigGetInt64(cfg, "total_limit", 0)),
+		}
+		if sr, ok := cfg["source_ratios"].(map[string]interface{}); ok {
+			s.SourceRatios = conv.MapToFloat64(sr)
+		}
+		return s, nil
+	case "round_robin":
+		s := &recall.RoundRobinMergeStrategy{
+			TopN: int(conv.ConfigGetInt64(cfg, "top_n", 0)),
+		}
+		if order, ok := cfg["source_order"].([]interface{}); ok {
+			s.SourceOrder = conv.SliceAnyToString(order)
+		}
+		return s, nil
+	case "waterfall":
+		s := &recall.WaterfallMergeStrategy{
+			TotalLimit: int(conv.ConfigGetInt64(cfg, "total_limit", 0)),
+		}
+		if sp, ok := cfg["source_priority"].([]interface{}); ok {
+			s.SourcePriority = conv.SliceAnyToString(sp)
+		}
+		if sl, ok := cfg["source_limits"].(map[string]interface{}); ok {
+			s.SourceLimits = make(map[string]int, len(sl))
+			for k := range sl {
+				s.SourceLimits[k] = int(conv.ConfigGetInt64(sl, k, 0))
+			}
+		}
+		return s, nil
+	case "chain":
+		steps, ok := cfg["strategies"].([]interface{})
+		if !ok || len(steps) == 0 {
+			return nil, fmt.Errorf("chain merge_strategy requires non-empty 'strategies' list")
+		}
+		chain := &recall.ChainMergeStrategy{
+			Strategies: make([]recall.MergeStrategy, 0, len(steps)),
+		}
+		for i, step := range steps {
+			stepCfg, ok := step.(map[string]interface{})
+			if !ok {
+				return nil, fmt.Errorf("chain strategies[%d]: invalid config", i)
+			}
+			ms, err := buildMergeStrategy(stepCfg)
+			if err != nil {
+				return nil, fmt.Errorf("chain strategies[%d]: %w", i, err)
+			}
+			chain.Strategies = append(chain.Strategies, ms)
+		}
+		return chain, nil
 	default:
-		fanout.MergeStrategy = &recall.FirstMergeStrategy{}
+		return &recall.FirstMergeStrategy{}, nil
 	}
-	return fanout, nil
 }
 
 func BuildHotNode(cfg map[string]interface{}) (pipeline.Node, error) {

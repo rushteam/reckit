@@ -110,11 +110,13 @@ type MLService interface {
 ### 策略接口（可扩展）
 
 ```go
-// 合并策略（recall/fanout.go）
+// 合并策略（recall/fanout.go + recall/merge_strategy.go）
 type MergeStrategy interface {
     Merge(items []*core.Item, dedup bool) []*core.Item
 }
-// 内置实现：FirstMergeStrategy, UnionMergeStrategy, PriorityMergeStrategy
+// 去重策略：FirstMergeStrategy, UnionMergeStrategy, PriorityMergeStrategy
+// 混排策略：WeightedScoreMergeStrategy, QuotaMergeStrategy, RatioMergeStrategy, RoundRobinMergeStrategy, WaterfallMergeStrategy
+// 组合策略：ChainMergeStrategy（串联多个策略，前一个输出作为下一个输入）
 
 // 错误处理策略（recall/fanout.go）
 type ErrorHandler interface {
@@ -287,7 +289,8 @@ github.com/rushteam/reckit/
 ### 召回模块
 
 - `recall/source.go` - Source 接口
-- `recall/fanout.go` - 多路并发召回和合并策略
+- `recall/fanout.go` - 多路并发召回和去重合并策略（First/Union/Priority）
+- `recall/merge_strategy.go` - 混排合并策略（WeightedScore/Quota/Ratio/RoundRobin/Waterfall）
 - `recall/collaborative_filtering.go` - U2I/I2I 协同过滤
 - `recall/ann.go` - Embedding ANN 召回
 - `recall/content.go` - 内容推荐
@@ -514,7 +517,7 @@ func (n *MyRankNode) Process(ctx context.Context, rctx *core.RecommendContext, i
 ## 设计模式
 
 ### 策略模式
-- `MergeStrategy` - 合并策略
+- `MergeStrategy` - 合并策略（去重：First/Union/Priority；混排：WeightedScore/Quota/Ratio/RoundRobin/Waterfall；组合：Chain）
 - `ErrorHandler` - 错误处理策略
 - `SortStrategy` - 排序策略
 - `SimilarityCalculator` - 相似度计算策略
