@@ -157,8 +157,12 @@ func (h *FallbackErrorHandler) HandleError(source Source, err error, rctx *core.
 }
 
 // Fanout 是一个 Recall Node：并发执行多个召回源，并合并结果。
-// 支持超时、限流、优先级合并策略。
+// 同时实现 Source 接口，支持嵌套在另一个 Fanout 中作为子召回源。
 type Fanout struct {
+	// NodeName 自定义名称（可选），用于嵌套时区分不同 Fanout 实例。
+	// 为空时默认 "recall.fanout"。
+	NodeName string
+
 	Sources       []Source
 	Dedup         bool
 	Timeout       time.Duration // 每个召回源的超时时间
@@ -179,8 +183,18 @@ type Fanout struct {
 	SourcePriorities map[string]int
 }
 
-func (n *Fanout) Name() string        { return "recall.fanout" }
+func (n *Fanout) Name() string {
+	if n.NodeName != "" {
+		return n.NodeName
+	}
+	return "recall.fanout"
+}
 func (n *Fanout) Kind() pipeline.Kind { return pipeline.KindRecall }
+
+// Recall 使 Fanout 同时实现 Source 接口，支持嵌套在另一个 Fanout 中作为子召回源。
+func (n *Fanout) Recall(ctx context.Context, rctx *core.RecommendContext) ([]*core.Item, error) {
+	return n.Process(ctx, rctx, nil)
+}
 
 func (n *Fanout) Process(
 	ctx context.Context,

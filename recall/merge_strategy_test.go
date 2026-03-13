@@ -1,6 +1,7 @@
 package recall
 
 import (
+	"context"
 	"testing"
 
 	"github.com/rushteam/reckit/core"
@@ -592,5 +593,105 @@ func TestChainMerge_DedupOnlyFirst(t *testing.T) {
 	out := s.Merge(items, true)
 	if len(out) != 2 {
 		t.Fatalf("dedup should apply in first strategy: want 2, got %d", len(out))
+	}
+}
+
+// --- Fanout nesting (Fanout as Source) ---
+
+func TestFanout_NestedAsSource(t *testing.T) {
+	ctx := context.Background()
+	rctx := &core.RecommendContext{UserID: "u1"}
+
+	personalizedFanout := &Fanout{
+		NodeName: "recall.personalized",
+		Sources: []Source{
+			&Hot{IDs: []string{"p1", "p2", "p3"}},
+		},
+		Dedup:         true,
+		MergeStrategy: &FirstMergeStrategy{},
+	}
+
+	nonPersonalizedFanout := &Fanout{
+		NodeName: "recall.non_personalized",
+		Sources: []Source{
+			&Hot{IDs: []string{"n1", "n2"}},
+		},
+		Dedup:         true,
+		MergeStrategy: &FirstMergeStrategy{},
+	}
+
+	topFanout := &Fanout{
+		NodeName: "recall.top",
+		Sources: []Source{
+			personalizedFanout,
+			nonPersonalizedFanout,
+		},
+		Dedup:         true,
+		MergeStrategy: &FirstMergeStrategy{},
+	}
+
+	items, err := topFanout.Process(ctx, rctx, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(items) != 5 {
+		t.Fatalf("want 5 items, got %d", len(items))
+	}
+
+	if topFanout.Name() != "recall.top" {
+		t.Errorf("top fanout name: want recall.top, got %s", topFanout.Name())
+	}
+	if personalizedFanout.Name() != "recall.personalized" {
+		t.Errorf("personalized fanout name: want recall.personalized, got %s", personalizedFanout.Name())
+	}
+}
+
+func TestFanout_NestedWithDifferentStrategies(t *testing.T) {
+	ctx := context.Background()
+	rctx := &core.RecommendContext{UserID: "u1"}
+
+	cfSource := &Hot{IDs: []string{"c1", "c2", "c3", "c4", "c5"}}
+	annSource := &Hot{IDs: []string{"a1", "a2", "a3"}}
+	hotSource := &Hot{IDs: []string{"h1", "h2", "h3", "h4"}}
+
+	personalizedFanout := &Fanout{
+		NodeName: "recall.personalized",
+		Sources:  []Source{cfSource, annSource},
+		Dedup:    true,
+		MergeStrategy: &WaterfallMergeStrategy{
+			SourcePriority: []string{"recall.hot", "recall.hot"},
+			TotalLimit:     6,
+		},
+	}
+
+	topFanout := &Fanout{
+		NodeName: "recall.top",
+		Sources: []Source{
+			personalizedFanout,
+			hotSource,
+		},
+		Dedup: true,
+		MergeStrategy: &QuotaMergeStrategy{
+			SourceQuotas: map[string]int{
+				"recall.personalized":     4,
+				"recall.hot":              2,
+			},
+			DefaultQuota: 10,
+		},
+	}
+
+	items, err := topFanout.Process(ctx, rctx, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(items) == 0 {
+		t.Fatal("expected non-empty results from nested fanout")
+	}
+}
+
+func TestFanout_DefaultName(t *testing.T) {
+	f := &Fanout{}
+	if f.Name() != "recall.fanout" {
+		t.Errorf("default name: want recall.fanout, got %s", f.Name())
 	}
 }
