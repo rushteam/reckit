@@ -15,8 +15,9 @@ import "context"
 //   - 外部模型服务：TensorFlow Serving、TorchServe、ONNX Runtime 等
 //
 // 实现：
+//   - service.KServeClient 实现此接口（推荐，KServe V2 / Open Inference Protocol 行业标准）
 //   - service.TFServingClient 实现此接口
-//   - service.TorchServeClient 实现此接口
+//   - service.TorchServeClient 实现此接口（兼容旧 TorchServe 部署）
 //   - 其他模型服务也可以实现此接口
 type MLService interface {
 	// Predict 批量预测

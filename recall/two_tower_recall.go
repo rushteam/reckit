@@ -27,8 +27,8 @@ import (
 //	// 1. 创建特征服务
 //	featureService := feature.NewFeatureService(...)
 //
-//	// 2. 创建用户塔推理服务（ONNX Runtime 或 TorchServe）
-//	userTowerService := service.NewTorchServeClient("http://localhost:8080", "user_tower")
+//	// 2. 创建用户塔推理服务（KServe V2 / Triton / TorchServe）
+//	userTowerService := service.NewKServeClient("http://localhost:8080", "user_tower")
 //
 //	// 3. 创建向量检索服务（Milvus）
 //	vectorService := vector.NewMilvusService("localhost:19530")

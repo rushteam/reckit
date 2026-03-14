@@ -841,20 +841,20 @@ item2vecRecall := &recall.Word2VecRecall{
 ```go
 import "github.com/rushteam/reckit/model"
 import "github.com/rushteam/reckit/rank"
+import "github.com/rushteam/reckit/service"
 
 // 1. 训练 DeepFM 模型（Python）
 // cd python
 // python train/train_deepfm.py --version v1.0.0
 
-// 2. 启动 DeepFM 服务（Python）
+// 2. 启动 DeepFM 服务（Python，需兼容 KServe V2 协议）
 // uvicorn service.deepfm_server:app --host 0.0.0.0 --port 8080
 
-// 3. 在 Golang 中使用
-deepfmModel := model.NewRPCModel(
-    "deepfm",
-    "http://localhost:8080/predict",
-    5*time.Second,
+// 3. 在 Golang 中使用（推荐：通过 KServe V2 协议）
+kserveClient := service.NewKServeClient("http://localhost:8080", "deepfm",
+    service.WithKServeTimeout(5*time.Second),
 )
+deepfmModel := model.NewRPCModelFromService("deepfm", kserveClient)
 
 p := &pipeline.Pipeline{
     Nodes: []pipeline.Node{
@@ -874,15 +874,16 @@ import "github.com/rushteam/reckit/model"
 import "github.com/rushteam/reckit/recall"
 import "github.com/rushteam/reckit/service"
 
-// 1. 创建 BERT 服务客户端（使用 TorchServe 或 TensorFlow Serving）
-torchServeClient := service.NewTorchServeClient(
-    "http://localhost:8080", // TorchServe 端点
+// 1. 创建 BERT 服务客户端（推荐 KServe V2 / Triton）
+kserveClient := service.NewKServeClient(
+    "http://localhost:8080", // Triton / KServe 端点
     "bert-base",              // 模型名称
-    service.WithTorchServeTimeout(5*time.Second),
+    service.WithKServeTimeout(5*time.Second),
+    service.WithKServeV2OutputName("embeddings"),
 )
 
 // 2. 创建 BERT 模型
-bertModel := model.NewBERTModel(torchServeClient, 768).
+bertModel := model.NewBERTModel(kserveClient, 768).
     WithModelName("bert-base").
     WithMaxLength(512).
     WithPoolingStrategy("cls")
@@ -984,6 +985,6 @@ normalized := scaler.Normalize(features)
 - `docs/FEATURE_PROCESSING.md` - 特征处理文档（归一化、编码等）
 - `docs/ENCODER_INTERFACE_DESIGN.md` - 编码器接口设计说明
 - `docs/USER_PROFILE.md` - 用户画像文档（包含扩展属性 Extras 的使用）
-- `docs/MODEL_SERVICE_PROTOCOL.md` - 模型服务协议约束（Python 服务参考；传输统一为 TorchServeClient）
+- `docs/MODEL_SERVICE_PROTOCOL.md` - 模型服务协议约束（推荐 KServe V2 / Open Inference Protocol）
 - `pkg/conv/README.md` - 类型转换与泛型工具文档
 - `ext/README.md` - 扩展包使用指南

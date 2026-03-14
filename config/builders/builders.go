@@ -13,6 +13,7 @@ import (
 	"github.com/rushteam/reckit/rank"
 	"github.com/rushteam/reckit/recall"
 	"github.com/rushteam/reckit/rerank"
+	"github.com/rushteam/reckit/service"
 )
 
 func init() {
@@ -179,7 +180,9 @@ func BuildLRNode(cfg map[string]interface{}) (pipeline.Node, error) {
 	return &rank.LRNode{Model: lr}, nil
 }
 
-func BuildRPCNode(cfg map[string]interface{}) (pipeline.Node, error) {
+// buildKServeRPCModel 从配置中构建基于 KServe V2 协议的 RPCModel。
+// 默认走 KServe V2（Open Inference Protocol），配置 protocol: "legacy" 可回退到旧直连协议。
+func buildKServeRPCModel(cfg map[string]interface{}, defaultModelType string) (*model.RPCModel, error) {
 	endpoint := conv.ConfigGet(cfg, "endpoint", "")
 	if endpoint == "" {
 		return nil, fmt.Errorf("endpoint not found")
@@ -188,79 +191,72 @@ func BuildRPCNode(cfg map[string]interface{}) (pipeline.Node, error) {
 	if sec := conv.ConfigGetInt64(cfg, "timeout", 5); sec > 0 {
 		timeout = time.Duration(sec) * time.Second
 	}
-	modelType := conv.ConfigGet(cfg, "model_type", "rpc")
+	modelType := conv.ConfigGet(cfg, "model_type", defaultModelType)
 	if modelType == "" {
-		modelType = "rpc"
+		modelType = defaultModelType
 	}
-	rpcModel := model.NewRPCModel(modelType, endpoint, timeout)
+
+	// protocol: "legacy" 回退到旧的直连 HTTP 协议（{"data": [...]}, {"predictions": [...]}）
+	protocol := conv.ConfigGet(cfg, "protocol", "")
+	if protocol == "legacy" {
+		return model.NewRPCModel(modelType, endpoint, timeout), nil
+	}
+
+	// 默认走 KServe V2（Open Inference Protocol）
+	modelName := conv.ConfigGet(cfg, "model_name", modelType)
+	opts := []service.KServeOption{
+		service.WithKServeTimeout(timeout),
+	}
+	if v := conv.ConfigGet(cfg, "model_version", ""); v != "" {
+		opts = append(opts, service.WithKServeVersion(v))
+	}
+	if v := conv.ConfigGet(cfg, "v2_input_name", ""); v != "" {
+		opts = append(opts, service.WithKServeV2InputName(v))
+	}
+	if v := conv.ConfigGet(cfg, "v2_output_name", ""); v != "" {
+		opts = append(opts, service.WithKServeV2OutputName(v))
+	}
+	kserveClient := service.NewKServeClient(endpoint, modelName, opts...)
+	return model.NewRPCModelFromService(modelType, kserveClient), nil
+}
+
+func BuildRPCNode(cfg map[string]interface{}) (pipeline.Node, error) {
+	rpcModel, err := buildKServeRPCModel(cfg, "rpc")
+	if err != nil {
+		return nil, err
+	}
 	return &rank.RPCNode{Model: rpcModel}, nil
 }
 
 func BuildWideDeepNode(cfg map[string]interface{}) (pipeline.Node, error) {
-	endpoint := conv.ConfigGet(cfg, "endpoint", "")
-	if endpoint == "" {
-		return nil, fmt.Errorf("endpoint not found")
+	rpcModel, err := buildKServeRPCModel(cfg, "wide_deep")
+	if err != nil {
+		return nil, err
 	}
-	timeout := 5 * time.Second
-	if sec := conv.ConfigGetInt64(cfg, "timeout", 5); sec > 0 {
-		timeout = time.Duration(sec) * time.Second
-	}
-	modelType := conv.ConfigGet(cfg, "model_type", "wide_deep")
-	if modelType == "" {
-		modelType = "wide_deep"
-	}
-	rpcModel := model.NewRPCModel(modelType, endpoint, timeout)
 	return &rank.WideDeepNode{Model: rpcModel}, nil
 }
 
 func BuildTwoTowerNode(cfg map[string]interface{}) (pipeline.Node, error) {
-	endpoint := conv.ConfigGet(cfg, "endpoint", "")
-	if endpoint == "" {
-		return nil, fmt.Errorf("endpoint not found")
+	rpcModel, err := buildKServeRPCModel(cfg, "two_tower")
+	if err != nil {
+		return nil, err
 	}
-	timeout := 5 * time.Second
-	if sec := conv.ConfigGetInt64(cfg, "timeout", 5); sec > 0 {
-		timeout = time.Duration(sec) * time.Second
-	}
-	modelType := conv.ConfigGet(cfg, "model_type", "two_tower")
-	if modelType == "" {
-		modelType = "two_tower"
-	}
-	rpcModel := model.NewRPCModel(modelType, endpoint, timeout)
 	return &rank.TwoTowerNode{Model: rpcModel}, nil
 }
 
 func BuildDNNNode(cfg map[string]interface{}) (pipeline.Node, error) {
-	endpoint := conv.ConfigGet(cfg, "endpoint", "")
-	if endpoint == "" {
-		return nil, fmt.Errorf("endpoint not found")
+	rpcModel, err := buildKServeRPCModel(cfg, "dnn")
+	if err != nil {
+		return nil, err
 	}
-	timeout := 5 * time.Second
-	if sec := conv.ConfigGetInt64(cfg, "timeout", 5); sec > 0 {
-		timeout = time.Duration(sec) * time.Second
-	}
-	modelType := conv.ConfigGet(cfg, "model_type", "dnn")
-	if modelType == "" {
-		modelType = "dnn"
-	}
-	rpcModel := model.NewRPCModel(modelType, endpoint, timeout)
 	return &rank.DNNNode{Model: rpcModel}, nil
 }
 
 func BuildDINNode(cfg map[string]interface{}) (pipeline.Node, error) {
-	endpoint := conv.ConfigGet(cfg, "endpoint", "")
-	if endpoint == "" {
-		return nil, fmt.Errorf("endpoint not found")
+	rpcModel, err := buildKServeRPCModel(cfg, "din")
+	if err != nil {
+		return nil, err
 	}
-	timeout := 5 * time.Second
-	if sec := conv.ConfigGetInt64(cfg, "timeout", 5); sec > 0 {
-		timeout = time.Duration(sec) * time.Second
-	}
-	modelType := conv.ConfigGet(cfg, "model_type", "din")
-	if modelType == "" {
-		modelType = "din"
-	}
-	rpcModel := model.NewRPCModel(modelType, endpoint, timeout)
 	maxSeq := int(conv.ConfigGetInt64(cfg, "max_behavior_seq_len", 10))
 	if maxSeq <= 0 {
 		maxSeq = 10

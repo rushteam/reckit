@@ -51,16 +51,19 @@ func main() {
 	// featureService := feature.NewBaseFeatureService(redisProvider)
 
 	// ========== 3. 创建用户塔推理服务 ==========
-	// 统一使用 TorchServe 协议：Python 双塔服务与 TorchServe 均通过 NewTorchServeClient 调用
-	// Python 服务：uvicorn service.two_tower_server:app --port 8085，模型名 two_tower
-	userTowerService := service.NewTorchServeClient(
-		"http://localhost:8085", // Python 双塔服务或 TorchServe 端点
-		"two_tower",             // 模型名（Python 服务路由 /predictions/two_tower）
-		service.WithTorchServeTimeout(5*time.Second),
+	// 使用 KServe V2（Open Inference Protocol）：行业标准，Triton / KServe / Seldon 均支持
+	// 调用 POST /v2/models/user_tower/infer，从 outputs[0].data + shape 解析 embedding
+	userTowerService := service.NewKServeClient(
+		"http://localhost:8085", // Triton / KServe / 兼容 V2 协议的 Python 服务
+		"user_tower",            // 模型名（路由 /v2/models/user_tower/infer）
+		service.WithKServeTimeout(5*time.Second),
+		service.WithKServeV2OutputName("embedding"), // 指定输出张量名（可选）
 	)
 
 	// 方式2：使用 TensorFlow Serving
 	// userTowerService := service.NewTFServingClient(...)
+	// 方式3：兼容旧 TorchServe 协议（不推荐）
+	// userTowerService := service.NewTorchServeClient("http://localhost:8085", "two_tower")
 
 	// ========== 4. 创建向量检索服务 ==========
 	// 方式1：使用 Milvus（推荐）

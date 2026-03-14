@@ -15,23 +15,26 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// 1. 创建 BERT 服务客户端（使用 TorchServe 或 TensorFlow Serving）
-	// 方式1：使用 TorchServe
-	torchServeClient := service.NewTorchServeClient(
-		"http://localhost:8080", // TorchServe 端点
+	// 1. 创建 BERT 服务客户端（KServe V2 / Triton / TF Serving）
+	// 方式1：使用 KServe V2（推荐，行业标准 Open Inference Protocol）
+	kserveClient := service.NewKServeClient(
+		"http://localhost:8080", // Triton / KServe 端点
 		"bert-base",             // 模型名称
-		service.WithTorchServeTimeout(5*time.Second),
+		service.WithKServeTimeout(5*time.Second),
+		service.WithKServeV2OutputName("embeddings"),
 	)
 
 	// 方式2：使用 TensorFlow Serving
 	// tfServingClient := service.NewTFServingClient(
-	// 	"http://localhost:8501", // TF Serving REST API 端点
-	// 	"bert-base",             // 模型名称
+	// 	"http://localhost:8501",
+	// 	"bert-base",
 	// 	service.WithTFServingTimeout(5*time.Second),
 	// )
+	// 方式3：兼容旧 TorchServe 协议（不推荐）
+	// torchServeClient := service.NewTorchServeClient("http://localhost:8080", "bert-base")
 
 	// 2. 创建 BERT 模型
-	bertModel := model.NewBERTModel(torchServeClient, 768).
+	bertModel := model.NewBERTModel(kserveClient, 768).
 		WithModelName("bert-base").
 		WithMaxLength(512).
 		WithPoolingStrategy("cls")
