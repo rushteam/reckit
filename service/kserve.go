@@ -47,6 +47,9 @@ type KServeClient struct {
 	V2InputName string
 	// V2OutputName V2 协议下期望的输出张量名称，用于从 outputs 中取第一个匹配或第一个；空则取 outputs[0]
 	V2OutputName string
+	// V2FeaturesAsJSON 当为 true 时，Features 以 JSON 字符串 (BYTES) 发送，
+	// 而不是展平为 FP64 数值 tensor。适用于服务端自行编码特征的场景。
+	V2FeaturesAsJSON bool
 	// Timeout 请求超时
 	Timeout time.Duration
 	// Auth 认证配置
@@ -120,6 +123,15 @@ func WithKServeTimeout(timeout time.Duration) KServeOption {
 func WithKServeAuth(auth *AuthConfig) KServeOption {
 	return func(c *KServeClient) {
 		c.Auth = auth
+	}
+}
+
+// WithKServeV2FeaturesAsJSON 启用 V2 特征字典模式。
+// 开启后，predictV2 会将 Features (map[string]float64) 序列化为 JSON 字符串，
+// 以 BYTES 类型的 "features" input 发送，由服务端负责特征编码。
+func WithKServeV2FeaturesAsJSON() KServeOption {
+	return func(c *KServeClient) {
+		c.V2FeaturesAsJSON = true
 	}
 }
 
@@ -199,48 +211,72 @@ func (c *KServeClient) predictV2(ctx context.Context, req *core.MLPredictRequest
 	}
 	url := path + "/infer"
 
-	// 将 Features 或 Instances 转为 V2 的 inputs[].data（展平、行优先）
-	var data []float64
-	var rows int
-	if len(req.Features) > 0 {
-		rows = len(req.Features)
-		keys := c.sortedFeatureKeys(req.Features[0])
-		dim := len(keys)
-		data = make([]float64, 0, rows*dim)
+	var reqBody map[string]interface{}
+
+	if len(req.Features) > 0 && c.V2FeaturesAsJSON {
+		// 特征字典模式：将每条 Features 序列化为 JSON 字符串，以 BYTES 类型发送
+		featuresData := make([]string, 0, len(req.Features))
 		for _, m := range req.Features {
-			for _, k := range keys {
-				data = append(data, m[k])
+			b, err := json.Marshal(m)
+			if err != nil {
+				return nil, fmt.Errorf("kserve v2 marshal features: %w", err)
 			}
+			featuresData = append(featuresData, string(b))
+		}
+		reqBody = map[string]interface{}{
+			"inputs": []map[string]interface{}{
+				{
+					"name":     "features",
+					"shape":    []int{len(req.Features)},
+					"datatype": "BYTES",
+					"data":     featuresData,
+				},
+			},
 		}
 	} else {
-		rows = len(req.Instances)
-		if rows > 0 {
-			dim := len(req.Instances[0])
+		// 数值 tensor 模式：展平为 FP64 行优先
+		var data []float64
+		var rows int
+		if len(req.Features) > 0 {
+			rows = len(req.Features)
+			keys := c.sortedFeatureKeys(req.Features[0])
+			dim := len(keys)
 			data = make([]float64, 0, rows*dim)
-			for _, row := range req.Instances {
-				data = append(data, row...)
+			for _, m := range req.Features {
+				for _, k := range keys {
+					data = append(data, m[k])
+				}
+			}
+		} else {
+			rows = len(req.Instances)
+			if rows > 0 {
+				dim := len(req.Instances[0])
+				data = make([]float64, 0, rows*dim)
+				for _, row := range req.Instances {
+					data = append(data, row...)
+				}
 			}
 		}
-	}
 
-	inputName := c.V2InputName
-	if inputName == "" {
-		inputName = "input0"
-	}
-	shape := []int{rows, len(data) / rows}
-	if rows == 0 {
-		shape = []int{0, 0}
-	}
+		inputName := c.V2InputName
+		if inputName == "" {
+			inputName = "input0"
+		}
+		shape := []int{rows, len(data) / rows}
+		if rows == 0 {
+			shape = []int{0, 0}
+		}
 
-	reqBody := map[string]interface{}{
-		"inputs": []map[string]interface{}{
-			{
-				"name":     inputName,
-				"shape":    shape,
-				"datatype": "FP64",
-				"data":     data,
+		reqBody = map[string]interface{}{
+			"inputs": []map[string]interface{}{
+				{
+					"name":     inputName,
+					"shape":    shape,
+					"datatype": "FP64",
+					"data":     data,
+				},
 			},
-		},
+		}
 	}
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
