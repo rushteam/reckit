@@ -145,6 +145,17 @@ resp, err := kserveService.Predict(ctx, &core.MLPredictRequest{
     },
 })
 
+// V2 特征字典模式：Features 以 JSON 字符串 (BYTES) 发送，由服务端自行编码
+kserveJSONMode := service.NewKServeClient(
+    "http://localhost:8000",
+    "my_model",
+    service.WithKServeV2FeaturesAsJSON(), // 启用 BYTES 模式
+    service.WithKServeTimeout(30*time.Second),
+)
+// 此时请求体为：
+// {"inputs": [{"name": "features", "shape": [batch], "datatype": "BYTES",
+//   "data": ["{\"feature1\":0.1,\"feature2\":0.2}", ...]}]}
+
 // 健康检查：V1 GET /v1/models/{model}，V2 GET /v2/health/ready
 err := kserveService.Health(ctx)
 ```
@@ -368,7 +379,7 @@ POST /v1/models/{model_name}:predict
 
 ### KServe V2 (Open Inference Protocol) REST API
 
-**请求格式**：
+**请求格式（FP64 tensor，默认）**：
 ```json
 POST /v2/models/{model_name}/infer
 {
@@ -378,6 +389,28 @@ POST /v2/models/{model_name}/infer
             "shape": [batch, dim],
             "datatype": "FP64",
             "data": [f1, f2, ...]
+        }
+    ]
+}
+```
+
+**请求格式（BYTES 特征字典，`WithKServeV2FeaturesAsJSON` 模式）**：
+
+当服务端需要自行编码特征（如 embedding lookup、分箱）时，启用此模式，
+每条 `map[string]float64` 序列化为 JSON 字符串以 [BYTES 类型](https://kserve.github.io/website/docs/concepts/architecture/data-plane/v2-protocol/binary-tensor-data-extension) 发送：
+
+```json
+POST /v2/models/{model_name}/infer
+{
+    "inputs": [
+        {
+            "name": "features",
+            "shape": [batch],
+            "datatype": "BYTES",
+            "data": [
+                "{\"feature1\":0.1,\"feature2\":0.2}",
+                "{\"feature1\":0.3,\"feature2\":0.4}"
+            ]
         }
     ]
 }
@@ -458,3 +491,6 @@ go run ./examples/ml_service
 - [TorchServe REST API](https://pytorch.org/serve/rest_api.html)
 - [KServe V1 Protocol](https://kserve.github.io/website/latest/modelserving/data_plane/v1_protocol/)
 - [KServe V2 Protocol (Open Inference Protocol)](https://kserve.github.io/website/latest/modelserving/data_plane/v2_protocol/)
+- [Open Inference Protocol REST 规范（GitHub）](https://github.com/kserve/open-inference-protocol/blob/main/specification/protocol/inference_rest.md)
+- [Binary Tensor Data Extension（BYTES 等数据类型定义）](https://kserve.github.io/website/docs/concepts/architecture/data-plane/v2-protocol/binary-tensor-data-extension)
+- [Open Inference Protocol 仓库](https://github.com/kserve/open-inference-protocol)

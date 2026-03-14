@@ -867,6 +867,46 @@ p := &pipeline.Pipeline{
 
 **Python 训练**: `python/train/train_deepfm.py`，详见 `python/train/DEEPFM_README.md`。
 
+### KServe V2 特征字典模式（BYTES）
+
+默认情况下 `KServeClient` 将 `Features (map[string]float64)` 排序展平为 FP64 tensor 发送。
+当服务端需要自行编码特征（如 DeepFM 包含 embedding lookup）时，可启用 `WithKServeV2FeaturesAsJSON`，
+将每条特征序列化为 JSON 字符串，以 BYTES 类型发送：
+
+```go
+import "github.com/rushteam/reckit/service"
+
+// 启用特征字典模式
+kserveClient := service.NewKServeClient("http://localhost:8080", "deepfm",
+    service.WithKServeTimeout(5*time.Second),
+    service.WithKServeV2FeaturesAsJSON(), // Features 以 JSON BYTES 发送
+)
+
+// 发送的 V2 请求体示例：
+// {
+//   "inputs": [{
+//     "name": "features",
+//     "shape": [2],
+//     "datatype": "BYTES",
+//     "data": [
+//       "{\"ctr\":0.15,\"cvr\":0.08,\"user_age\":25}",
+//       "{\"ctr\":0.22,\"cvr\":0.12,\"user_age\":30}"
+//     ]
+//   }]
+// }
+//
+// 服务端可直接 json.loads(data[i]) 得到特征字典，无需约定特征顺序。
+```
+
+两种模式对比：
+- **默认（FP64 tensor）**：客户端排序展平，适合服务端直接接收数值向量的场景
+- **`WithKServeV2FeaturesAsJSON`（BYTES）**：客户端保留原始特征字典，适合服务端自行做特征编码（embedding lookup、分箱等）的场景
+
+**标准参考**：
+- [KServe V2 Protocol (Open Inference Protocol)](https://kserve.github.io/website/master/modelserving/data_plane/v2_protocol/)
+- [Open Inference Protocol REST 规范](https://github.com/kserve/open-inference-protocol/blob/main/specification/protocol/inference_rest.md)
+- [Binary Tensor Data Extension（BYTES 等数据类型定义）](https://kserve.github.io/website/docs/concepts/architecture/data-plane/v2-protocol/binary-tensor-data-extension)
+
 ### 使用 BERT 模型
 
 ```go
