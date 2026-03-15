@@ -213,6 +213,20 @@ type Item struct {
 }
 ```
 
+**Item 三字段分工**：
+
+| 字段 | 类型 | 语义 | 消费者 | 典型内容 |
+|------|------|------|--------|----------|
+| `Features` | `map[string]float64` | 模型特征（数值型） | Rank 模型 (`model.Predict`) | `ctr`, `cvr`, `price`, `user_age` |
+| `Meta` | `map[string]any` | 业务元数据（任意类型） | 业务逻辑、展示层、过滤 | `title`, `category`, `author`, `cover_url` |
+| `Labels` | `map[string]Label` | 策略标签（带来源追踪） | 策略引擎、Diversity、DSL、可解释性 | `recall_source`, `recall_priority`, `boost_reason` |
+
+- **Features**：由 `feature.EnrichNode` 注入，供排序模型直接消费，不带来源信息
+- **Meta**：业务侧自行填充，存储展示、过滤所需的结构化信息，值类型不限
+- **Labels**：推荐链路各阶段（recall / rank / rerank / rule）写入，每个 Label 记录 `Value` + `Source`，同名 key 按合并策略（默认 `|` 拼接）自动合并
+
+**字段查找优先级**：`Diversity` 等节点通过 `getValue(item, key)` 读取字段时，按 **Labels > Meta > Features** 的优先级查找。离散类别（如 category、author）建议放 Labels 或 Meta；仅当特征编码为数值放在 Features 时，才会 fallback 到 Features（float64 自动转为字符串）。
+
 ### UserProfile
 
 ```go
@@ -313,6 +327,11 @@ github.com/rushteam/reckit/
 - `model/rpc.go` - RPC 模型实现
 - `model/word2vec.go` - Word2Vec 模型实现
 - `model/bert.go` - BERT 模型实现
+
+### 重排模块
+
+- `rerank/diversity.go` - 多样性重排（类别去重 + 作者打散，字段查找优先级：Labels > Meta > Features）
+- `rerank/topn.go` - TopN 截断
 
 ### 特征模块
 
@@ -835,6 +854,36 @@ item2vecRecall := &recall.Word2VecRecall{
 ```
 
 **Python 训练**: `python/train/train_item2vec.py --mode item2vec|word2vec`，输出 JSON。详见 `docs/WORD2VEC_ITEM2VEC.md`。
+
+### 使用 Diversity（多样性重排）
+
+```go
+import "github.com/rushteam/reckit/rerank"
+
+// 1. 按类别去重（保留每个类别的第一个 item）
+categoryDedup := &rerank.Diversity{
+    LabelKey: "category", // 从 Labels["category"] / Meta["category"] / Features["category"] 获取
+}
+
+// 2. 按作者打散（避免同一作者连续出现）
+authorDiversity := &rerank.Diversity{
+    AuthorKey:      "author",     // 字段 key
+    MaxConsecutive: 1,            // 同一作者最多连续出现 1 次
+    WindowSize:     3,            // 滑动窗口大小
+}
+
+// 3. 同时使用（先类别去重，再作者打散）
+combined := &rerank.Diversity{
+    LabelKey:       "category",
+    AuthorKey:      "author",
+    MaxConsecutive: 2,
+}
+
+// 字段查找优先级：Labels > Meta > Features
+// - Labels["category"].Value = "tech"     → 使用 "tech"
+// - Meta["category"] = "tech" (string)    → 使用 "tech"（Labels 未找到时）
+// - Features["category_id"] = 3.0         → 使用 "3"（Labels、Meta 均未找到时）
+```
 
 ### 使用 DeepFM 模型（PyTorch）
 
