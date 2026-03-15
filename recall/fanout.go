@@ -2,6 +2,7 @@ package recall
 
 import (
 	"context"
+	"sort"
 	"sync"
 	"time"
 
@@ -68,6 +69,7 @@ func (s *PriorityMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.It
 		return items
 	}
 	seen := make(map[string]*core.Item, len(items))
+	order := make([]string, 0, len(items))
 	for _, it := range items {
 		if it == nil {
 			continue
@@ -75,25 +77,31 @@ func (s *PriorityMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.It
 		old, exists := seen[it.ID]
 		if !exists {
 			seen[it.ID] = it
+			order = append(order, it.ID)
 			continue
 		}
-		// 比较优先级
 		oldPriority := s.getPriority(old)
 		newPriority := s.getPriority(it)
-		// 保留优先级更高的（值更小）
 		if newPriority < oldPriority {
 			seen[it.ID] = it
 		} else {
-			// 合并 labels
 			for k, v := range it.Labels {
 				old.PutLabel(k, v)
 			}
 		}
 	}
-	out := make([]*core.Item, 0, len(seen))
-	for _, it := range seen {
-		out = append(out, it)
+	out := make([]*core.Item, 0, len(order))
+	for _, id := range order {
+		out = append(out, seen[id])
 	}
+	// 按优先级升序 + ID 字典序做稳定排序，消除并发召回的到达顺序影响
+	sort.SliceStable(out, func(i, j int) bool {
+		pi, pj := s.getPriority(out[i]), s.getPriority(out[j])
+		if pi != pj {
+			return pi < pj
+		}
+		return out[i].ID < out[j].ID
+	})
 	return out
 }
 

@@ -2,6 +2,7 @@ package rerank
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/rushteam/reckit/core"
 	"github.com/rushteam/reckit/pipeline"
@@ -45,25 +46,33 @@ func (n *Diversity) Kind() pipeline.Kind {
 	return pipeline.KindReRank
 }
 
-// getValue 从 Item 中获取指定 key 的值，优先级：Labels > Meta
+// getValue 从 Item 中获取指定 key 的值，优先级：Labels > Meta > Features
 func (n *Diversity) getValue(item *core.Item, key string) string {
 	if item == nil {
 		return ""
 	}
 
-	// 优先从 Labels 获取
 	if item.Labels != nil {
 		if lbl, ok := item.Labels[key]; ok {
 			return lbl.Value
 		}
 	}
 
-	// 从 Meta 获取
 	if item.Meta != nil {
 		if v, ok := item.Meta[key]; ok {
 			if s, ok := v.(string); ok {
 				return s
 			}
+		}
+	}
+
+	// Fallback：从 Features 获取（数值型 category_id 等场景）
+	if item.Features != nil {
+		if v, ok := item.Features[key]; ok {
+			if v == float64(int64(v)) {
+				return strconv.FormatInt(int64(v), 10)
+			}
+			return strconv.FormatFloat(v, 'f', -1, 64)
 		}
 	}
 

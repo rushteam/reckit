@@ -22,6 +22,26 @@ func groupBySource(items []*core.Item) map[string][]*core.Item {
 	return groups
 }
 
+// sourceOrder 返回 items 中各 recall_source 按首次出现顺序排列的列表（确定性）。
+func sourceOrder(items []*core.Item) []string {
+	seen := make(map[string]bool)
+	var order []string
+	for _, it := range items {
+		if it == nil {
+			continue
+		}
+		source := ""
+		if lbl, ok := it.Labels["recall_source"]; ok {
+			source = lbl.Value
+		}
+		if !seen[source] {
+			order = append(order, source)
+			seen[source] = true
+		}
+	}
+	return order
+}
+
 // dedupItems 按 ID 去重，保留第一个出现的 item，合并后续重复 item 的 labels。
 func dedupItems(items []*core.Item) []*core.Item {
 	seen := make(map[string]*core.Item, len(items))
@@ -127,10 +147,12 @@ func (s *QuotaMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.Item 
 		items = dedupItems(items)
 	}
 
+	order := sourceOrder(items)
 	groups := groupBySource(items)
 
 	var out []*core.Item
-	for source, group := range groups {
+	for _, source := range order {
+		group := groups[source]
 		quota := s.DefaultQuota
 		if s.SourceQuotas != nil {
 			if q, ok := s.SourceQuotas[source]; ok {
@@ -170,6 +192,7 @@ func (s *RatioMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.Item 
 		items = dedupItems(items)
 	}
 
+	order := sourceOrder(items)
 	groups := groupBySource(items)
 	for _, group := range groups {
 		sortByScoreDesc(group)
@@ -186,15 +209,16 @@ func (s *RatioMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.Item 
 		totalRatio = 1.0
 	}
 
-	// 按比例分配配额（floor），收集余量
+	// 按 order 顺序分配配额（floor），收集余量
 	type sourceAlloc struct {
 		name     string
 		quota    int
-		fraction float64 // 小数部分，用于分配余量
+		fraction float64
 	}
 	allocs := make([]sourceAlloc, 0, len(s.SourceRatios))
 	allocated := 0
-	for source, ratio := range s.SourceRatios {
+	for _, source := range order {
+		ratio := s.SourceRatios[source]
 		if ratio <= 0 {
 			continue
 		}
@@ -209,7 +233,7 @@ func (s *RatioMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.Item 
 		allocated += quota
 	}
 
-	// 余量分配给小数部分最大的源
+	// 余量分配给小数部分最大的源（fraction 相同时保持 allocs 中的原始顺序）
 	remainder := s.TotalLimit - allocated
 	if remainder > 0 {
 		sort.SliceStable(allocs, func(i, j int) bool {
@@ -224,7 +248,6 @@ func (s *RatioMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.Item 
 		}
 	}
 
-	// 按配额从各源取 item
 	quotaMap := make(map[string]int, len(allocs))
 	for _, a := range allocs {
 		quotaMap[a.name] = a.quota
@@ -234,25 +257,29 @@ func (s *RatioMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.Item 
 	totalTaken := 0
 	shortfall := 0
 
-	// 第一轮：按配额取
-	for source, quota := range quotaMap {
+	// 第一轮：按 order 顺序取配额
+	for _, source := range order {
+		quota := quotaMap[source]
 		group := groups[source]
 		take := quota
 		if take > len(group) {
 			shortfall += take - len(group)
 			take = len(group)
 		}
-		out = append(out, group[:take]...)
-		totalTaken += take
+		if take > 0 {
+			out = append(out, group[:take]...)
+			totalTaken += take
+		}
 	}
 
-	// 第二轮：余量重分配（源内 item 不足时，从其他有余量的源补充）
+	// 第二轮：按 order 顺序余量重分配
 	if shortfall > 0 && totalTaken < s.TotalLimit {
 		need := s.TotalLimit - totalTaken
-		for source, group := range groups {
+		for _, source := range order {
 			if need <= 0 {
 				break
 			}
+			group := groups[source]
 			taken := quotaMap[source]
 			if taken >= len(group) {
 				continue

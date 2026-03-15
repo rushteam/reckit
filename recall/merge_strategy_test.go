@@ -695,3 +695,163 @@ func TestFanout_DefaultName(t *testing.T) {
 		t.Errorf("default name: want recall.fanout, got %s", f.Name())
 	}
 }
+
+// --- PriorityMergeStrategy ---
+
+func makeItemWithPriority(id string, score float64, source string, priority int) *core.Item {
+	it := makeItem(id, score, source)
+	it.PutLabel("recall_priority", utils.Label{
+		Value:  string(rune('0' + priority)),
+		Source: "recall",
+	})
+	return it
+}
+
+func TestPriorityMerge_Deterministic(t *testing.T) {
+	buildItems := func() []*core.Item {
+		return []*core.Item{
+			makeItemWithPriority("a", 1.0, "hot", 0),
+			makeItemWithPriority("b", 1.0, "cf", 1),
+			makeItemWithPriority("c", 1.0, "ann", 2),
+			makeItemWithPriority("d", 1.0, "hot", 0),
+			makeItemWithPriority("e", 1.0, "cf", 1),
+		}
+	}
+	s := &PriorityMergeStrategy{}
+
+	first := s.Merge(buildItems(), true)
+	for i := 0; i < 100; i++ {
+		out := s.Merge(buildItems(), true)
+		if len(out) != len(first) {
+			t.Fatalf("run %d: length changed: %d vs %d", i, len(first), len(out))
+		}
+		for j := range out {
+			if out[j].ID != first[j].ID {
+				t.Fatalf("run %d, index %d: got %s, want %s", i, j, out[j].ID, first[j].ID)
+			}
+		}
+	}
+}
+
+func TestPriorityMerge_OrderByPriorityThenID(t *testing.T) {
+	items := []*core.Item{
+		makeItemWithPriority("z", 1.0, "ann", 2),
+		makeItemWithPriority("a", 1.0, "hot", 0),
+		makeItemWithPriority("m", 1.0, "cf", 1),
+		makeItemWithPriority("b", 1.0, "hot", 0),
+	}
+	s := &PriorityMergeStrategy{}
+	out := s.Merge(items, true)
+
+	expected := []string{"a", "b", "m", "z"}
+	if len(out) != len(expected) {
+		t.Fatalf("want %d, got %d", len(expected), len(out))
+	}
+	for i, it := range out {
+		if it.ID != expected[i] {
+			t.Errorf("index %d: want %s, got %s", i, expected[i], it.ID)
+		}
+	}
+}
+
+func TestPriorityMerge_DedupKeepsHigherPriority(t *testing.T) {
+	items := []*core.Item{
+		makeItemWithPriority("1", 0.5, "cf", 2),
+		makeItemWithPriority("1", 0.9, "hot", 0),
+	}
+	s := &PriorityMergeStrategy{}
+	out := s.Merge(items, true)
+	if len(out) != 1 {
+		t.Fatalf("want 1, got %d", len(out))
+	}
+	if lbl, ok := out[0].Labels["recall_source"]; !ok || lbl.Value != "hot" {
+		t.Errorf("should keep hot (priority 0), got %v", out[0].Labels["recall_source"])
+	}
+}
+
+func TestPriorityMerge_NoDedupPassThrough(t *testing.T) {
+	items := []*core.Item{
+		makeItemWithPriority("1", 0.5, "hot", 0),
+		makeItemWithPriority("1", 0.9, "cf", 1),
+	}
+	s := &PriorityMergeStrategy{}
+	out := s.Merge(items, false)
+	if len(out) != 2 {
+		t.Fatalf("no dedup: want 2, got %d", len(out))
+	}
+}
+
+func TestPriorityMerge_CustomWeights(t *testing.T) {
+	items := []*core.Item{
+		makeItem("a", 1.0, "cf"),
+		makeItem("b", 1.0, "hot"),
+	}
+	s := &PriorityMergeStrategy{
+		PriorityWeights: map[string]int{"hot": 0, "cf": 1},
+	}
+	out := s.Merge(items, true)
+	if len(out) != 2 {
+		t.Fatalf("want 2, got %d", len(out))
+	}
+	if out[0].ID != "b" {
+		t.Errorf("hot (weight 0) should be first, got %s", out[0].ID)
+	}
+}
+
+// --- Determinism tests for Quota and Ratio ---
+
+func TestQuotaMerge_Deterministic(t *testing.T) {
+	buildItems := func() []*core.Item {
+		return []*core.Item{
+			makeItem("h1", 0.9, "hot"),
+			makeItem("h2", 0.7, "hot"),
+			makeItem("c1", 0.8, "cf"),
+			makeItem("c2", 0.6, "cf"),
+			makeItem("a1", 0.5, "ann"),
+		}
+	}
+	s := &QuotaMergeStrategy{
+		SourceQuotas: map[string]int{"hot": 1, "cf": 1, "ann": 1},
+	}
+	first := s.Merge(buildItems(), false)
+	for i := 0; i < 100; i++ {
+		out := s.Merge(buildItems(), false)
+		if len(out) != len(first) {
+			t.Fatalf("run %d: length changed", i)
+		}
+		for j := range out {
+			if out[j].ID != first[j].ID {
+				t.Fatalf("run %d, index %d: got %s, want %s", i, j, out[j].ID, first[j].ID)
+			}
+		}
+	}
+}
+
+func TestRatioMerge_Deterministic(t *testing.T) {
+	buildItems := func() []*core.Item {
+		var items []*core.Item
+		for i := 0; i < 5; i++ {
+			items = append(items, makeItem("h"+string(rune('a'+i)), float64(5-i), "hot"))
+		}
+		for i := 0; i < 5; i++ {
+			items = append(items, makeItem("c"+string(rune('a'+i)), float64(5-i), "cf"))
+		}
+		return items
+	}
+	s := &RatioMergeStrategy{
+		SourceRatios: map[string]float64{"hot": 0.4, "cf": 0.6},
+		TotalLimit:   5,
+	}
+	first := s.Merge(buildItems(), false)
+	for i := 0; i < 100; i++ {
+		out := s.Merge(buildItems(), false)
+		if len(out) != len(first) {
+			t.Fatalf("run %d: length changed", i)
+		}
+		for j := range out {
+			if out[j].ID != first[j].ID {
+				t.Fatalf("run %d, index %d: got %s, want %s", i, j, out[j].ID, first[j].ID)
+			}
+		}
+	}
+}
