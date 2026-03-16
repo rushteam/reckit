@@ -31,10 +31,34 @@ func (n *FilterNode) Process(
 		return items, nil
 	}
 
-	out := make([]*core.Item, 0, len(items))
-	filteredCount := 0
+	// 将 Filters 分为 BatchFilter 和普通 Filter 两组，保持原始顺序
+	var batchFilters []BatchFilter
+	var itemFilters []Filter
+	for _, f := range n.Filters {
+		if bf, ok := f.(BatchFilter); ok {
+			batchFilters = append(batchFilters, bf)
+		} else {
+			itemFilters = append(itemFilters, f)
+		}
+	}
 
-	for _, item := range items {
+	// 阶段 1：依次执行 BatchFilter（整批过滤，避免 N+1）
+	remaining := items
+	for _, bf := range batchFilters {
+		var err error
+		remaining, err = bf.FilterBatch(ctx, rctx, remaining)
+		if err != nil {
+			continue
+		}
+	}
+
+	// 阶段 2：逐条执行普通 Filter
+	if len(itemFilters) == 0 {
+		return remaining, nil
+	}
+
+	out := make([]*core.Item, 0, len(remaining))
+	for _, item := range remaining {
 		if item == nil {
 			continue
 		}
@@ -42,11 +66,9 @@ func (n *FilterNode) Process(
 		shouldFilter := false
 		filterReason := ""
 
-		// 依次检查每个过滤器
-		for _, f := range n.Filters {
+		for _, f := range itemFilters {
 			ok, err := f.ShouldFilter(ctx, rctx, item)
 			if err != nil {
-				// 过滤器错误时记录但不中断流程
 				continue
 			}
 			if ok {
@@ -57,8 +79,6 @@ func (n *FilterNode) Process(
 		}
 
 		if shouldFilter {
-			filteredCount++
-			// 记录过滤原因（可选，用于调试/观测）
 			item.PutLabel("filtered", utils.Label{
 				Value:  "true",
 				Source: filterReason,

@@ -58,10 +58,17 @@ type RankModel interface {
     Predict(features map[string]float64) (float64, error)
 }
 
-// 过滤器接口
+// 过滤器接口（逐条过滤）
 type Filter interface {
     Name() string
     ShouldFilter(ctx context.Context, rctx *core.RecommendContext, item *core.Item) (bool, error)
+}
+
+// 批量过滤器接口（可选实现，适用于需要批量查询外部服务的场景）
+// FilterNode 优先调用 BatchFilter.FilterBatch，降级到 Filter.ShouldFilter
+type BatchFilter interface {
+    Filter
+    FilterBatch(ctx context.Context, rctx *core.RecommendContext, items []*core.Item) ([]*core.Item, error)
 }
 
 // 存储接口（领域层接口，在 core 包）
@@ -576,7 +583,7 @@ func (r *MyRecall) Recall(ctx context.Context, rctx *core.RecommendContext) ([]*
 
 ### 添加新的过滤器
 
-实现 `filter.Filter` 接口：
+实现 `filter.Filter` 接口（逐条过滤）：
 
 ```go
 type MyFilter struct{}
@@ -587,6 +594,40 @@ func (f *MyFilter) ShouldFilter(ctx context.Context, rctx *core.RecommendContext
     return false, nil
 }
 ```
+
+如果过滤逻辑涉及批量查询外部服务（如批量查 Redis 已曝光），额外实现 `filter.BatchFilter` 接口：
+
+```go
+type MyBatchFilter struct{}
+
+func (f *MyBatchFilter) Name() string { return "filter.my_batch" }
+
+// ShouldFilter 作为降级路径（非 Fanout 场景、或 FilterBatch 出错时）
+func (f *MyBatchFilter) ShouldFilter(ctx context.Context, rctx *core.RecommendContext, item *core.Item) (bool, error) {
+    // 逐条判断逻辑
+    return false, nil
+}
+
+// FilterBatch 批量过滤，返回保留的 item 列表
+func (f *MyBatchFilter) FilterBatch(ctx context.Context, rctx *core.RecommendContext, items []*core.Item) ([]*core.Item, error) {
+    // 一次性批量查询外部服务，O(1) 次网络调用
+    ids := make([]string, len(items))
+    for i, it := range items {
+        ids[i] = it.ID
+    }
+    blocked, _ := myStore.BatchCheck(ctx, rctx.UserID, ids)
+    
+    out := make([]*core.Item, 0, len(items))
+    for _, it := range items {
+        if !blocked[it.ID] {
+            out = append(out, it)
+        }
+    }
+    return out, nil
+}
+```
+
+`FilterNode` 执行顺序：先执行所有 `BatchFilter.FilterBatch`（整批过滤），再对剩余 item 逐条执行普通 `Filter.ShouldFilter`。
 
 ### 添加新的排序模型
 
