@@ -103,7 +103,6 @@ func (r *GraphRecall) convertToItems(res graphRecallResp) []*core.Item {
 		if i < len(res.Scores) {
 			it.Score = res.Scores[i]
 		}
-		it.PutLabel("recall_source", utils.Label{Value: "graph", Source: "recall"})
 		it.PutLabel("recall_type", utils.Label{Value: "node2vec", Source: "recall"})
 		items = append(items, it)
 	}

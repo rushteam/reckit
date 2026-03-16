@@ -7,7 +7,6 @@ import (
 	"sort"
 
 	"github.com/rushteam/reckit/core"
-	"github.com/rushteam/reckit/pkg/utils"
 )
 
 // SimilarityCalculator 是相似度计算接口，用于自定义相似度计算方法。
@@ -237,7 +236,6 @@ func (r *UserBasedCF) Recall(
 	for _, s := range scoredItems {
 		it := core.NewItem(s.itemID)
 		it.Score = s.score
-		it.PutLabel("recall_source", utils.Label{Value: "u2i", Source: "recall"}) // u2u → u2i
 		out = append(out, it)
 	}
 
@@ -473,7 +471,6 @@ func (r *ItemBasedCF) Recall(
 	for _, s := range scoredItems {
 		it := core.NewItem(s.itemID)
 		it.Score = s.score
-		it.PutLabel("recall_source", utils.Label{Value: "i2i", Source: "recall"}) // 工业标准：i2i
 		out = append(out, it)
 	}
 

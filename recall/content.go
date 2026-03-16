@@ -136,7 +136,6 @@ func (r *ContentRecall) Recall(
 	for _, s := range scores {
 		it := core.NewItem(s.itemID)
 		it.Score = s.score
-		it.PutLabel("recall_source", utils.Label{Value: "content", Source: "recall"})
 		it.PutLabel("recall_metric", utils.Label{Value: metric, Source: "recall"})
 		out = append(out, it)
 	}

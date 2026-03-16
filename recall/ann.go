@@ -109,7 +109,6 @@ func (r *ANN) Recall(
 	for _, item := range searchResult.Items {
 		it := core.NewItem(item.ID)
 		it.Score = item.Score
-		it.PutLabel("recall_source", utils.Label{Value: "ann", Source: "recall"})
 		if metric != "" {
 			it.PutLabel("recall_metric", utils.Label{Value: metric, Source: "recall"})
 		}

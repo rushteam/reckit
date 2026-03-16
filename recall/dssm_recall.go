@@ -140,7 +140,6 @@ func (r *DSSMRecall) convertToItems(result *core.VectorSearchResult) []*core.Ite
 	for _, resItem := range result.Items {
 		it := core.NewItem(resItem.ID)
 		it.Score = resItem.Score
-		it.PutLabel("recall_source", utils.Label{Value: "dssm", Source: "recall"})
 		it.PutLabel("recall_type", utils.Label{Value: "vector_search", Source: "recall"})
 		if r.Metric != "" {
 			it.PutLabel("recall_metric", utils.Label{Value: r.Metric, Source: "recall"})

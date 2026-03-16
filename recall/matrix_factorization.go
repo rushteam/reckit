@@ -5,7 +5,6 @@ import (
 	"sort"
 
 	"github.com/rushteam/reckit/core"
-	"github.com/rushteam/reckit/pkg/utils"
 )
 
 // MFStore 是矩阵分解的存储接口（已废弃，使用 core.RecallDataStore）。
@@ -136,7 +135,6 @@ func (r *MFRecall) Recall(
 	for _, s := range scores {
 		it := core.NewItem(s.itemID)
 		it.Score = s.score
-		it.PutLabel("recall_source", utils.Label{Value: "mf", Source: "recall"})
 		out = append(out, it)
 	}
 

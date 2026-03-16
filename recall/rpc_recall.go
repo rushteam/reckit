@@ -152,9 +152,8 @@ func (r *RPCRecall) Recall(
 		}
 	}
 
-	// 添加召回来源标签
+	// recall_source 由 Fanout 统一设置，Source 内部只设置补充标签
 	for _, it := range items {
-		it.PutLabel("recall_source", utils.Label{Value: "rpc", Source: "recall"})
 		it.PutLabel("recall_endpoint", utils.Label{Value: r.Endpoint, Source: "recall"})
 	}
 

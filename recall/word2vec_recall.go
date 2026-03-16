@@ -189,7 +189,6 @@ func (r *Word2VecRecall) Recall(
 	for _, s := range scores {
 		it := core.NewItem(s.itemID)
 		it.Score = s.score
-		it.PutLabel("recall_source", utils.Label{Value: "word2vec", Source: "recall"})
 		it.PutLabel("recall_mode", utils.Label{Value: r.Mode, Source: "recall"})
 		out = append(out, it)
 	}

@@ -168,7 +168,6 @@ func (r *YouTubeDNNRecall) convertToItems(result *core.VectorSearchResult) []*co
 	for _, resItem := range result.Items {
 		it := core.NewItem(resItem.ID)
 		it.Score = resItem.Score
-		it.PutLabel("recall_source", utils.Label{Value: "youtube_dnn", Source: "recall"})
 		it.PutLabel("recall_type", utils.Label{Value: "vector_search", Source: "recall"})
 		items = append(items, it)
 	}

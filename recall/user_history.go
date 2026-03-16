@@ -151,7 +151,6 @@ func (r *UserHistory) Recall(
 	out := make([]*core.Item, 0, len(itemIDs))
 	for _, id := range itemIDs {
 		it := core.NewItem(id)
-		it.PutLabel("recall_source", utils.Label{Value: "user_history", Source: "recall"})
 		it.PutLabel("behavior_type", utils.Label{Value: behaviorType, Source: "recall"})
 		out = append(out, it)
 	}

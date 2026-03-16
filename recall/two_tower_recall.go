@@ -318,8 +318,7 @@ func (r *TwoTowerRecall) convertToItems(result *core.VectorSearchResult) []*core
 		item := core.NewItem(resItem.ID)
 		item.Score = resItem.Score
 
-		// 添加召回来源标签
-		item.PutLabel("recall_source", utils.Label{Value: "two_tower", Source: "recall"})
+		// recall_source 由 Fanout 统一设置，Source 内部只设置补充标签
 		item.PutLabel("recall_type", utils.Label{Value: "vector_search", Source: "recall"})
 		if r.Collection != "" {
 			item.PutLabel("recall_collection", utils.Label{Value: r.Collection, Source: "recall"})
