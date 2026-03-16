@@ -48,6 +48,12 @@ pipeline:
       config:
         label_key: "category"
 
+    # 自定义节点（由业务方通过 config.Register 注册）
+    # config 字段原样透传给工厂函数，支持任意业务参数
+    - type: "custom.boost"
+      config:
+        boost_rate: 2.0
+
     # 或者使用 RPC 模型（Python XGBoost 服务）
     # 注意：需要先启动 Python 服务 (cd python && uvicorn service.server:app --host 0.0.0.0 --port 8080)
     # - type: "rank.rpc"

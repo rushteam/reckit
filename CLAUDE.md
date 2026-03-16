@@ -551,14 +551,99 @@ fanout := &recall.Fanout{
 }
 ```
 
-### 7. 动态注册 Node
+### 7. 配置驱动 Pipeline + 自定义 Node 注册
+
+reckit 提供 **Node 注册表 + 工厂函数** 模式，支持：
+- 用户注册自定义 node type，YAML 中直接引用
+- YAML `config` 字段**原样透传**给工厂函数（`map[string]interface{}`）
+- 通过**闭包捕获**外部依赖（Redis client、Repository 等），实现依赖注入
+
+#### 核心 API
+
+| API | 说明 |
+|---|---|
+| `config.Register(typeName, builder)` | 全局注册 Node 构建器（推荐在 `init` 或启动阶段调用） |
+| `config.DefaultFactory()` | 返回包含所有已注册 Node 的 `NodeFactory` |
+| `config.SupportedTypes()` | 查看已注册类型列表 |
+| `config.ValidatePipelineConfig(cfg)` | 校验 YAML 中引用的 type 是否全部已注册 |
+
+#### 注册自定义 Node（含依赖注入）
 
 ```go
-factory := pipeline.NewNodeFactory()
-factory.Register("my.custom.node", func(config map[string]interface{}) (pipeline.Node, error) {
-    return &MyCustomNode{}, nil
+import "github.com/rushteam/reckit/config"
+
+// 1. 初始化外部依赖
+redisClient := redis.NewClient(...)
+itemRepo := repository.NewItemRepo(db)
+
+// 2. 注册自定义 Node —— 闭包捕获依赖，config 字段由 YAML 透传
+config.Register("custom.boost", func(cfg map[string]interface{}) (pipeline.Node, error) {
+    return &BoostNode{
+        Repo:      itemRepo,                                 // 闭包注入
+        Redis:     redisClient,                              // 闭包注入
+        BoostRate: conv.ConfigGet(cfg, "boost_rate", 1.5),   // YAML 透传
+        MaxItems:  int(conv.ConfigGetInt64(cfg, "max", 100)),
+    }, nil
 })
 ```
+
+#### YAML 配置引用自定义 Node
+
+```yaml
+pipeline:
+  name: "my_feed"
+  nodes:
+    - type: "recall.fanout"
+      config:
+        dedup: true
+        sources:
+          - type: "hot"
+            ids: [1, 2, 3]
+    - type: "rank.lr"
+      config:
+        bias: 0.0
+        weights: { ctr: 1.2, cvr: 0.8 }
+    # 自定义节点：type 对应 config.Register 的 typeName
+    # config 下所有字段原样透传给工厂函数
+    - type: "custom.boost"
+      config:
+        boost_rate: 2.0
+        max: 50
+```
+
+#### 完整启动流程
+
+```go
+import (
+    "github.com/rushteam/reckit/config"
+    _ "github.com/rushteam/reckit/config/builders" // 注册内置 Node
+)
+
+func main() {
+    // 1. 初始化依赖
+    repo := newMyRepo(db)
+
+    // 2. 注册自定义 Node（闭包捕获依赖）
+    config.Register("custom.boost", func(cfg map[string]interface{}) (pipeline.Node, error) {
+        return &BoostNode{Repo: repo, BoostRate: conv.ConfigGet(cfg, "boost_rate", 1.5)}, nil
+    })
+
+    // 3. 加载 YAML
+    cfg, _ := pipeline.LoadFromYAML("pipeline.yaml")
+
+    // 4. 校验配置（可选，提前发现未注册的 type）
+    if err := config.ValidatePipelineConfig(cfg); err != nil {
+        log.Fatal(err)
+    }
+
+    // 5. 构建并运行
+    factory := config.DefaultFactory()
+    p, _ := cfg.BuildPipeline(factory)
+    items, _ := p.Run(ctx, rctx, nil)
+}
+```
+
+> **注意**：内置 Node（`recall.fanout`、`rank.lr` 等）需要 `import _ "github.com/rushteam/reckit/config/builders"` 触发 `init` 注册。
 
 ## 扩展指南
 
