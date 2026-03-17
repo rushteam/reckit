@@ -78,9 +78,9 @@ type UserBasedCF struct {
 	// 如果 <= 0，则使用 Config 中的默认值
 	MinCommonItems int
 	
-	// Config 召回配置（必需）
+	// Config 协同过滤配置（必需）
 	// 提供默认值，不能为 nil
-	Config core.RecallConfig
+	Config core.CFConfig
 }
 
 func (r *UserBasedCF) Name() string {
@@ -294,9 +294,9 @@ type ItemBasedCF struct {
 	// 如果为空，则从 Store 获取用户的所有交互物品
 	UserHistoryKey string
 	
-	// Config 召回配置（必需）
+	// Config 协同过滤配置（必需）
 	// 提供默认值，不能为 nil
-	Config core.RecallConfig
+	Config core.CFConfig
 }
 
 func (r *ItemBasedCF) Name() string {

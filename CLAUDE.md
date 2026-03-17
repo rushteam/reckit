@@ -117,7 +117,7 @@ type MLService interface {
 ### 策略接口（可扩展）
 
 ```go
-// 合并策略（recall/fanout.go + recall/merge_strategy.go）
+// 合并策略（recall/merge_strategy.go）
 type MergeStrategy interface {
     Merge(items []*core.Item, dedup bool) []*core.Item
 }
@@ -125,11 +125,14 @@ type MergeStrategy interface {
 // 混排策略：WeightedScoreMergeStrategy, QuotaMergeStrategy, RatioMergeStrategy, RoundRobinMergeStrategy, WaterfallMergeStrategy
 // 组合策略：ChainMergeStrategy（串联多个策略，前一个输出作为下一个输入）
 
-// 错误处理策略（recall/fanout.go）
+// 召回层错误处理策略（recall/error_handler.go）
 type ErrorHandler interface {
     HandleError(source Source, err error, rctx *core.RecommendContext) ([]*core.Item, error)
 }
-// 内置实现：IgnoreErrorHandler, RetryErrorHandler, FallbackErrorHandler
+// 内置实现：
+//   IgnoreErrorHandler    - 忽略错误（支持 OnError 回调）
+//   RetryErrorHandler     - 重试 N 次（支持 OnRetry / OnGiveUp 回调）
+//   FallbackErrorHandler  - 降级到备用召回源（支持 OnFallback 回调）
 
 // 排序策略（rank/lr_node.go）
 type SortStrategy interface {
@@ -155,6 +158,20 @@ type PipelineHook interface {
     AfterNode(ctx context.Context, rctx *core.RecommendContext, node Node, items []*core.Item, err error) ([]*core.Item, error)
 }
 
+// Pipeline 全局错误钩子（pipeline/error_hook.go）
+// 当 Node 出错时，Pipeline 依次调用所有 ErrorHook：
+//   - 任一返回 recovered=true → 跳过该 Node 继续执行（降级）
+//   - 全部返回 false → Pipeline 终止
+// 所有 ErrorHook 都会被调用（便于 metrics/alerting 采集完整数据）。
+type ErrorHook interface {
+    OnNodeError(ctx context.Context, rctx *core.RecommendContext, node Node, err error) (recovered bool)
+}
+// 内置实现：
+//   WarnAndSkipHook       - 日志 + 跳过（始终降级）
+//   KindRecoveryHook      - 按 Node Kind 选择性降级 + OnError 回调
+//   ErrorCallbackHook     - 仅上报 metrics/alerting，不降级
+//   CompositeErrorHook    - 组合多个 ErrorHook
+
 // 特征元数据加载器接口（feature/metadata_loader.go）
 type MetadataLoader interface {
     Load(ctx context.Context, source string) (*FeatureMetadata, error)
@@ -177,15 +194,20 @@ type S3Client interface {
 ### 配置接口
 
 ```go
-// 召回配置（core/config.go）
+// 通用召回配置（core/config.go）
 type RecallConfig interface {
-    DefaultTopKSimilarUsers() int
     DefaultTopKItems() int
-    DefaultMinCommonItems() int
-    DefaultMinCommonUsers() int
     DefaultTimeout() time.Duration
 }
-// 默认实现：DefaultRecallConfig
+
+// 协同过滤专用配置（core/config.go）
+type CFConfig interface {
+    RecallConfig
+    DefaultTopKSimilarUsers() int
+    DefaultMinCommonItems() int
+    DefaultMinCommonUsers() int
+}
+// 默认实现：DefaultRecallConfig（同时满足 RecallConfig 和 CFConfig）
 ```
 
 ## 核心数据结构
@@ -215,9 +237,12 @@ type Item struct {
     Features map[string]float64
     Meta     map[string]any
     Labels   map[string]utils.Label
-    
+
     LabelMergeStrategy utils.LabelMergeStrategy  // 可选，自定义 Label 合并策略
 }
+
+// GetValue 统一查找（Labels > Meta > Features），各模块无需重复实现多字段查找。
+func (it *Item) GetValue(key string) (string, bool)
 ```
 
 **Item 三字段分工**：
@@ -305,13 +330,15 @@ github.com/rushteam/reckit/
 - `core/config.go` - 配置接口定义
 - `pipeline/node.go` - Node 接口定义
 - `pipeline/pipeline.go` - Pipeline 执行器和 Hook
+- `pipeline/error_hook.go` - ErrorHook 接口和内置实现（WarnAndSkip / KindRecovery / ErrorCallback）
 - `pipeline/config.go` - 配置加载和工厂
 
 ### 召回模块
 
 - `recall/source.go` - Source 接口
-- `recall/fanout.go` - 多路并发召回和去重合并策略（First/Union/Priority），Fanout 同时实现 Source 接口支持嵌套
-- `recall/merge_strategy.go` - 混排合并策略（WeightedScore/Quota/Ratio/RoundRobin/Waterfall）和组合策略（Chain）
+- `recall/fanout.go` - 多路并发召回（Fanout 同时实现 Source 接口支持嵌套）
+- `recall/merge_strategy.go` - MergeStrategy 接口和所有实现（First/Union/Priority/WeightedScore/Quota/Ratio/RoundRobin/Waterfall/Chain）
+- `recall/error_handler.go` - ErrorHandler 接口和实现（Ignore/Retry/Fallback，均支持回调）
 - `recall/collaborative_filtering.go` - U2I/I2I 协同过滤
 - `recall/ann.go` - Embedding ANN 召回
 - `recall/content.go` - 内容推荐
@@ -645,6 +672,79 @@ func main() {
 
 > **注意**：内置 Node（`recall.fanout`、`rank.lr` 等）需要 `import _ "github.com/rushteam/reckit/config/builders"` 触发 `init` 注册。
 
+### 8. 错误处理与降级
+
+reckit 提供两层错误处理机制：
+
+| 层 | 接口 | 位置 | 作用域 |
+|---|---|---|---|
+| **Pipeline 层** | `ErrorHook` | `pipeline/error_hook.go` | 所有 Node |
+| **Recall 层** | `ErrorHandler` | `recall/error_handler.go` | 单个召回源 |
+
+#### Pipeline 全局错误钩子
+
+```go
+p := &pipeline.Pipeline{
+    Nodes: []pipeline.Node{recall, filter, rank, rerank},
+    ErrorHooks: []pipeline.ErrorHook{
+        // 1. 上报 metrics（不降级，仅采集）
+        &pipeline.ErrorCallbackHook{
+            Callback: func(ctx context.Context, node pipeline.Node, err error) {
+                metrics.Counter("pipeline.node.error", 1, "node", node.Name(), "kind", string(node.Kind()))
+            },
+        },
+        // 2. 非关键阶段自动降级
+        &pipeline.KindRecoveryHook{
+            RecoverKinds: map[pipeline.Kind]bool{
+                pipeline.KindReRank:      true, // 重排失败 → 跳过
+                pipeline.KindPostProcess: true, // 后处理失败 → 跳过
+            },
+        },
+    },
+}
+```
+
+当 Node 出错时执行流：
+1. Pipeline 依次调用**所有** ErrorHook（不论前一个返回什么）
+2. 若任一 ErrorHook 返回 `recovered=true` → 跳过该 Node，用上一步 items 继续
+3. 若全部返回 `false` → Pipeline 终止并返回错误
+4. 未配置 ErrorHooks 时行为与之前完全一致（fail-fast）
+
+内置 ErrorHook：
+
+| 实现 | 行为 |
+|---|---|
+| `WarnAndSkipHook` | 日志输出 + 始终跳过（适合开发/测试） |
+| `KindRecoveryHook` | 按 Node Kind 选择性降级 + OnError 回调 |
+| `ErrorCallbackHook` | 仅调用回调上报，不降级 |
+| `CompositeErrorHook` | 组合多个 ErrorHook |
+
+#### 召回源错误处理
+
+```go
+fanout := &recall.Fanout{
+    Sources: []recall.Source{mainRecall, annRecall},
+    ErrorHandler: &recall.RetryErrorHandler{
+        MaxRetries: 2,
+        RetryDelay: 100 * time.Millisecond,
+        OnRetry: func(src recall.Source, attempt int, err error) {
+            log.Printf("recall %s retry #%d: %v", src.Name(), attempt, err)
+        },
+        OnGiveUp: func(src recall.Source, err error) {
+            metrics.Counter("recall.giveup", 1, "source", src.Name())
+        },
+    },
+}
+```
+
+所有 ErrorHandler 均支持回调字段，方便接入 metrics/alerting：
+
+| 实现 | 行为 | 回调字段 |
+|---|---|---|
+| `IgnoreErrorHandler` | 忽略错误，返回空结果 | `OnError` |
+| `RetryErrorHandler` | 重试 N 次，全部失败则降级 | `OnRetry`, `OnGiveUp` |
+| `FallbackErrorHandler` | 降级到备用召回源 | `OnFallback` |
+
 ## 扩展指南
 
 ### 添加新的召回算法
@@ -747,7 +847,8 @@ func (n *MyRankNode) Process(ctx context.Context, rctx *core.RecommendContext, i
 
 ### 策略模式
 - `MergeStrategy` - 合并策略（去重：First/Union/Priority；混排：WeightedScore/Quota/Ratio/RoundRobin/Waterfall；组合：Chain）
-- `ErrorHandler` - 错误处理策略
+- `ErrorHandler` - 召回层错误处理策略（Ignore / Retry / Fallback，均支持回调）
+- `ErrorHook` - Pipeline 层全局错误钩子（WarnAndSkip / KindRecovery / ErrorCallback / Composite）
 - `SortStrategy` - 排序策略
 - `SimilarityCalculator` - 相似度计算策略
 - `RankModel` - 排序模型策略

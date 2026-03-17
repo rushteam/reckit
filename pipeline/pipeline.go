@@ -25,10 +25,18 @@ type PipelineHook interface {
 type Pipeline struct {
 	Nodes []Node
 	Hooks []PipelineHook // Hook 列表，按顺序执行
+
+	// ErrorHooks 全局错误钩子列表。
+	// 当 Node（或 PipelineHook）执行出错时，Pipeline 依次调用所有 ErrorHook：
+	//   - 若任一 ErrorHook 返回 recovered=true，跳过该 Node 继续执行（使用上一步 items）
+	//   - 若全部返回 false，Pipeline 终止并返回错误
+	// 未配置 ErrorHooks 时行为与之前完全一致（fail-fast）。
+	ErrorHooks []ErrorHook
 }
 
 // Run 执行 Pipeline，依次处理每个 Node。
 // 如果设置了 Hooks，会在每个 Node 执行前后调用相应的 Hook。
+// 如果设置了 ErrorHooks，Node 出错时会尝试降级（跳过该 Node）。
 func (p *Pipeline) Run(
 	ctx context.Context,
 	rctx *core.RecommendContext,
@@ -36,30 +44,50 @@ func (p *Pipeline) Run(
 ) ([]*core.Item, error) {
 	cur := items
 	for _, node := range p.Nodes {
-		// 执行 BeforeNode Hooks
+		// BeforeNode Hooks
 		var err error
 		for _, hook := range p.Hooks {
 			cur, err = hook.BeforeNode(ctx, rctx, node, cur)
 			if err != nil {
-				return nil, err
+				break
 			}
+		}
+		if err != nil {
+			if p.tryRecover(ctx, rctx, node, err) {
+				continue
+			}
+			return nil, err
 		}
 
 		// 执行 Node
-		next, err := node.Process(ctx, rctx, cur)
+		next, nodeErr := node.Process(ctx, rctx, cur)
 
-		// 执行 AfterNode Hooks
+		// AfterNode Hooks
 		for _, hook := range p.Hooks {
-			next, err = hook.AfterNode(ctx, rctx, node, next, err)
-			if err != nil {
-				return nil, err
+			next, nodeErr = hook.AfterNode(ctx, rctx, node, next, nodeErr)
+			if nodeErr != nil {
+				break
 			}
 		}
 
-		if err != nil {
-			return nil, err
+		if nodeErr != nil {
+			if p.tryRecover(ctx, rctx, node, nodeErr) {
+				continue // 降级：跳过该 Node，保留上一步的 items
+			}
+			return nil, nodeErr
 		}
 		cur = next
 	}
 	return cur, nil
+}
+
+// tryRecover 依次调用 ErrorHooks，返回是否有任一 hook 声明 recovered。
+func (p *Pipeline) tryRecover(ctx context.Context, rctx *core.RecommendContext, node Node, err error) bool {
+	recovered := false
+	for _, eh := range p.ErrorHooks {
+		if eh.OnNodeError(ctx, rctx, node, err) {
+			recovered = true
+		}
+	}
+	return recovered
 }

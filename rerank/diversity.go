@@ -2,7 +2,6 @@ package rerank
 
 import (
 	"context"
-	"strconv"
 
 	"github.com/rushteam/reckit/core"
 	"github.com/rushteam/reckit/pipeline"
@@ -46,37 +45,13 @@ func (n *Diversity) Kind() pipeline.Kind {
 	return pipeline.KindReRank
 }
 
-// getValue 从 Item 中获取指定 key 的值，优先级：Labels > Meta > Features
+// getValue 委托给 Item.GetValue，统一按 Labels > Meta > Features 查找。
 func (n *Diversity) getValue(item *core.Item, key string) string {
 	if item == nil {
 		return ""
 	}
-
-	if item.Labels != nil {
-		if lbl, ok := item.Labels[key]; ok {
-			return lbl.Value
-		}
-	}
-
-	if item.Meta != nil {
-		if v, ok := item.Meta[key]; ok {
-			if s, ok := v.(string); ok {
-				return s
-			}
-		}
-	}
-
-	// Fallback：从 Features 获取（数值型 category_id 等场景）
-	if item.Features != nil {
-		if v, ok := item.Features[key]; ok {
-			if v == float64(int64(v)) {
-				return strconv.FormatInt(int64(v), 10)
-			}
-			return strconv.FormatFloat(v, 'f', -1, 64)
-		}
-	}
-
-	return ""
+	v, _ := item.GetValue(key)
+	return v
 }
 
 // Process 处理 items，根据配置执行类别去重和/或作者打散

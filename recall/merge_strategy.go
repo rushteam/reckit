@@ -6,6 +6,94 @@ import (
 	"github.com/rushteam/reckit/core"
 )
 
+// MergeStrategy 是合并策略接口，用于自定义多路召回结果的合并逻辑。
+type MergeStrategy interface {
+	Merge(items []*core.Item, dedup bool) []*core.Item
+}
+
+// FirstMergeStrategy 是默认的合并策略：按 ID 去重，保留第一个出现的。
+type FirstMergeStrategy struct{}
+
+func (s *FirstMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.Item {
+	if !dedup {
+		return items
+	}
+	return dedupItems(items)
+}
+
+// UnionMergeStrategy 是并集策略：不去重，保留所有结果。
+type UnionMergeStrategy struct{}
+
+func (s *UnionMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.Item {
+	return items
+}
+
+// PriorityMergeStrategy 是按优先级合并的策略。
+// 优先级由 Source 的索引决定（索引越小优先级越高），或通过 PriorityWeights 自定义。
+type PriorityMergeStrategy struct {
+	PriorityWeights map[string]int
+}
+
+func (s *PriorityMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.Item {
+	if !dedup {
+		return items
+	}
+	seen := make(map[string]*core.Item, len(items))
+	order := make([]string, 0, len(items))
+	for _, it := range items {
+		if it == nil {
+			continue
+		}
+		old, exists := seen[it.ID]
+		if !exists {
+			seen[it.ID] = it
+			order = append(order, it.ID)
+			continue
+		}
+		oldPriority := s.getPriority(old)
+		newPriority := s.getPriority(it)
+		if newPriority < oldPriority {
+			seen[it.ID] = it
+		} else {
+			for k, v := range it.Labels {
+				old.PutLabel(k, v)
+			}
+		}
+	}
+	out := make([]*core.Item, 0, len(order))
+	for _, id := range order {
+		out = append(out, seen[id])
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		pi, pj := s.getPriority(out[i]), s.getPriority(out[j])
+		if pi != pj {
+			return pi < pj
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out
+}
+
+func (s *PriorityMergeStrategy) getPriority(item *core.Item) int {
+	if s.PriorityWeights != nil {
+		if sourceLbl, ok := item.Labels["recall_source"]; ok {
+			if weight, ok := s.PriorityWeights[sourceLbl.Value]; ok {
+				return weight
+			}
+		}
+	}
+	if lbl, ok := item.Labels["recall_priority"]; ok {
+		if len(lbl.Value) > 0 {
+			return int(lbl.Value[0] - '0')
+		}
+	}
+	return 999
+}
+
+// ---------------------------------------------------------------------------
+// 辅助函数
+// ---------------------------------------------------------------------------
+
 // groupBySource 按 recall_source label 将 items 分组，保持组内原始顺序。
 func groupBySource(items []*core.Item) map[string][]*core.Item {
 	groups := make(map[string][]*core.Item)
