@@ -355,7 +355,15 @@ func BuildDiversityNode(cfg map[string]interface{}) (pipeline.Node, error) {
 	if labelKey == "" {
 		labelKey = "category"
 	}
-	return &rerank.Diversity{LabelKey: labelKey}, nil
+	diversityKeys := conv.SliceAnyToString(cfg["diversity_keys"])
+	maxConsecutive := int(conv.ConfigGetInt64(cfg, "max_consecutive", 0))
+	windowSize := int(conv.ConfigGetInt64(cfg, "window_size", 0))
+	return &rerank.Diversity{
+		LabelKey:       labelKey,
+		DiversityKeys:  diversityKeys,
+		MaxConsecutive: maxConsecutive,
+		WindowSize:     windowSize,
+	}, nil
 }
 
 func BuildMMoENode(cfg map[string]interface{}) (pipeline.Node, error) {

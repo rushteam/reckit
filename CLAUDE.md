@@ -1132,15 +1132,15 @@ categoryDedup := &rerank.Diversity{
 
 // 2. 按作者打散（避免同一作者连续出现）
 authorDiversity := &rerank.Diversity{
-    AuthorKey:      "author",     // 字段 key
-    MaxConsecutive: 1,            // 同一作者最多连续出现 1 次
-    WindowSize:     3,            // 滑动窗口大小
+    DiversityKeys:  []string{"author"}, // 按 author 打散
+    MaxConsecutive: 1,                  // 同一作者最多连续出现 1 次
+    WindowSize:     3,                  // 滑动窗口大小
 }
 
-// 3. 同时使用（先类别去重，再作者打散）
+// 3. 同时使用（先类别去重，再按多 key 打散）
 combined := &rerank.Diversity{
     LabelKey:       "category",
-    AuthorKey:      "author",
+    DiversityKeys:  []string{"author", "category"},
     MaxConsecutive: 2,
 }
 

@@ -117,7 +117,7 @@ func TestDiversity_CategoryDedup_FromFeatures(t *testing.T) {
 	}
 }
 
-func TestDiversity_AuthorDiversity_FromFeatures(t *testing.T) {
+func TestDiversity_SingleKeyDiversity_FromFeatures(t *testing.T) {
 	ctx := context.Background()
 	rctx := &core.RecommendContext{UserID: "u1"}
 
@@ -139,7 +139,7 @@ func TestDiversity_AuthorDiversity_FromFeatures(t *testing.T) {
 		}(),
 	}
 
-	d := &Diversity{AuthorKey: "author_id", MaxConsecutive: 1, WindowSize: 1}
+	d := &Diversity{DiversityKeys: []string{"author_id"}, MaxConsecutive: 1, WindowSize: 1}
 	out, err := d.Process(ctx, rctx, items)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -150,5 +150,66 @@ func TestDiversity_AuthorDiversity_FromFeatures(t *testing.T) {
 	}
 	if out[0].ID != "a" || out[1].ID != "c" || out[2].ID != "b" {
 		t.Errorf("want [a, c, b], got [%s, %s, %s]", out[0].ID, out[1].ID, out[2].ID)
+	}
+}
+
+func TestDiversity_MultiKeyDiversity_AuthorAndCategory(t *testing.T) {
+	ctx := context.Background()
+	rctx := &core.RecommendContext{UserID: "u1"}
+
+	items := []*core.Item{
+		func() *core.Item {
+			it := makeItem("1", 0.99)
+			it.Meta = map[string]any{"author": "a1", "category": "c1"}
+			return it
+		}(),
+		func() *core.Item {
+			it := makeItem("2", 0.98)
+			it.Meta = map[string]any{"author": "a1", "category": "c1"}
+			return it
+		}(),
+		func() *core.Item {
+			it := makeItem("3", 0.97)
+			it.Meta = map[string]any{"author": "a2", "category": "c2"}
+			return it
+		}(),
+		func() *core.Item {
+			it := makeItem("4", 0.96)
+			it.Meta = map[string]any{"author": "a1", "category": "c2"}
+			return it
+		}(),
+		func() *core.Item {
+			it := makeItem("5", 0.95)
+			it.Meta = map[string]any{"author": "a2", "category": "c1"}
+			return it
+		}(),
+	}
+
+	d := &Diversity{
+		DiversityKeys:  []string{"author", "category"},
+		MaxConsecutive: 1,
+		WindowSize:     1,
+	}
+	out, err := d.Process(ctx, rctx, items)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(out) == 0 {
+		t.Fatal("output should not be empty")
+	}
+
+	// 断言输出中相邻 item 在 author 和 category 上都不会连续相同。
+	for i := 1; i < len(out); i++ {
+		prevAuthor := d.getValue(out[i-1], "author")
+		curAuthor := d.getValue(out[i], "author")
+		if prevAuthor != "" && prevAuthor == curAuthor {
+			t.Fatalf("adjacent same author detected: %s at index %d", curAuthor, i)
+		}
+
+		prevCategory := d.getValue(out[i-1], "category")
+		curCategory := d.getValue(out[i], "category")
+		if prevCategory != "" && prevCategory == curCategory {
+			t.Fatalf("adjacent same category detected: %s at index %d", curCategory, i)
+		}
 	}
 }

@@ -9,12 +9,13 @@ import (
 
 // Diversity 是一个多样性 ReRank 节点，支持两种规则，可以单独或组合使用：
 // 1. 按类别去重（保留首个出现的类别）
-// 2. 按作者（用户uid）打散（避免连续出现同一作者）
+// 2. 按一个或多个 key 打散（避免连续出现相同属性）
 //
 // 使用方式：
 // - 只设置 LabelKey：仅按类别去重
-// - 只设置 AuthorKey：仅按作者打散
-// - 同时设置 LabelKey 和 AuthorKey：先按类别去重，再按作者打散
+// - 只设置 DiversityKeys：按一个或多个 key 打散
+// - 设置 DiversityKeys：按多个 key 同时打散（例如 author + category）
+// - 同时设置 LabelKey 和 DiversityKeys：先按类别去重，再按多 key 打散
 //
 // 类别/作者来源优先级：
 // - label[key].Value
@@ -24,15 +25,15 @@ type Diversity struct {
 	// 如果设置了 LabelKey，会先执行类别去重
 	LabelKey string
 
-	// AuthorKey 用于作者打散模式的字段 key，默认 "author"
-	// 如果设置了 AuthorKey，会在类别去重后（如果有）执行作者打散
-	AuthorKey string
+	// DiversityKeys 用于多 key 打散，支持同时按多个字段约束连续出现次数。
+	// 例如：[]string{"author", "category"} 表示同时约束作者与分类。
+	DiversityKeys []string
 
-	// MaxConsecutive 允许同一作者连续出现的最大次数，默认 1（不能连续出现）
+	// MaxConsecutive 允许同一 key 值连续出现的最大次数，默认 1（不能连续出现）
 	// 例如：MaxConsecutive=1 表示不能连续出现，MaxConsecutive=2 表示最多连续出现2次
 	MaxConsecutive int
 
-	// WindowSize 滑动窗口大小，用于检查最近出现的作者，默认等于 MaxConsecutive+1
+	// WindowSize 滑动窗口大小，用于检查最近出现的值，默认等于 MaxConsecutive+1
 	// 如果为 0，则自动设置为 MaxConsecutive+1
 	WindowSize int
 }
@@ -54,8 +55,7 @@ func (n *Diversity) getValue(item *core.Item, key string) string {
 	return v
 }
 
-// Process 处理 items，根据配置执行类别去重和/或作者打散
-// 如果同时设置了 LabelKey 和 AuthorKey，先执行类别去重，再执行作者打散
+// Process 处理 items，根据配置执行类别去重和/或多 key 打散。
 func (n *Diversity) Process(
 	_ context.Context,
 	_ *core.RecommendContext,
@@ -76,10 +76,11 @@ func (n *Diversity) Process(
 		}
 	}
 
-	// 如果设置了 AuthorKey，再执行作者打散
-	if n.AuthorKey != "" {
+	// 如果设置了打散 key，再执行多 key 打散
+	diversityKeys := n.getDiversityKeys()
+	if len(diversityKeys) > 0 {
 		var err error
-		result, err = n.processAuthorDiversity(result)
+		result, err = n.processMultiKeyDiversity(result, diversityKeys)
 		if err != nil {
 			return nil, err
 		}
@@ -118,13 +119,24 @@ func (n *Diversity) processCategoryDeduplication(items []*core.Item) ([]*core.It
 	return out, nil
 }
 
-// processAuthorDiversity 按作者打散，避免连续出现同一作者
-func (n *Diversity) processAuthorDiversity(items []*core.Item) ([]*core.Item, error) {
-	authorKey := n.AuthorKey
-	if authorKey == "" {
-		authorKey = "author"
+func (n *Diversity) getDiversityKeys() []string {
+	keys := make([]string, 0, len(n.DiversityKeys))
+	seen := make(map[string]struct{}, len(n.DiversityKeys))
+	for _, k := range n.DiversityKeys {
+		if k == "" {
+			continue
+		}
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		seen[k] = struct{}{}
+		keys = append(keys, k)
 	}
+	return keys
+}
 
+// processMultiKeyDiversity 按多个 key 打散，避免连续出现同值。
+func (n *Diversity) processMultiKeyDiversity(items []*core.Item, diversityKeys []string) ([]*core.Item, error) {
 	maxConsecutive := n.MaxConsecutive
 	if maxConsecutive <= 0 {
 		maxConsecutive = 1 // 默认不能连续出现
@@ -135,85 +147,68 @@ func (n *Diversity) processAuthorDiversity(items []*core.Item) ([]*core.Item, er
 		windowSize = maxConsecutive + 1 // 默认窗口大小为 maxConsecutive+1
 	}
 
-	// 滑动窗口：记录最近出现的作者
-	window := make([]string, 0, windowSize)
-	// 当前窗口中每个作者出现的次数
-	authorCount := make(map[string]int, 32)
-	// 待处理的 items（因为作者冲突而延迟插入的）
+	// 每个 key 各维护一套滑动窗口与计数器。
+	windows := make(map[string][]string, len(diversityKeys))
+	valueCount := make(map[string]map[string]int, len(diversityKeys))
+	for _, key := range diversityKeys {
+		windows[key] = make([]string, 0, windowSize)
+		valueCount[key] = make(map[string]int, 32)
+	}
+
+	// 待处理的 items（因为冲突而延迟插入的）
 	pending := make([]*core.Item, 0)
 	// 最终结果
 	out := make([]*core.Item, 0, len(items))
+
+	canInsert := func(it *core.Item) bool {
+		for _, key := range diversityKeys {
+			v := n.getValue(it, key)
+			if v == "" {
+				continue
+			}
+			if valueCount[key][v] >= maxConsecutive {
+				return false
+			}
+		}
+		return true
+	}
+
+	applyInsert := func(it *core.Item) {
+		out = append(out, it)
+		for _, key := range diversityKeys {
+			v := n.getValue(it, key)
+			if v == "" {
+				continue
+			}
+			windows[key] = append(windows[key], v)
+			valueCount[key][v]++
+			if len(windows[key]) > windowSize {
+				oldest := windows[key][0]
+				windows[key] = windows[key][1:]
+				valueCount[key][oldest]--
+				if valueCount[key][oldest] == 0 {
+					delete(valueCount[key], oldest)
+				}
+			}
+		}
+	}
 
 	// 处理所有 items
 	for _, it := range items {
 		if it == nil {
 			continue
 		}
-
-		author := n.getValue(it, authorKey)
-		
-		// 如果没有作者信息，直接通过
-		if author == "" {
-			out = append(out, it)
-			// 清空窗口，因为插入了无作者信息的 item
-			window = window[:0]
-			for k := range authorCount {
-				delete(authorCount, k)
-			}
-			continue
-		}
-
-		// 检查当前作者在窗口中的出现次数
-		count := authorCount[author]
-		
-		// 如果当前作者在窗口中的出现次数已达到上限，需要延迟插入
-		if count >= maxConsecutive {
+		if !canInsert(it) {
 			pending = append(pending, it)
 			continue
 		}
-
-		// 可以插入，添加到结果中
-		out = append(out, it)
-		
-		// 更新窗口
-		window = append(window, author)
-		authorCount[author]++
-		
-		// 如果窗口超过大小，移除最旧的元素
-		if len(window) > windowSize {
-			oldest := window[0]
-			window = window[1:]
-			authorCount[oldest]--
-			if authorCount[oldest] == 0 {
-				delete(authorCount, oldest)
-			}
-		}
+		applyInsert(it)
 	}
 
 	// 处理待处理的 items（尝试插入剩余位置）
 	for _, it := range pending {
-		author := n.getValue(it, authorKey)
-		if author == "" {
-			out = append(out, it)
-			continue
-		}
-
-		// 检查是否可以插入
-		count := authorCount[author]
-		if count < maxConsecutive {
-			out = append(out, it)
-			window = append(window, author)
-			authorCount[author]++
-			
-			// 更新窗口
-			if len(window) > windowSize {
-				oldest := window[0]
-				window = window[1:]
-				authorCount[oldest]--
-				if authorCount[oldest] == 0 {
-					delete(authorCount, oldest)
-				}
-			}
+		if canInsert(it) {
+			applyInsert(it)
 		}
 		// 如果仍然无法插入，则丢弃该 item（避免无限循环）
 	}
