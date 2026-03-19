@@ -493,10 +493,10 @@ pipeline:
 ```
 
 ```go
-import "github.com/rushteam/reckit/config/builders"
+import "github.com/rushteam/reckit/config"
 
 cfg, _ := pipeline.LoadFromYAML("pipeline.yaml")
-factory := builders.NewFactory(builders.Dependencies{
+factory := config.NewFactoryWithBuiltins(config.BuiltinDependencies{
     FilterStore:    myStore,          // 让 blacklist/user_block/exposed 可读 Store
     FeatureService: myFeatureService, // 让 feature.enrich 走 FeatureService
 })

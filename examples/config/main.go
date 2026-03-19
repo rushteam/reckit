@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/rushteam/reckit/config/builders"
+	"github.com/rushteam/reckit/config"
 	"github.com/rushteam/reckit/core"
 	"github.com/rushteam/reckit/feature"
 	"github.com/rushteam/reckit/pipeline"
@@ -81,7 +81,7 @@ func main() {
 	featureService := feature.NewBaseFeatureService(provider)
 	defer featureService.Close(ctx)
 
-	factory := builders.NewFactory(builders.Dependencies{
+	factory := config.NewFactoryWithBuiltins(config.BuiltinDependencies{
 		FilterStore:    memStore,
 		FeatureService: featureService,
 	})

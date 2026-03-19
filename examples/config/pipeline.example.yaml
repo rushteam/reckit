@@ -21,7 +21,7 @@ pipeline:
         filters:
           - type: "blacklist"
             item_ids: [100, 200, 300]
-            # key: "blacklist:items"  # 可选：从 Store 读取（需在 builders.NewFactory 的 Dependencies 里注入 FilterStore）
+            # key: "blacklist:items"  # 可选：从 Store 读取（需在 config.NewFactoryWithBuiltins 的 Dependencies 里注入 FilterStore）
           - type: "user_block"
             key_prefix: "user:block"
           - type: "exposed"
@@ -34,7 +34,7 @@ pipeline:
         user_feature_prefix: "user_"
         item_feature_prefix: "item_"
         cross_feature_prefix: "cross_"
-        # 如需从外部特征服务读取，请在 builders.NewFactory 的 Dependencies 里注入 FeatureService
+        # 如需从外部特征服务读取，请在 config.NewFactoryWithBuiltins 的 Dependencies 里注入 FeatureService
 
     # 排序（LR 模型，可以使用用户特征、物品特征、交叉特征）
     - type: "rank.lr"

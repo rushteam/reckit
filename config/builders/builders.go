@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rushteam/reckit/config"
 	"github.com/rushteam/reckit/core"
 	"github.com/rushteam/reckit/feature"
 	"github.com/rushteam/reckit/filter"
@@ -118,23 +117,6 @@ func ResetDependencies() {
 	configuredFilterStore = nil
 	configuredBloomFilterChecker = nil
 	configuredFeatureService = nil
-}
-
-func init() {
-	config.Register("recall.fanout", BuildFanoutNode)
-	config.Register("recall.hot", BuildHotNode)
-	config.Register("recall.ann", BuildANNNode)
-	config.Register("rank.lr", BuildLRNode)
-	config.Register("rank.rpc", BuildRPCNode)
-	config.Register("rank.wide_deep", BuildWideDeepNode)
-	config.Register("rank.two_tower", BuildTwoTowerNode)
-	config.Register("rank.dnn", BuildDNNNode)
-	config.Register("rank.din", BuildDINNode)
-	config.Register("rerank.diversity", BuildDiversityNode)
-	config.Register("rerank.mmoe", BuildMMoENode)
-	config.Register("rerank.topn", BuildTopNNode)
-	config.Register("filter", BuildFilterNode)
-	config.Register("feature.enrich", BuildFeatureEnrichNode)
 }
 
 func BuildFanoutNode(cfg map[string]interface{}) (pipeline.Node, error) {
@@ -270,7 +252,7 @@ func BuildHotNode(cfg map[string]interface{}) (pipeline.Node, error) {
 }
 
 func BuildANNNode(cfg map[string]interface{}) (pipeline.Node, error) {
-	return nil, fmt.Errorf("ann node not fully implemented: requires VectorService injection (supported types: %v)", config.SupportedTypes())
+	return nil, fmt.Errorf("ann node not fully implemented: requires VectorService injection")
 }
 
 func BuildLRNode(cfg map[string]interface{}) (pipeline.Node, error) {
@@ -408,6 +390,11 @@ func BuildFilterNode(cfg map[string]interface{}) (pipeline.Node, error) {
 	return buildFilterNodeWithDeps(cfg, legacyDependencies())
 }
 
+// BuildFilterNodeWithDependencies 使用指定依赖构建 filter 节点（实例级依赖绑定）。
+func BuildFilterNodeWithDependencies(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
+	return buildFilterNodeWithDeps(cfg, deps)
+}
+
 func buildFilterNodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
 	filtersConfig, ok := cfg["filters"].([]interface{})
 	if !ok {
@@ -446,6 +433,11 @@ func buildFilterNodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pip
 
 func BuildFeatureEnrichNode(cfg map[string]interface{}) (pipeline.Node, error) {
 	return buildFeatureEnrichNodeWithDeps(cfg, legacyDependencies())
+}
+
+// BuildFeatureEnrichNodeWithDependencies 使用指定依赖构建 feature.enrich 节点（实例级依赖绑定）。
+func BuildFeatureEnrichNodeWithDependencies(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
+	return buildFeatureEnrichNodeWithDeps(cfg, deps)
 }
 
 func buildFeatureEnrichNodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
