@@ -2,6 +2,12 @@ package core
 
 import "context"
 
+// FeatureUserItemPair 用户-物品对，用于批量获取实时特征。
+type FeatureUserItemPair struct {
+	UserID string
+	ItemID string
+}
+
 // FeatureService 是特征服务的领域接口。
 //
 // 设计原则：
@@ -12,6 +18,7 @@ import "context"
 // 使用场景：
 //   - 获取用户特征：用户画像、历史行为等
 //   - 获取物品特征：物品属性、统计特征等
+//   - 获取实时特征：用户-物品交叉实时特征（如实时 CTR、实时交互等）
 //
 // 注意：请求级上下文特征（如 latitude、time_of_day 等）应通过 RecommendContext.Params 传递，
 // 而不是通过 FeatureService 获取。
@@ -34,6 +41,12 @@ type FeatureService interface {
 
 	// BatchGetItemFeatures 批量获取物品特征（推荐使用，减少网络往返）
 	BatchGetItemFeatures(ctx context.Context, itemIDs []string) (map[string]map[string]float64, error)
+
+	// GetRealtimeFeatures 获取用户-物品实时交叉特征
+	GetRealtimeFeatures(ctx context.Context, userID, itemID string) (map[string]float64, error)
+
+	// BatchGetRealtimeFeatures 批量获取用户-物品实时交叉特征（推荐使用，减少网络往返）
+	BatchGetRealtimeFeatures(ctx context.Context, pairs []FeatureUserItemPair) (map[FeatureUserItemPair]map[string]float64, error)
 
 	// Close 关闭特征服务，释放资源
 	Close(ctx context.Context) error

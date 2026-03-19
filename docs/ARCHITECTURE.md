@@ -55,8 +55,8 @@ type RecommendContext struct {
     UserID      string              // 用户 ID
     DeviceID    string              // 设备 ID
     Scene       string              // 场景（feed/search/detail）
-    User        *UserProfile        // 强类型用户画像
-    UserProfile map[string]any      // Map 形式用户画像
+    User        any                 // 调用方透传对象（框架不直接读取）
+    Attributes  map[string]any      // 用户属性（框架读取用户数据标准通道）
     Labels      map[string]Label    // 用户级标签
     Params      map[string]any      // 请求参数（latitude, time_of_day 等）
 }

@@ -10,14 +10,14 @@ import (
 // BaseFeatureService 是特征服务的基础实现，采用组合模式，将不同的 FeatureProvider 组合。
 // 支持缓存、监控、降级等装饰器。
 type BaseFeatureService struct {
-	provider        FeatureProvider
-	cache           FeatureCache
-	monitor         FeatureMonitor
-	fallback        FallbackStrategy
-	enableCache     bool
-	enableMonitor   bool
-	enableFallback  bool
-	cacheTTL        time.Duration
+	provider       FeatureProvider
+	cache          FeatureCache
+	monitor        FeatureMonitor
+	fallback       FallbackStrategy
+	enableCache    bool
+	enableMonitor  bool
+	enableFallback bool
+	cacheTTL       time.Duration
 }
 
 // NewBaseFeatureService 创建基础特征服务
@@ -88,8 +88,8 @@ func (s *BaseFeatureService) GetUserFeatures(ctx context.Context, userID string)
 
 		// 尝试降级
 		if s.enableFallback && s.fallback != nil {
-			// 注意：降级需要 RecommendContext，这里简化处理
-			return s.fallback.GetUserFeatures(ctx, userID, nil)
+			rctx := &core.RecommendContext{UserID: userID}
+			return s.fallback.GetUserFeatures(ctx, userID, rctx)
 		}
 
 		return nil, err
@@ -143,7 +143,8 @@ func (s *BaseFeatureService) BatchGetUserFeatures(ctx context.Context, userIDs [
 			// 尝试降级（简化处理）
 			if s.enableFallback && s.fallback != nil {
 				for _, userID := range missedIDs {
-					if fallbackFeatures, err := s.fallback.GetUserFeatures(ctx, userID, nil); err == nil {
+					rctx := &core.RecommendContext{UserID: userID}
+					if fallbackFeatures, err := s.fallback.GetUserFeatures(ctx, userID, rctx); err == nil {
 						result[userID] = fallbackFeatures
 					}
 				}
@@ -189,7 +190,8 @@ func (s *BaseFeatureService) GetItemFeatures(ctx context.Context, itemID string)
 
 		// 尝试降级
 		if s.enableFallback && s.fallback != nil {
-			return s.fallback.GetItemFeatures(ctx, itemID, nil)
+			item := core.NewItem(itemID)
+			return s.fallback.GetItemFeatures(ctx, itemID, item)
 		}
 
 		return nil, err
@@ -243,7 +245,8 @@ func (s *BaseFeatureService) BatchGetItemFeatures(ctx context.Context, itemIDs [
 			// 尝试降级
 			if s.enableFallback && s.fallback != nil {
 				for _, itemID := range missedIDs {
-					if fallbackFeatures, err := s.fallback.GetItemFeatures(ctx, itemID, nil); err == nil {
+					item := core.NewItem(itemID)
+					if fallbackFeatures, err := s.fallback.GetItemFeatures(ctx, itemID, item); err == nil {
 						result[itemID] = fallbackFeatures
 					}
 				}
@@ -271,13 +274,55 @@ func (s *BaseFeatureService) BatchGetItemFeatures(ctx context.Context, itemIDs [
 	return result, nil
 }
 
+func (s *BaseFeatureService) GetRealtimeFeatures(ctx context.Context, userID, itemID string) (map[string]float64, error) {
+	features, err := s.provider.GetRealtimeFeatures(ctx, userID, itemID)
+	if err != nil {
+		if s.enableMonitor && s.monitor != nil {
+			s.monitor.RecordFeatureError(ctx, "realtime_features", err)
+		}
+		return nil, err
+	}
+
+	if s.enableMonitor && s.monitor != nil {
+		for name, value := range features {
+			s.monitor.RecordFeatureUsage(ctx, name, value)
+		}
+	}
+
+	return features, nil
+}
+
+func (s *BaseFeatureService) BatchGetRealtimeFeatures(ctx context.Context, pairs []core.FeatureUserItemPair) (map[core.FeatureUserItemPair]map[string]float64, error) {
+	if len(pairs) == 0 {
+		return make(map[core.FeatureUserItemPair]map[string]float64), nil
+	}
+
+	features, err := s.provider.BatchGetRealtimeFeatures(ctx, pairs)
+	if err != nil {
+		if s.enableMonitor && s.monitor != nil {
+			s.monitor.RecordFeatureError(ctx, "realtime_features", err)
+		}
+		return nil, err
+	}
+
+	if s.enableMonitor && s.monitor != nil {
+		for _, featureMap := range features {
+			for name, value := range featureMap {
+				s.monitor.RecordFeatureUsage(ctx, name, value)
+			}
+		}
+	}
+
+	return features, nil
+}
+
 // 确保 BaseFeatureService 实现了 core.FeatureService 接口
 var _ core.FeatureService = (*BaseFeatureService)(nil)
 
 func (s *BaseFeatureService) Close(ctx context.Context) error {
 	// 清理资源
 	if s.cache != nil {
-		s.cache.Clear(context.Background())
+		s.cache.Clear(ctx)
 	}
 	return nil
 }

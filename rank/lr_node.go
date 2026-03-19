@@ -146,11 +146,12 @@ func (n *LRNode) Process(
 		it.PutLabel("rank_model", utils.Label{Value: n.Model.Name(), Source: "rank"})
 	}
 
-	// 使用排序策略
-	if n.SortStrategy == nil {
-		n.SortStrategy = &ScoreDescSortStrategy{} // 默认降序
+	// 使用局部变量兜底，避免并发请求中写共享字段导致 data race。
+	strategy := n.SortStrategy
+	if strategy == nil {
+		strategy = &ScoreDescSortStrategy{} // 默认降序
 	}
-	n.SortStrategy.Sort(items)
+	strategy.Sort(items)
 	
 	return items, nil
 }

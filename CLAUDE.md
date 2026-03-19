@@ -90,13 +90,13 @@ type FeatureService interface {
     BatchGetItemFeatures(ctx context.Context, itemIDs []string) (map[string]map[string]float64, error)
     GetRealtimeFeatures(ctx context.Context, userID, itemID string) (map[string]float64, error)
     BatchGetRealtimeFeatures(ctx context.Context, pairs []FeatureUserItemPair) (map[FeatureUserItemPair]map[string]float64, error)
-    Close() error
+ Close(ctx context.Context) error
 }
 
 // 向量服务接口（领域层接口，在 core 包）
 type VectorService interface {
     Search(ctx context.Context, req *VectorSearchRequest) (*VectorSearchResult, error)
-    Close() error
+ Close(ctx context.Context) error
 }
 
 // 向量数据库服务接口（领域层接口，在 core 包）
@@ -114,7 +114,7 @@ type VectorDatabaseService interface {
 type MLService interface {
     Predict(ctx context.Context, req *MLPredictRequest) (*MLPredictResponse, error)
     Health(ctx context.Context) error
-    Close() error
+ Close(ctx context.Context) error
 }
 ```
 

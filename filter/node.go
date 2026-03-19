@@ -2,6 +2,7 @@ package filter
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/rushteam/reckit/core"
 	"github.com/rushteam/reckit/pipeline"
@@ -48,7 +49,7 @@ func (n *FilterNode) Process(
 		var err error
 		remaining, err = bf.FilterBatch(ctx, rctx, remaining)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("batch filter %q failed: %w", bf.Name(), err)
 		}
 	}
 
@@ -69,7 +70,7 @@ func (n *FilterNode) Process(
 		for _, f := range itemFilters {
 			ok, err := f.ShouldFilter(ctx, rctx, item)
 			if err != nil {
-				continue
+				return nil, fmt.Errorf("filter %q failed for item %q: %w", f.Name(), item.ID, err)
 			}
 			if ok {
 				shouldFilter = true

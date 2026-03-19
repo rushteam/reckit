@@ -25,6 +25,17 @@ type cacheEntry struct {
 	accessTime time.Time
 }
 
+func cloneFeatures(src map[string]float64) map[string]float64 {
+	if src == nil {
+		return nil
+	}
+	dst := make(map[string]float64, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
+}
+
 // NewMemoryFeatureCache 创建内存特征缓存
 func NewMemoryFeatureCache(maxSize int, defaultTTL time.Duration) *MemoryFeatureCache {
 	cache := &MemoryFeatureCache{
@@ -114,8 +125,8 @@ func (c *MemoryFeatureCache) evictLRUFromMap(m map[string]*cacheEntry) {
 }
 
 func (c *MemoryFeatureCache) GetUserFeatures(ctx context.Context, userID string) (map[string]float64, bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	entry, ok := c.userFeatures[userID]
 	if !ok {
@@ -130,7 +141,8 @@ func (c *MemoryFeatureCache) GetUserFeatures(ctx context.Context, userID string)
 	// 更新访问时间
 	entry.accessTime = time.Now()
 
-	return entry.features, true
+	// 返回副本，避免调用方修改缓存内部状态。
+	return cloneFeatures(entry.features), true
 }
 
 func (c *MemoryFeatureCache) SetUserFeatures(ctx context.Context, userID string, features map[string]float64, ttl time.Duration) {
@@ -147,15 +159,15 @@ func (c *MemoryFeatureCache) SetUserFeatures(ctx context.Context, userID string,
 	}
 
 	c.userFeatures[userID] = &cacheEntry{
-		features:   features,
+		features:   cloneFeatures(features),
 		expireTime: time.Now().Add(ttl),
 		accessTime: time.Now(),
 	}
 }
 
 func (c *MemoryFeatureCache) GetItemFeatures(ctx context.Context, itemID string) (map[string]float64, bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	entry, ok := c.itemFeatures[itemID]
 	if !ok {
@@ -170,7 +182,8 @@ func (c *MemoryFeatureCache) GetItemFeatures(ctx context.Context, itemID string)
 	// 更新访问时间
 	entry.accessTime = time.Now()
 
-	return entry.features, true
+	// 返回副本，避免调用方修改缓存内部状态。
+	return cloneFeatures(entry.features), true
 }
 
 func (c *MemoryFeatureCache) SetItemFeatures(ctx context.Context, itemID string, features map[string]float64, ttl time.Duration) {
@@ -187,7 +200,7 @@ func (c *MemoryFeatureCache) SetItemFeatures(ctx context.Context, itemID string,
 	}
 
 	c.itemFeatures[itemID] = &cacheEntry{
-		features:   features,
+		features:   cloneFeatures(features),
 		expireTime: time.Now().Add(ttl),
 		accessTime: time.Now(),
 	}

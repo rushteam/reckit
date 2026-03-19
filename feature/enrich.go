@@ -189,6 +189,9 @@ func (n *EnrichNode) Process(
 		if item == nil {
 			continue
 		}
+		if item.Features == nil {
+			item.Features = make(map[string]float64)
+		}
 
 		// 提取物品特征
 		var itemFeatures map[string]float64

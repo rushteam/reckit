@@ -131,11 +131,12 @@ func (n *Fanout) Process(
 	}
 
 	// 合并策略（必需）
-	if n.MergeStrategy == nil {
-		// 如果没有设置，使用默认策略
-		n.MergeStrategy = &FirstMergeStrategy{}
+	// 使用局部变量，避免在并发请求中写共享字段导致 data race。
+	strategy := n.MergeStrategy
+	if strategy == nil {
+		strategy = &FirstMergeStrategy{}
 	}
-	
-	return n.MergeStrategy.Merge(all, n.Dedup), nil
+
+	return strategy.Merge(all, n.Dedup), nil
 }
 

@@ -18,8 +18,9 @@ type StoreFeatureProvider struct {
 
 // KeyPrefix 定义特征存储的 key 前缀
 type KeyPrefix struct {
-	User string // 用户特征前缀，例如 "user:features:"
-	Item string // 物品特征前缀，例如 "item:features:"
+	User     string // 用户特征前缀，例如 "user:features:"
+	Item     string // 物品特征前缀，例如 "item:features:"
+	Realtime string // 实时特征前缀，例如 "realtime:features:"
 }
 
 // FeatureSerializer 是特征序列化接口，支持不同的序列化格式（JSON、MsgPack等）
@@ -45,11 +46,18 @@ func (j *JSONSerializer) Deserialize(data []byte) (map[string]float64, error) {
 
 // NewStoreFeatureProvider 创建基于 core.Store 的特征提供者
 func NewStoreFeatureProvider(store core.Store, keyPrefix KeyPrefix) *StoreFeatureProvider {
+	if store == nil {
+		panic("feature: nil store passed to NewStoreFeatureProvider")
+	}
+
 	if keyPrefix.User == "" {
 		keyPrefix.User = "user:features:"
 	}
 	if keyPrefix.Item == "" {
 		keyPrefix.Item = "item:features:"
+	}
+	if keyPrefix.Realtime == "" {
+		keyPrefix.Realtime = "realtime:features:"
 	}
 
 	return &StoreFeatureProvider{
@@ -163,3 +171,46 @@ func (p *StoreFeatureProvider) BatchGetItemFeatures(ctx context.Context, itemIDs
 	return result, nil
 }
 
+func (p *StoreFeatureProvider) GetRealtimeFeatures(ctx context.Context, userID, itemID string) (map[string]float64, error) {
+	key := fmt.Sprintf("%s%s:%s", p.keyPrefix.Realtime, userID, itemID)
+	data, err := p.store.Get(ctx, key)
+	if err != nil {
+		if core.IsStoreNotFound(err) {
+			return nil, ErrFeatureNotFound
+		}
+		return nil, err
+	}
+
+	return p.serializer.Deserialize(data)
+}
+
+func (p *StoreFeatureProvider) BatchGetRealtimeFeatures(ctx context.Context, pairs []core.FeatureUserItemPair) (map[core.FeatureUserItemPair]map[string]float64, error) {
+	if len(pairs) == 0 {
+		return make(map[core.FeatureUserItemPair]map[string]float64), nil
+	}
+
+	keys := make([]string, len(pairs))
+	keyToPair := make(map[string]core.FeatureUserItemPair, len(pairs))
+	for i, pair := range pairs {
+		key := fmt.Sprintf("%s%s:%s", p.keyPrefix.Realtime, pair.UserID, pair.ItemID)
+		keys[i] = key
+		keyToPair[key] = pair
+	}
+
+	dataMap, err := p.store.BatchGet(ctx, keys)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[core.FeatureUserItemPair]map[string]float64)
+	for key, data := range dataMap {
+		pair := keyToPair[key]
+		features, err := p.serializer.Deserialize(data)
+		if err != nil {
+			continue
+		}
+		result[pair] = features
+	}
+
+	return result, nil
+}

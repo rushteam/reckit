@@ -296,11 +296,11 @@ func main() {
             Location:  "beijing",
             Interests: map[string]float64{"tech": 0.8, "game": 0.6},
         },
-        UserProfile: map[string]any{
+        Attributes: map[string]any{
             "age":    25.0,
             "gender": "male",
         },
-        Realtime: map[string]any{
+        Params: map[string]any{
             "hour":   time.Now().Hour(),
             "device": "mobile",
         },
@@ -493,8 +493,13 @@ pipeline:
 ```
 
 ```go
+import "github.com/rushteam/reckit/config/builders"
+
 cfg, _ := pipeline.LoadFromYAML("pipeline.yaml")
-factory := config.DefaultFactory()
+factory := builders.NewFactory(builders.Dependencies{
+    FilterStore:    myStore,          // 让 blacklist/user_block/exposed 可读 Store
+    FeatureService: myFeatureService, // 让 feature.enrich 走 FeatureService
+})
 p, _ := cfg.BuildPipeline(factory)
 items, _ := p.Run(ctx, rctx, nil)
 ```

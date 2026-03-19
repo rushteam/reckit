@@ -78,10 +78,11 @@ type FeatureServiceInfo struct {
 
 // FeatureMapping 特征映射配置
 type FeatureMapping struct {
-	UserFeatures  []string
-	ItemFeatures  []string
-	UserEntityKey string
-	ItemEntityKey string
+	UserFeatures     []string
+	ItemFeatures     []string
+	RealtimeFeatures []string // 实时特征（用户-物品交叉特征）
+	UserEntityKey    string
+	ItemEntityKey    string
 }
 
 // ClientOption 客户端配置选项

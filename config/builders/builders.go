@@ -2,9 +2,11 @@ package builders
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/rushteam/reckit/config"
+	"github.com/rushteam/reckit/core"
 	"github.com/rushteam/reckit/feature"
 	"github.com/rushteam/reckit/filter"
 	"github.com/rushteam/reckit/model"
@@ -15,6 +17,108 @@ import (
 	"github.com/rushteam/reckit/rerank"
 	"github.com/rushteam/reckit/service"
 )
+
+var (
+	dependencyMu                 sync.RWMutex
+	configuredFilterStore        core.Store
+	configuredBloomFilterChecker filter.BloomFilterChecker
+	configuredFeatureService     core.FeatureService
+)
+
+// Dependencies 是内置 builders 的实例级依赖集合。
+// 推荐在创建 NodeFactory 时通过 NewFactory/ApplyBuiltins 绑定，避免使用全局可变状态。
+type Dependencies struct {
+	FilterStore        core.Store
+	BloomFilterChecker filter.BloomFilterChecker
+	FeatureService     core.FeatureService
+}
+
+func (d Dependencies) filterStoreAdapter() *filter.StoreAdapter {
+	if d.FilterStore == nil {
+		return nil
+	}
+	if d.BloomFilterChecker != nil {
+		return filter.NewStoreAdapterWithBloomFilter(d.FilterStore, d.BloomFilterChecker)
+	}
+	return filter.NewStoreAdapter(d.FilterStore)
+}
+
+// ApplyBuiltins 将内置 Node builders 注册到指定 factory（实例级依赖绑定）。
+func ApplyBuiltins(factory *pipeline.NodeFactory, deps Dependencies) {
+	if factory == nil {
+		return
+	}
+	factory.Register("recall.fanout", BuildFanoutNode)
+	factory.Register("recall.hot", BuildHotNode)
+	factory.Register("recall.ann", BuildANNNode)
+	factory.Register("rank.lr", BuildLRNode)
+	factory.Register("rank.rpc", BuildRPCNode)
+	factory.Register("rank.wide_deep", BuildWideDeepNode)
+	factory.Register("rank.two_tower", BuildTwoTowerNode)
+	factory.Register("rank.dnn", BuildDNNNode)
+	factory.Register("rank.din", BuildDINNode)
+	factory.Register("rerank.diversity", BuildDiversityNode)
+	factory.Register("rerank.mmoe", BuildMMoENode)
+	factory.Register("rerank.topn", BuildTopNNode)
+	factory.Register("filter", func(cfg map[string]interface{}) (pipeline.Node, error) {
+		return buildFilterNodeWithDeps(cfg, deps)
+	})
+	factory.Register("feature.enrich", func(cfg map[string]interface{}) (pipeline.Node, error) {
+		return buildFeatureEnrichNodeWithDeps(cfg, deps)
+	})
+}
+
+// NewFactory 创建只包含内置 Node builders 的工厂（推荐）。
+func NewFactory(deps Dependencies) *pipeline.NodeFactory {
+	factory := pipeline.NewNodeFactory()
+	ApplyBuiltins(factory, deps)
+	return factory
+}
+
+func legacyDependencies() Dependencies {
+	dependencyMu.RLock()
+	defer dependencyMu.RUnlock()
+	return Dependencies{
+		FilterStore:        configuredFilterStore,
+		BloomFilterChecker: configuredBloomFilterChecker,
+		FeatureService:     configuredFeatureService,
+	}
+}
+
+// SetFilterStore 配置 filter 节点使用的 Store 依赖。
+// 若未设置，配置化 Filter 仅使用内存 item_ids，不会访问外部存储。
+// Deprecated: 推荐使用 NewFactory/ApplyBuiltins 进行实例级依赖绑定。
+func SetFilterStore(store core.Store) {
+	dependencyMu.Lock()
+	defer dependencyMu.Unlock()
+	configuredFilterStore = store
+}
+
+// SetFilterBloomFilterChecker 配置 ExposedFilter 的布隆过滤器检查器（可选）。
+// Deprecated: 推荐使用 NewFactory/ApplyBuiltins 进行实例级依赖绑定。
+func SetFilterBloomFilterChecker(checker filter.BloomFilterChecker) {
+	dependencyMu.Lock()
+	defer dependencyMu.Unlock()
+	configuredBloomFilterChecker = checker
+}
+
+// SetFeatureService 配置 feature.enrich 节点使用的 FeatureService（可选）。
+// Deprecated: 推荐使用 NewFactory/ApplyBuiltins 进行实例级依赖绑定。
+func SetFeatureService(svc core.FeatureService) {
+	dependencyMu.Lock()
+	defer dependencyMu.Unlock()
+	configuredFeatureService = svc
+}
+
+// ResetDependencies 重置 builders 依赖（主要用于测试）。
+// Deprecated: 推荐通过实例级 factory 隔离测试依赖。
+func ResetDependencies() {
+	dependencyMu.Lock()
+	defer dependencyMu.Unlock()
+	configuredFilterStore = nil
+	configuredBloomFilterChecker = nil
+	configuredFeatureService = nil
+}
 
 func init() {
 	config.Register("recall.fanout", BuildFanoutNode)
@@ -282,11 +386,11 @@ func BuildMMoENode(cfg map[string]interface{}) (pipeline.Node, error) {
 		timeout = time.Duration(sec) * time.Second
 	}
 	node := &rerank.MMoENode{
-		Endpoint:          endpoint,
-		Timeout:           timeout,
-		WeightCTR:         conv.ConfigGet(cfg, "weight_ctr", 1.0),
-		WeightWatchTime:   conv.ConfigGet(cfg, "weight_watch_time", 0.01),
-		WeightGMV:         conv.ConfigGet(cfg, "weight_gmv", 1e-6),
+		Endpoint:           endpoint,
+		Timeout:            timeout,
+		WeightCTR:          conv.ConfigGet(cfg, "weight_ctr", 1.0),
+		WeightWatchTime:    conv.ConfigGet(cfg, "weight_watch_time", 0.01),
+		WeightGMV:          conv.ConfigGet(cfg, "weight_gmv", 1e-6),
 		StripFeaturePrefix: conv.ConfigGet(cfg, "strip_feature_prefix", false),
 	}
 	return node, nil
@@ -301,10 +405,15 @@ func BuildTopNNode(cfg map[string]interface{}) (pipeline.Node, error) {
 }
 
 func BuildFilterNode(cfg map[string]interface{}) (pipeline.Node, error) {
+	return buildFilterNodeWithDeps(cfg, legacyDependencies())
+}
+
+func buildFilterNodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
 	filtersConfig, ok := cfg["filters"].([]interface{})
 	if !ok {
 		return nil, fmt.Errorf("filters not found or invalid")
 	}
+	storeAdapter := deps.filterStoreAdapter()
 	filters := make([]filter.Filter, 0, len(filtersConfig))
 	for _, fc := range filtersConfig {
 		filterMap, ok := fc.(map[string]interface{})
@@ -319,15 +428,15 @@ func BuildFilterNode(cfg map[string]interface{}) (pipeline.Node, error) {
 				ids = []string{}
 			}
 			key := conv.ConfigGet(filterMap, "key", "")
-			filters = append(filters, filter.NewBlacklistFilter(ids, nil, key))
+			filters = append(filters, filter.NewBlacklistFilter(ids, storeAdapter, key))
 		case "user_block":
 			keyPrefix := conv.ConfigGet(filterMap, "key_prefix", "")
-			filters = append(filters, filter.NewUserBlockFilter(nil, keyPrefix))
+			filters = append(filters, filter.NewUserBlockFilter(storeAdapter, keyPrefix))
 		case "exposed":
 			keyPrefix := conv.ConfigGet(filterMap, "key_prefix", "")
 			timeWindow := conv.ConfigGetInt64(filterMap, "time_window", 0)
 			bloomFilterDayWindow := conv.ConfigGet(filterMap, "bloom_filter_day_window", 0)
-			filters = append(filters, filter.NewExposedFilter(nil, keyPrefix, timeWindow, bloomFilterDayWindow))
+			filters = append(filters, filter.NewExposedFilter(storeAdapter, keyPrefix, timeWindow, bloomFilterDayWindow))
 		default:
 			return nil, fmt.Errorf("unknown filter type: %s", filterType)
 		}
@@ -336,7 +445,12 @@ func BuildFilterNode(cfg map[string]interface{}) (pipeline.Node, error) {
 }
 
 func BuildFeatureEnrichNode(cfg map[string]interface{}) (pipeline.Node, error) {
+	return buildFeatureEnrichNodeWithDeps(cfg, legacyDependencies())
+}
+
+func buildFeatureEnrichNodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
 	return &feature.EnrichNode{
+		FeatureService:     deps.FeatureService,
 		UserFeaturePrefix:  conv.ConfigGet(cfg, "user_feature_prefix", ""),
 		ItemFeaturePrefix:  conv.ConfigGet(cfg, "item_feature_prefix", ""),
 		CrossFeaturePrefix: conv.ConfigGet(cfg, "cross_feature_prefix", ""),

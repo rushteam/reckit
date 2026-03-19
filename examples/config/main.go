@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/rushteam/reckit/config"
-	_ "github.com/rushteam/reckit/config/builders" // 触发内置 Node 的 init 注册
+	"github.com/rushteam/reckit/config/builders"
 	"github.com/rushteam/reckit/core"
-	"github.com/rushteam/reckit/pkg/conv"
+	"github.com/rushteam/reckit/feature"
 	"github.com/rushteam/reckit/pipeline"
+	"github.com/rushteam/reckit/pkg/conv"
+	"github.com/rushteam/reckit/store"
 )
 
 // ---------------------------------------------------------------------------
@@ -35,7 +36,7 @@ type BoostNode struct {
 }
 
 func (n *BoostNode) Name() string        { return "custom.boost" }
-func (n *BoostNode) Kind() pipeline.Kind  { return pipeline.KindReRank }
+func (n *BoostNode) Kind() pipeline.Kind { return pipeline.KindReRank }
 func (n *BoostNode) Process(ctx context.Context, rctx *core.RecommendContext, items []*core.Item) ([]*core.Item, error) {
 	boostIDs, err := n.Repo.FetchBoostItems(ctx, rctx.Scene)
 	if err != nil {
@@ -53,10 +54,10 @@ func (n *BoostNode) Process(ctx context.Context, rctx *core.RecommendContext, it
 	return items, nil
 }
 
-// registerBoostNode 将 BoostNode 注册到全局注册表。
+// registerBoostNode 将 BoostNode 注册到指定工厂（实例级注册）。
 // 闭包捕获外部依赖（repo），YAML config 字段通过 builder 参数透传。
-func registerBoostNode(repo ItemRepo) {
-	config.Register("custom.boost", func(cfg map[string]interface{}) (pipeline.Node, error) {
+func registerBoostNode(factory *pipeline.NodeFactory, repo ItemRepo) {
+	factory.Register("custom.boost", func(cfg map[string]interface{}) (pipeline.Node, error) {
 		return &BoostNode{
 			Repo:      repo,
 			BoostRate: conv.ConfigGet(cfg, "boost_rate", 1.5),
@@ -72,19 +73,30 @@ func main() {
 
 	// 1. 初始化外部依赖（Redis、DB、RPC client 等）
 	repo := &memItemRepo{items: []string{"1", "3"}}
+	memStore := store.NewMemoryStore()
+	defer memStore.Close(ctx)
 
-	// 2. 注册自定义 Node —— 闭包捕获依赖，config 字段由 YAML 透传
-	registerBoostNode(repo)
+	// 2. 创建实例级 factory，并绑定外部依赖。
+	provider := feature.NewStoreFeatureProvider(memStore, feature.KeyPrefix{})
+	featureService := feature.NewBaseFeatureService(provider)
+	defer featureService.Close(ctx)
 
-	// 3. 加载 YAML 配置
+	factory := builders.NewFactory(builders.Dependencies{
+		FilterStore:    memStore,
+		FeatureService: featureService,
+	})
+
+	// 3. 注册自定义 Node —— 闭包捕获依赖，config 字段由 YAML 透传
+	registerBoostNode(factory, repo)
+
+	// 4. 加载 YAML 配置
 	cfg, err := pipeline.LoadFromYAML("examples/config/pipeline.example.yaml")
 	if err != nil {
 		fmt.Printf("加载配置失败: %v\n", err)
 		return
 	}
 
-	// 4. 用 DefaultFactory 构建 Pipeline（包含内置 + 自定义注册的所有 Node）
-	factory := config.DefaultFactory()
+	// 5. 用实例 factory 构建 Pipeline（包含内置 + 自定义注册的所有 Node）
 	p, err := cfg.BuildPipeline(factory)
 	if err != nil {
 		fmt.Printf("构建 Pipeline 失败: %v\n", err)

@@ -72,6 +72,12 @@ type FeatureProvider interface {
 
 	// BatchGetItemFeatures 批量获取物品特征
 	BatchGetItemFeatures(ctx context.Context, itemIDs []string) (map[string]map[string]float64, error)
+
+	// GetRealtimeFeatures 获取用户-物品实时交叉特征
+	GetRealtimeFeatures(ctx context.Context, userID, itemID string) (map[string]float64, error)
+
+	// BatchGetRealtimeFeatures 批量获取用户-物品实时交叉特征
+	BatchGetRealtimeFeatures(ctx context.Context, pairs []core.FeatureUserItemPair) (map[core.FeatureUserItemPair]map[string]float64, error)
 }
 
 // FeatureMonitor 是特征监控接口，用于监控特征质量、分布、缺失率等。
