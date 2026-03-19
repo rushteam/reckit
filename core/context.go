@@ -8,12 +8,14 @@ type RecommendContext struct {
 	DeviceID string
 	Scene    string
 
-	// User 是强类型用户画像
-	User *UserProfile
+	// User 是调用方透传的用户对象（any 类型）。
+	// 框架内置 Node 不会直接读取此字段，仅供自定义 Node 做 type assert。
+	// 框架读取用户数据的标准通道是 Attributes。
+	User any
 
-	// UserProfile 是 map 形式，用于快速原型或动态属性
-	// 如果 User 不为空，优先使用 User；否则使用 UserProfile
-	UserProfile map[string]any
+	// Attributes 是用户级属性 map，框架读取用户数据的标准通道。
+	// 包括用户特征（age、gender 等）、向量（user_embedding）、行为序列（recent_clicks）等。
+	Attributes map[string]any
 
 	// Labels 是用户级标签，可驱动整个 Pipeline 行为
 	// 例如：新用户、重度用户、价格敏感等
@@ -23,34 +25,6 @@ type RecommendContext struct {
 	// - 请求参数：latitude, longitude, time_of_day, query, device_type 等
 	// - 实时特征：realtime_ctr, realtime_exposure 等（建议加 realtime_ 前缀区分）
 	Params map[string]any
-}
-
-// GetUserProfile 获取用户画像。
-// 优先返回强类型 UserProfile，如果为空则从 UserProfile map 构建。
-func (rctx *RecommendContext) GetUserProfile() *UserProfile {
-	if rctx.User != nil {
-		return rctx.User
-	}
-	// 从 UserProfile 构建
-	if rctx.UserProfile != nil {
-		user := NewUserProfile(rctx.UserID)
-		// 提取静态属性
-		if age, ok := rctx.UserProfile["age"].(float64); ok {
-			user.Age = int(age)
-		}
-		if gender, ok := rctx.UserProfile["gender"].(string); ok {
-			user.Gender = gender
-		}
-		if location, ok := rctx.UserProfile["location"].(string); ok {
-			user.Location = location
-		}
-		// 提取兴趣
-		if interests, ok := rctx.UserProfile["interests"].(map[string]float64); ok {
-			user.Interests = interests
-		}
-		return user
-	}
-	return nil
 }
 
 // PutLabel 写入用户级 Label。

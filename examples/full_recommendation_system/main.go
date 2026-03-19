@@ -514,10 +514,14 @@ func main() {
 			TopK:   20,
 			Metric: "cosine",
 			UserPreferencesExtractor: func(rctx *core.RecommendContext) map[string]float64 {
-				if rctx.User != nil {
-					return rctx.User.Interests // category -> weight
+				if rctx.User == nil {
+					return nil
 				}
-				return nil
+				userProfile, ok := rctx.User.(*core.UserProfile)
+				if !ok {
+					return nil
+				}
+				return userProfile.Interests // category -> weight
 			},
 		},
 	}
@@ -606,14 +610,18 @@ func main() {
 			if rctx.User == nil {
 				return nil
 			}
+			userProfile, ok := rctx.User.(*core.UserProfile)
+			if !ok {
+				return nil
+			}
 			features := map[string]float64{
-				"user_age":    float64(rctx.User.Age),
-				"user_gender": encodeGender(rctx.User.Gender),
-				"user_region": encodeRegion(rctx.User.Location),
+				"user_age":    float64(userProfile.Age),
+				"user_gender": encodeGender(userProfile.Gender),
+				"user_region": encodeRegion(userProfile.Location),
 			}
 			// 从 Interests 提取 category 偏好
-			if rctx.User.Interests != nil {
-				for category, weight := range rctx.User.Interests {
+			if userProfile.Interests != nil {
+				for category, weight := range userProfile.Interests {
 					features["user_interest_"+category] = weight
 				}
 			}
@@ -719,6 +727,9 @@ func main() {
 				"sports": 0.4,
 			},
 			RecentClicks: []string{"item_1", "item_2"},
+		},
+		Attributes: map[string]any{
+			"recent_clicks": []string{"item_1", "item_2"},
 		},
 		Params: map[string]any{
 			"debug": true,

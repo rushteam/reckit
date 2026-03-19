@@ -271,8 +271,8 @@ func (n *EnrichNode) defaultUserFeatureExtractor(rctx *core.RecommendContext) ma
 		}
 
 		// 从 UserProfile 提取特征
-		if rctx.UserProfile != nil {
-			for k, v := range rctx.UserProfile {
+		if rctx.Attributes != nil {
+			for k, v := range rctx.Attributes {
 				if fv, ok := n.toFloat64(v); ok {
 					features[k] = fv
 				}

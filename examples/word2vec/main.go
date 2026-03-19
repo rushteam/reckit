@@ -57,6 +57,9 @@ func main() {
 		UserID: "user_1",
 		Scene:  "feed",
 		User:   userProfile,
+		Attributes: map[string]any{
+			"recent_clicks": userProfile.RecentClicks,
+		},
 	}
 
 	// ---------- Word2Vec 文本模式 ----------
@@ -79,7 +82,7 @@ func main() {
 
 	// ---------- Item2Vec 序列模式 ----------
 	// 用户向量：用户行为序列（物品 ID 列表）编码；候选：物品 ID 向量，相似度召回
-	// 序列来自 GetUserSequence 或 User.RecentClicks；词表为物品 ID
+	// 序列来自 GetUserSequence 或 Attributes["recent_clicks"]；词表为物品 ID
 	fmt.Println("\n=== Item2Vec 召回（序列模式） ===")
 	seqRecall := &recall.Word2VecRecall{
 		Model: w2vModel,

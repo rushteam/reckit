@@ -102,7 +102,7 @@ func main() {
 	rctx := &core.RecommendContext{
 		UserID: "1",
 		Scene:  "feed",
-		UserProfile: map[string]any{
+		Attributes: map[string]any{
 			"user_embedding": userVector,
 		},
 	}

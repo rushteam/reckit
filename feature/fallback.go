@@ -26,8 +26,8 @@ func (f *DefaultFallbackStrategy) GetUserFeatures(ctx context.Context, userID st
 	// 如果需要用户 ID 特征，可以通过 hash 或其他方式转换为数值
 
 	// 从 UserProfile 提取
-	if rctx.UserProfile != nil {
-		for k, v := range rctx.UserProfile {
+	if rctx.Attributes != nil {
+		for k, v := range rctx.Attributes {
 			if fv, ok := toFloat64(v); ok {
 				features[k] = fv
 			}

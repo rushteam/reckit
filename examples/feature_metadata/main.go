@@ -132,7 +132,7 @@ func main() {
 	rctx := &core.RecommendContext{
 		UserID: "user_123",
 		Scene:  "feed",
-		UserProfile: map[string]any{
+		Attributes: map[string]any{
 			"age":    25.0,
 			"gender": 1.0,
 		},

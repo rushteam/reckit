@@ -52,11 +52,15 @@ type Source interface {
     Recall(ctx context.Context, rctx *core.RecommendContext) ([]*core.Item, error)
 }
 
-// 排序模型接口
+// 排序模型接口（本地轻量模型：LR/GBDT 等）
+// 远程推理请使用 core.MLService + RPCNode，或通过 model.MLServiceAdapter 桥接
 type RankModel interface {
     Name() string
     Predict(features map[string]float64) (float64, error)
 }
+
+// MLServiceAdapter 将 MLService 适配为 RankModel（显式桥接）
+func MLServiceAdapter(name string, svc core.MLService) RankModel
 
 // 过滤器接口（逐条过滤）
 type Filter interface {
@@ -210,6 +214,39 @@ type CFConfig interface {
 // 默认实现：DefaultRecallConfig（同时满足 RecallConfig 和 CFConfig）
 ```
 
+> **迁移说明（RecallConfig → CFConfig）**：
+> `UserBasedCF.Config` 和 `ItemBasedCF.Config` 的字段类型从 `core.RecallConfig` 改为 `core.CFConfig`。
+> 如果你的代码将配置存储在 `core.RecallConfig` 类型的变量中再传给 CF struct，需要改为 `core.CFConfig`：
+> ```go
+> // Before（编译报错）
+> var cfg core.RecallConfig = &MyConfig{}
+> u2i := &recall.UserBasedCF{Config: cfg}
+>
+> // After（修复方式）
+> var cfg core.CFConfig = &MyConfig{}
+> u2i := &recall.UserBasedCF{Config: cfg}
+> ```
+> 如果你使用 `&core.DefaultRecallConfig{}` 字面量或自定义 struct 直接赋值，无需任何改动——
+> 只要你的 struct 实现了原来的 5 个方法，它自动满足 `CFConfig`。
+
+> **迁移说明（User 泛化 + Attributes）**：
+> 1. `RecommendContext.User` 从 `*UserProfile` 改为 `any`（透传容器，框架不直接读取）
+> 2. `Attributes map[string]any` 是框架读取用户数据的标准通道（特征、行为序列等）
+> 3. `GetUserProfile()` 已移除；`UserProfileFromMap()` 已移除
+> 4. `UserProfile` struct 保留为可选便利实现，框架不依赖
+> ```go
+> // Before
+> rctx.User.Age                              // 直接访问强类型字段
+> rctx.User.RecentClicks                     // 框架内置 Node 自动读取
+>
+> // After
+> rctx.Attributes["age"]                     // 通过 Attributes 传递
+> rctx.Attributes["recent_clicks"]           // 框架内置 Node 从 Attributes 读取
+> up := rctx.User.(*MyUserStruct)            // 自定义 Node 中 type assert
+> ```
+> 行为序列（RecentClicks）：框架内置 Node（DIN、BERT、Word2Vec 等）
+> 从 `Attributes["recent_clicks"]` 读取，或通过 `HistoryFunc`/`BehaviorFunc` 配置。
+
 ## 核心数据结构
 
 ### RecommendContext
@@ -219,12 +256,11 @@ type RecommendContext struct {
     UserID   string
     DeviceID string
     Scene    string
-    
-    User        *UserProfile        // 强类型用户画像
-    UserProfile map[string]any     // Map 形式用户画像
-    Labels      map[string]utils.Label  // 用户级标签
-    Realtime    map[string]any
-    Params      map[string]any
+
+    User       any                    // 调用方透传的用户对象，框架不直接读取
+    Attributes map[string]any         // 用户级属性（框架读取用户数据的标准通道）
+    Labels     map[string]utils.Label // 用户级标签
+    Params     map[string]any         // 请求级上下文参数
 }
 ```
 
@@ -259,7 +295,10 @@ func (it *Item) GetValue(key string) (string, bool)
 
 **字段查找优先级**：`Diversity` 等节点通过 `getValue(item, key)` 读取字段时，按 **Labels > Meta > Features** 的优先级查找。离散类别（如 category、author）建议放 Labels 或 Meta；仅当特征编码为数值放在 Features 时，才会 fallback 到 Features（float64 自动转为字符串）。
 
-### UserProfile
+### UserProfile（可选参考实现）
+
+`core.UserProfile` 是框架提供的便利 struct，**不是强制要求**。
+框架内置 Node 不依赖此类型，业务方可使用自己的 User struct。
 
 ```go
 type UserProfile struct {
@@ -272,7 +311,7 @@ type UserProfile struct {
     RecentImpress []string
     PreferTags    map[string]float64
     Buckets       map[string]string
-    Extras        map[string]any  // 扩展字段（用户自定义属性）
+    Extras        map[string]any
     UpdateTime    time.Time
 }
 ```
@@ -353,10 +392,10 @@ github.com/rushteam/reckit/
 - `rank/lr_node.go` - LR 排序节点（含排序策略）
 - `rank/rpc_node.go` - RPC 排序节点
 - `rank/dnn_node.go` - DNN 排序节点
-- `rank/din_node.go` - DIN 排序节点
+- `rank/din_node.go` - DIN 排序节点（BehaviorFunc 配置行为序列）
 - `rank/wide_deep_node.go` - Wide&Deep 排序节点
 - `rank/two_tower_node.go` - Two Tower 排序节点
-- `model/model.go` - RankModel 接口
+- `model/model.go` - RankModel 接口 + MLServiceAdapter（MLService → RankModel 桥接）
 - `model/lr.go` - LR 模型实现
 - `model/rpc.go` - RPC 模型实现
 - `model/word2vec.go` - Word2Vec 模型实现
@@ -859,6 +898,7 @@ func (n *MyRankNode) Process(ctx context.Context, rctx *core.RecommendContext, i
 - `MLServiceFactory` - ML 服务工厂（创建 core.MLService 实现）
 
 ### 适配器模式
+- `MLServiceAdapter` - MLService → RankModel 桥接（`model/model.go`）
 - `VectorStoreAdapter` - 适配向量服务
 - `FeatureServiceAdapter` - 适配 Feast（位于扩展包 `ext/feast/http`）
 - `S3Client` - 适配 S3 兼容协议（AWS S3、阿里云 OSS、腾讯云 COS、MinIO 等）
@@ -894,9 +934,10 @@ func (n *MyRankNode) Process(ctx context.Context, rctx *core.RecommendContext, i
    - `conv.MapToFloat64` - map[string]any -> map[string]float64
    - `conv.SliceAnyToString` - []any -> []string（兼容 YAML/JSON）
    - `conv.ConfigGet[T]`、`conv.ConfigGetInt64` - 从配置 map 读取值
-8. **UserProfile 扩展属性**：通过 `Extras map[string]any` 存储自定义属性
-   - `GetExtraFloat64`、`GetExtraInt`、`GetExtraString` - 带类型转换的获取方法
-   - `core.GetExtraAs[T]` - 泛型方法，用于精确类型匹配（不进行数值转换）
+8. **User 字段为 any**：`RecommendContext.User` 是 `any` 类型透传容器，框架内置 Node 不读取
+   - 框架通过 `Attributes map[string]any` 获取用户数据
+   - 行为序列通过 `Attributes["recent_clicks"]` 或 `HistoryFunc`/`BehaviorFunc` 传递
+   - `UserProfile` struct 保留为可选参考实现，业务方可自定义
 9. **模型服务协议**：在需要约定时尽量采用 [KServe v2（Open Inference Protocol）](https://kserve.github.io/website/master/modelserving/data_plane/v2_protocol/) 标准；详见 `python/service/KSERVE_V2_ALIGNMENT.md`。
 
 ## 常用操作
@@ -916,15 +957,12 @@ item.PutLabel("recall_source", utils.Label{Value: "hot", Source: "recall"})
 rctx := &core.RecommendContext{
     UserID: "user_456",
     Scene:  "feed",
-    User: &core.UserProfile{
-        UserID:    "user_456",
-        Age:       25,
-        Gender:    "male",
-        Interests: map[string]float64{"tech": 0.8, "game": 0.6},
-    },
-    UserProfile: map[string]any{
-        "age":    25.0,
-        "gender": "male",
+    User:   myUserStruct,  // 业务方自定义 struct，框架不读取
+    Attributes: map[string]any{
+        "age":            25.0,
+        "gender":         1.0,
+        "recent_clicks":  []string{"item_1", "item_2"},
+        "user_embedding": []float64{0.1, 0.2, 0.3},
     },
 }
 ```

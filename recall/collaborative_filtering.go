@@ -315,9 +315,9 @@ func (r *ItemBasedCF) Recall(
 	var userItems map[string]float64
 	var err error
 
-	if r.UserHistoryKey != "" && rctx.UserProfile != nil {
+	if r.UserHistoryKey != "" && rctx.Attributes != nil {
 		// 从 Context 获取用户历史
-		if history, ok := rctx.UserProfile[r.UserHistoryKey]; ok {
+		if history, ok := rctx.Attributes[r.UserHistoryKey]; ok {
 			if items, ok := history.(map[string]float64); ok {
 				userItems = items
 			} else if items, ok := history.(map[string]interface{}); ok {

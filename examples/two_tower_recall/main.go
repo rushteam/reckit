@@ -29,7 +29,7 @@ func main() {
 		UserID: "user_123",
 		Scene:  "feed",
 		User:   userProfile,
-		Realtime: map[string]any{
+		Params: map[string]any{
 			"hour": float64(time.Now().Hour()),
 		},
 	}

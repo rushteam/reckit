@@ -48,6 +48,10 @@ type Word2VecRecall struct {
 
 	// TextField 文本字段：title / description / tags
 	TextField string
+
+	// HistoryFunc 可选，返回用户最近点击的物品 ID 列表。
+	// 未设置时从 rctx.Attributes["recent_clicks"] 获取。
+	HistoryFunc func(rctx *core.RecommendContext) []string
 }
 
 func (r *Word2VecRecall) Name() string {
@@ -68,36 +72,31 @@ func (r *Word2VecRecall) Recall(
 
 	switch r.Mode {
 	case "sequence":
-		// 基于用户行为序列
 		sequence, err := r.Store.GetUserSequence(ctx, rctx.UserID, 50)
 		if err != nil || len(sequence) == 0 {
-			// 如果从 Store 获取失败，尝试从 UserProfile 获取
-			if rctx.User != nil && len(rctx.User.RecentClicks) > 0 {
-				sequence = rctx.User.RecentClicks
-				if len(sequence) > 50 {
-					sequence = sequence[:50]
-				}
-			} else {
-				return nil, nil
+			sequence = r.getRecentClicks(rctx)
+			if len(sequence) > 50 {
+				sequence = sequence[:50]
 			}
+		}
+		if len(sequence) == 0 {
+			return nil, nil
 		}
 		userEmbedding = r.Model.EncodeSequence(sequence)
 
 	case "text":
 		fallthrough
 	default:
-		// 基于用户最近点击的物品文本
-		if rctx.User != nil && len(rctx.User.RecentClicks) > 0 {
-			// 使用最近点击的物品文本
+		recentClicks := r.getRecentClicks(rctx)
+		if len(recentClicks) > 0 {
 			texts := make([]string, 0)
-			for _, itemID := range rctx.User.RecentClicks {
+			for _, itemID := range recentClicks {
 				text, err := r.Store.GetItemText(ctx, itemID)
 				if err == nil && text != "" {
 					texts = append(texts, text)
 				}
 			}
 			if len(texts) > 0 {
-				// 将所有文本合并后编码
 				combinedText := ""
 				for _, t := range texts {
 					combinedText += t + " "
@@ -123,19 +122,14 @@ func (r *Word2VecRecall) Recall(
 	}
 	scores := make([]scoredItem, 0)
 
+	clickedSet := make(map[string]bool)
+	for _, clicked := range r.getRecentClicks(rctx) {
+		clickedSet[clicked] = true
+	}
+
 	for _, itemID := range allItems {
-		// 跳过用户已点击的物品
-		if rctx.User != nil {
-			skipped := false
-			for _, clicked := range rctx.User.RecentClicks {
-				if clicked == itemID {
-					skipped = true
-					break
-				}
-			}
-			if skipped {
-				continue
-			}
+		if clickedSet[itemID] {
+			continue
 		}
 
 		// 获取物品向量
@@ -194,4 +188,16 @@ func (r *Word2VecRecall) Recall(
 	}
 
 	return out, nil
+}
+
+func (r *Word2VecRecall) getRecentClicks(rctx *core.RecommendContext) []string {
+	if r.HistoryFunc != nil {
+		return r.HistoryFunc(rctx)
+	}
+	if rctx != nil && rctx.Attributes != nil {
+		if clicks, ok := rctx.Attributes["recent_clicks"].([]string); ok {
+			return clicks
+		}
+	}
+	return nil
 }

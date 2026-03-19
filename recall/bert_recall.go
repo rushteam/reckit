@@ -52,6 +52,10 @@ type BERTRecall struct {
 
 	// BatchSize 批量编码大小（提高效率）
 	BatchSize int
+
+	// HistoryFunc 可选，返回用户最近点击的物品 ID 列表。
+	// 未设置时从 rctx.Attributes["recent_clicks"] 获取。
+	HistoryFunc func(rctx *core.RecommendContext) []string
 }
 
 func (r *BERTRecall) Name() string {
@@ -85,26 +89,23 @@ func (r *BERTRecall) Recall(
 	case "text":
 		fallthrough
 	default:
-		// 基于用户最近点击的物品文本
-		if rctx.User != nil && len(rctx.User.RecentClicks) > 0 {
-			// 获取最近点击的物品文本
+		recentClicks := r.getRecentClicks(rctx)
+		if len(recentClicks) > 0 {
 			texts := make([]string, 0)
-			for _, itemID := range rctx.User.RecentClicks {
+			for _, itemID := range recentClicks {
 				text, err := r.Store.GetItemText(ctx, itemID)
 				if err == nil && text != "" {
 					texts = append(texts, text)
 				}
-				if len(texts) >= 5 { // 限制最多 5 个文本
+				if len(texts) >= 5 {
 					break
 				}
 			}
 			if len(texts) > 0 {
-				// 批量编码文本
 				vectors, err := r.Model.EncodeTexts(ctx, texts)
 				if err != nil {
 					return nil, err
 				}
-				// 对多个文本向量求平均（或使用其他聚合方式）
 				userEmbedding = r.aggregateVectors(vectors)
 			}
 		}
@@ -120,13 +121,10 @@ func (r *BERTRecall) Recall(
 		return nil, err
 	}
 
-	// 过滤已点击的物品
 	candidateItems := make([]string, 0)
 	clickedSet := make(map[string]bool)
-	if rctx.User != nil {
-		for _, clicked := range rctx.User.RecentClicks {
-			clickedSet[clicked] = true
-		}
+	for _, clicked := range r.getRecentClicks(rctx) {
+		clickedSet[clicked] = true
 	}
 	for _, itemID := range allItems {
 		if !clickedSet[itemID] {
@@ -259,4 +257,16 @@ func (r *BERTRecall) aggregateVectors(vectors [][]float64) []float64 {
 	}
 
 	return aggregated
+}
+
+func (r *BERTRecall) getRecentClicks(rctx *core.RecommendContext) []string {
+	if r.HistoryFunc != nil {
+		return r.HistoryFunc(rctx)
+	}
+	if rctx != nil && rctx.Attributes != nil {
+		if clicks, ok := rctx.Attributes["recent_clicks"].([]string); ok {
+			return clicks
+		}
+	}
+	return nil
 }

@@ -67,9 +67,9 @@ func (r *MFRecall) Recall(
 	// 优先从 UserEmbeddingExtractor 获取
 	if r.UserEmbeddingExtractor != nil {
 		userEmbedding = r.UserEmbeddingExtractor(rctx)
-	} else if r.UserEmbeddingKey != "" && rctx.UserProfile != nil {
+	} else if r.UserEmbeddingKey != "" && rctx.Attributes != nil {
 		// 从 Context 获取
-		if uv, ok := rctx.UserProfile[r.UserEmbeddingKey]; ok {
+		if uv, ok := rctx.Attributes[r.UserEmbeddingKey]; ok {
 			if vec, ok := uv.([]float64); ok {
 				userEmbedding = vec
 			} else if vec, ok := uv.([]interface{}); ok {

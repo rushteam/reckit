@@ -75,6 +75,9 @@ func main() {
 		UserID: "user_1",
 		Scene:  "feed",
 		User:   userProfile,
+		Attributes: map[string]any{
+			"recent_clicks": userProfile.RecentClicks,
+		},
 	}
 
 	// 注意：这里需要实际的 BERT 服务运行才能工作

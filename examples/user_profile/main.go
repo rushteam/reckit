@@ -46,7 +46,7 @@ func main() {
 		Scene:  "feed",
 		User:   userProfile,
 		Labels: make(map[string]utils.Label),
-		Realtime: map[string]any{
+		Params: map[string]any{
 			"hour": float64(time.Now().Hour()),
 		},
 	}
@@ -189,6 +189,7 @@ func (n *userProfileDrivenRecall) Process(
 	if rctx.User == nil || len(items) == 0 {
 		return items, nil
 	}
+	userProfile := rctx.User.(*core.UserProfile)
 
 	// 根据用户兴趣对物品进行加权
 	for _, item := range items {
@@ -198,9 +199,9 @@ func (n *userProfileDrivenRecall) Process(
 
 		// 检查物品类别是否匹配用户兴趣
 		if category, ok := item.Labels["category"]; ok {
-			if rctx.User.HasInterest(category.Value, 0.5) {
+			if userProfile.HasInterest(category.Value, 0.5) {
 				// 用户偏好放大
-				weight := rctx.User.GetInterestWeight(category.Value)
+				weight := userProfile.GetInterestWeight(category.Value)
 				item.Score += weight * 0.5
 				item.PutLabel("user_interest", utils.Label{
 					Value:  category.Value,
@@ -232,6 +233,7 @@ func (n *userProfileDrivenRank) Process(
 	if rctx.User == nil || len(items) == 0 {
 		return items, nil
 	}
+	userProfile := rctx.User.(*core.UserProfile)
 
 	// 根据用户兴趣对排序分数进行加权
 	for _, item := range items {
@@ -241,7 +243,7 @@ func (n *userProfileDrivenRank) Process(
 
 		// 用户兴趣加权
 		if category, ok := item.Labels["category"]; ok {
-			if weight := rctx.User.GetInterestWeight(category.Value); weight > 0 {
+			if weight := userProfile.GetInterestWeight(category.Value); weight > 0 {
 				item.Score *= (1 + weight)
 				item.PutLabel("user_interest_boost", utils.Label{
 					Value:  category.Value,
@@ -273,9 +275,10 @@ func (n *userProfileDrivenRerank) Process(
 	if rctx.User == nil || len(items) == 0 {
 		return items, nil
 	}
+	userProfile := rctx.User.(*core.UserProfile)
 
 	// 根据实验桶调整多样性
-	if rctx.User.GetBucket("diversity") == "strong" {
+	if userProfile.GetBucket("diversity") == "strong" {
 		for _, item := range items {
 			if item == nil {
 				continue
@@ -311,9 +314,10 @@ func (n *extrasDrivenRank) Process(
 	if rctx.User == nil || len(items) == 0 {
 		return items, nil
 	}
+	userProfile := rctx.User.(*core.UserProfile)
 
 	// 使用扩展属性：VIP 用户特殊处理
-	if vipLevel, ok := rctx.User.GetExtraFloat64("vip_level"); ok && vipLevel >= 3 {
+	if vipLevel, ok := userProfile.GetExtraFloat64("vip_level"); ok && vipLevel >= 3 {
 		for _, item := range items {
 			if item == nil {
 				continue
@@ -328,7 +332,7 @@ func (n *extrasDrivenRank) Process(
 	}
 
 	// 使用扩展属性：购买历史数量影响排序
-	if purchaseCount, ok := rctx.User.GetExtraInt("purchase_history_count"); ok && purchaseCount > 100 {
+	if purchaseCount, ok := userProfile.GetExtraInt("purchase_history_count"); ok && purchaseCount > 100 {
 		for _, item := range items {
 			if item == nil {
 				continue

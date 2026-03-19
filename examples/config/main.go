@@ -94,9 +94,9 @@ func main() {
 	rctx := &core.RecommendContext{
 		UserID: "42",
 		Scene:  "feed",
-		Params: map[string]any{"debug": true},
-		Realtime: map[string]any{
-			"hour": time.Now().Hour(),
+		Params: map[string]any{
+			"debug": true,
+			"hour":  time.Now().Hour(),
 		},
 	}
 

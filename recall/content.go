@@ -53,9 +53,9 @@ func (r *ContentRecall) Recall(
 	// 优先从 UserPreferencesExtractor 获取
 	if r.UserPreferencesExtractor != nil {
 		userPrefs = r.UserPreferencesExtractor(rctx)
-	} else if r.UserPreferencesKey != "" && rctx.UserProfile != nil {
+	} else if r.UserPreferencesKey != "" && rctx.Attributes != nil {
 		// 从 Context 获取
-		if prefs, ok := rctx.UserProfile[r.UserPreferencesKey]; ok {
+		if prefs, ok := rctx.Attributes[r.UserPreferencesKey]; ok {
 			if p, ok := prefs.(map[string]float64); ok {
 				userPrefs = p
 			} else if p, ok := prefs.(map[string]interface{}); ok {

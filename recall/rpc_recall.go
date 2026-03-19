@@ -185,8 +185,8 @@ func (r *RPCRecall) buildDefaultRequest(rctx *core.RecommendContext, topK int) m
 		if rctx.Scene != "" {
 			req["scene"] = rctx.Scene
 		}
-		if rctx.UserProfile != nil {
-			req["user_profile"] = rctx.UserProfile
+		if rctx.Attributes != nil {
+			req["user_profile"] = rctx.Attributes
 		}
 		if rctx.Params != nil {
 			req["params"] = rctx.Params

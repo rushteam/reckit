@@ -119,24 +119,9 @@ func (e *DefaultFeatureExtractor) extractFromContext(rctx *core.RecommendContext
 		return features
 	}
 
-	// 从 UserProfile（强类型）提取
-	if rctx.User != nil {
-		features["age"] = float64(rctx.User.Age)
-		if rctx.User.Gender == "male" {
-			features["gender"] = 1.0
-		} else if rctx.User.Gender == "female" {
-			features["gender"] = 2.0
-		} else {
-			features["gender"] = 0.0
-		}
-		for tag, score := range rctx.User.Interests {
-			features["interest_"+tag] = score
-		}
-	}
-
-	// 从 UserProfile (map 形式) 提取
-	if rctx.UserProfile != nil {
-		for k, v := range rctx.UserProfile {
+	// 从 Attributes map 提取
+	if rctx.Attributes != nil {
+		for k, v := range rctx.Attributes {
 			if fv, ok := conv.ToFloat64(v); ok {
 				features[k] = fv
 			}
@@ -392,18 +377,9 @@ func (e *HistoryExtractor) Extract(rctx *core.RecommendContext) []string {
 		return nil
 	}
 
-	// 从 User.RecentClicks 获取
-	if rctx.User != nil && len(rctx.User.RecentClicks) > 0 {
-		hist := rctx.User.RecentClicks
-		if e.MaxLength > 0 && len(hist) > e.MaxLength {
-			return hist[len(hist)-e.MaxLength:]
-		}
-		return hist
-	}
-
-	// 从 UserProfile (map) 获取
-	if rctx.UserProfile != nil {
-		if hist, ok := rctx.UserProfile[e.HistoryKey].([]string); ok {
+	// 从 Attributes 获取
+	if rctx.Attributes != nil {
+		if hist, ok := rctx.Attributes[e.HistoryKey].([]string); ok {
 			if e.MaxLength > 0 && len(hist) > e.MaxLength {
 				return hist[len(hist)-e.MaxLength:]
 			}

@@ -129,16 +129,16 @@ func TestDefaultFeatureExtractor_ExtractFromParams(t *testing.T) {
 	}
 }
 
-func TestDefaultFeatureExtractor_CombineWithUserProfile(t *testing.T) {
+func TestDefaultFeatureExtractor_CombineWithAttributes(t *testing.T) {
 	extractor := NewDefaultFeatureExtractor(
 		WithParamsPrefix("ctx_"),
 	)
 
 	rctx := &core.RecommendContext{
 		UserID: "test_user",
-		User: &core.UserProfile{
-			Age:    25,
-			Gender: "male",
+		Attributes: map[string]any{
+			"age":    25.0,
+			"gender": 1.0,
 		},
 		Params: map[string]any{
 			"latitude":    39.9042,
@@ -151,15 +151,13 @@ func TestDefaultFeatureExtractor_CombineWithUserProfile(t *testing.T) {
 		t.Fatalf("Extract() error = %v", err)
 	}
 
-	// Check user features
 	if features["age"] != 25.0 {
 		t.Errorf("age = %v, want 25.0", features["age"])
 	}
-	if features["gender"] != 1.0 { // male = 1.0
+	if features["gender"] != 1.0 {
 		t.Errorf("gender = %v, want 1.0", features["gender"])
 	}
 
-	// Check params features
 	if features["ctx_latitude"] != 39.9042 {
 		t.Errorf("ctx_latitude = %v, want 39.9042", features["ctx_latitude"])
 	}

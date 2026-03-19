@@ -13,12 +13,16 @@ import (
 )
 
 // DINNode 是使用 DIN 模型的排序 Node。
-// DIN 模型需要用户行为序列，从 UserProfile.RecentClicks 获取。
+// DIN 模型需要用户行为序列，通过 BehaviorFunc 或 Attributes["recent_clicks"] 获取。
 type DINNode struct {
 	Model model.RankModel
 
 	// MaxBehaviorSeqLen 是最大行为序列长度
 	MaxBehaviorSeqLen int
+
+	// BehaviorFunc 可选，返回用户行为序列。
+	// 未设置时从 rctx.Attributes["recent_clicks"] 获取。
+	BehaviorFunc func(rctx *core.RecommendContext) []string
 }
 
 func (n *DINNode) Name() string        { return "rank.din" }
@@ -38,13 +42,16 @@ func (n *DINNode) Process(
 		maxLen = 10 // 默认最多 10 个历史行为
 	}
 
-	// 从 UserProfile 获取用户行为序列
 	var behaviorSeq []string
-	if rctx != nil && rctx.User != nil {
-		behaviorSeq = rctx.User.RecentClicks
-		if len(behaviorSeq) > maxLen {
-			behaviorSeq = behaviorSeq[len(behaviorSeq)-maxLen:]
+	if n.BehaviorFunc != nil {
+		behaviorSeq = n.BehaviorFunc(rctx)
+	} else if rctx != nil && rctx.Attributes != nil {
+		if clicks, ok := rctx.Attributes["recent_clicks"].([]string); ok {
+			behaviorSeq = clicks
 		}
+	}
+	if len(behaviorSeq) > maxLen {
+		behaviorSeq = behaviorSeq[len(behaviorSeq)-maxLen:]
 	}
 
 	for _, it := range items {

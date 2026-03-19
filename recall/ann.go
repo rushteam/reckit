@@ -53,9 +53,9 @@ func (r *ANN) Recall(
 	if len(userEmbedding) == 0 {
 		if r.UserEmbeddingExtractor != nil {
 			userEmbedding = r.UserEmbeddingExtractor(rctx)
-		} else if rctx != nil && rctx.UserProfile != nil {
+		} else if rctx != nil && rctx.Attributes != nil {
 			// 从 UserProfile 获取用户向量
-			if uv, ok := rctx.UserProfile["user_embedding"]; ok {
+			if uv, ok := rctx.Attributes["user_embedding"]; ok {
 				if vec, ok := uv.([]float64); ok {
 					userEmbedding = vec
 				} else if vec, ok := uv.([]interface{}); ok {

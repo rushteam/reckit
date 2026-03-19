@@ -36,10 +36,11 @@ func main() {
 
 	// 示例：根据实验桶调整策略
 	fmt.Println("=== 实验桶使用示例 ===")
-	fmt.Printf("多样性策略: %s\n", rctx.User.GetBucket("diversity"))
-	fmt.Printf("召回策略: %s\n", rctx.User.GetBucket("recall"))
-	fmt.Printf("排序策略: %s\n", rctx.User.GetBucket("rank"))
-	fmt.Printf("重排策略: %s\n", rctx.User.GetBucket("rerank"))
+	up := rctx.User.(*core.UserProfile)
+	fmt.Printf("多样性策略: %s\n", up.GetBucket("diversity"))
+	fmt.Printf("召回策略: %s\n", up.GetBucket("recall"))
+	fmt.Printf("排序策略: %s\n", up.GetBucket("rank"))
+	fmt.Printf("重排策略: %s\n", up.GetBucket("rerank"))
 
 	// 3. 创建 Pipeline，Node 中根据实验桶调整行为
 	p := &pipeline.Pipeline{
@@ -89,7 +90,8 @@ func (r *recallWithBucket) Recall(
 	rctx *core.RecommendContext,
 ) ([]*core.Item, error) {
 	// 根据实验桶选择召回策略
-	recallVersion := rctx.User.GetBucket("recall")
+	userProfile := rctx.User.(*core.UserProfile)
+	recallVersion := userProfile.GetBucket("recall")
 	
 	var items []*core.Item
 	switch recallVersion {
@@ -145,7 +147,8 @@ func (r *rankWithBucket) Process(
 	items []*core.Item,
 ) ([]*core.Item, error) {
 	// 根据实验桶选择排序策略
-	rankStrategy := rctx.User.GetBucket("rank")
+	userProfile := rctx.User.(*core.UserProfile)
+	rankStrategy := userProfile.GetBucket("rank")
 
 	for _, item := range items {
 		switch rankStrategy {
@@ -193,7 +196,8 @@ func (r *rerankWithBucket) Process(
 	items []*core.Item,
 ) ([]*core.Item, error) {
 	// 根据实验桶调整多样性
-	diversityStrategy := rctx.User.GetBucket("diversity")
+	userProfile := rctx.User.(*core.UserProfile)
+	diversityStrategy := userProfile.GetBucket("diversity")
 
 	switch diversityStrategy {
 	case "strong":

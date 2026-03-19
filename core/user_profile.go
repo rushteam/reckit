@@ -6,26 +6,14 @@ import (
 	"github.com/rushteam/reckit/pkg/conv"
 )
 
-// UserProfile 是用户画像的核心抽象。
+// UserProfile 是框架提供的可选用户画像参考实现。
 //
-// 一句话定义：用户画像 = 推荐 Pipeline 的"全局上下文 + 特征源 + 决策信号"
-//
-// 它不是某一个 Node，而是：
-//   - 被所有 Node 共享
-//   - 驱动 Recall / Rank / ReRank
-//   - 可以被 Label 打标、回写、持续演进
-//
-// 设计要点：
-//
-//	维度          作用
-//	静态属性      冷启动 / 基础过滤
-//	长期兴趣      Recall / Rank 核心
-//	短期行为      实时调权
-//	实验桶        策略切换
-//	可更新        Online Learning
-//
-// ID 类型设计：
-//   - 使用 string 类型（通用，支持所有 ID 格式）
+// 重要说明：
+//   - 这是一个便利工具，不是框架强制要求的类型。
+//   - 框架内置 Node 不直接依赖此 struct，而是通过 Attributes map 或 Extractor 函数获取数据。
+//   - 业务方可以自由使用自己的 User struct，将其放入 RecommendContext.User（any 类型），
+//     并通过 Attributes 传递框架需要读取的数据。
+//   - 如果使用此 struct，可将其放入 RecommendContext.User 供自定义 Node 做 type assert。
 type UserProfile struct {
 	UserID string // 使用 string 类型（通用，支持所有 ID 格式）
 

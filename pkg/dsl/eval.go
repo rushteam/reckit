@@ -140,7 +140,7 @@ func (e *Eval) buildInput() map[string]interface{} {
 		"user_id":      e.rctx.UserID,
 		"device_id":    e.rctx.DeviceID,
 		"scene":        e.rctx.Scene,
-		"user_profile": e.rctx.UserProfile,
+		"attributes": e.rctx.Attributes,
 		"params":       e.rctx.Params,
 	}
 

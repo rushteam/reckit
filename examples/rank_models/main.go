@@ -34,11 +34,14 @@ func main() {
 
 	// 创建 RecommendContext
 	rctx := &core.RecommendContext{
-		UserID:  "1",
-		Scene:   "feed",
-		User:    userProfile,
-		Labels:  make(map[string]utils.Label),
-		Realtime: map[string]any{
+		UserID: "1",
+		Scene:  "feed",
+		User:   userProfile,
+		Attributes: map[string]any{
+			"recent_clicks": userProfile.RecentClicks,
+		},
+		Labels: make(map[string]utils.Label),
+		Params: map[string]any{
 			"hour": float64(time.Now().Hour()),
 		},
 	}

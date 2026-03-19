@@ -109,9 +109,10 @@ func (r *YouTubeDNNRecall) getHistory(rctx *core.RecommendContext) []string {
 	if r.HistoryExtractor != nil {
 		return r.HistoryExtractor.Extract(rctx)
 	}
-	// 默认：从 User.RecentClicks 获取
-	if rctx != nil && rctx.User != nil && len(rctx.User.RecentClicks) > 0 {
-		return rctx.User.RecentClicks
+	if rctx != nil && rctx.Attributes != nil {
+		if clicks, ok := rctx.Attributes["recent_clicks"].([]string); ok {
+			return clicks
+		}
 	}
 	return nil
 }
