@@ -482,9 +482,8 @@ func main() {
 	featureProvider := feature.NewStoreFeatureProvider(
 		memStore,
 		feature.KeyPrefix{
-			User:     "user:features:",
-			Item:     "item:features:",
-			Realtime: "realtime:features:",
+			User: "user:features:",
+			Item: "item:features:",
 		},
 	)
 	featureService := feature.NewBaseFeatureService(featureProvider)

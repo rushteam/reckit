@@ -42,10 +42,6 @@ func main() {
 			"item_stats:category",
 			"item_stats:rating",
 		},
-		RealtimeFeatures: []string{
-			"interaction:click_count",
-			"interaction:view_count",
-		},
 		UserEntityKey: "user_id",
 		ItemEntityKey: "item_id",
 	}
@@ -60,7 +56,7 @@ func main() {
 		}
 	}()
 
-	// 4. 创建特征注入节点（使用领域层接口 feature.FeatureService）
+	// 4. 创建特征注入节点（使用领域层接口 core.FeatureService）
 	enrichNode := &feature.EnrichNode{
 		FeatureService:     adapter, // adapter 实现了 feature.FeatureService 接口
 		UserFeaturePrefix:  "user_",
@@ -116,8 +112,8 @@ func main() {
 		fmt.Printf("%d. ItemID=%s, Score=%.4f\n", i+1, item.ID, item.Score)
 	}
 
-	// 10. 演示直接使用 feature.FeatureService（推荐方式）
-	fmt.Println("\n=== 使用 feature.FeatureService（领域层接口） ===")
+	// 10. 演示直接使用 core.FeatureService（推荐方式）
+	fmt.Println("\n=== 使用 core.FeatureService（领域层接口） ===")
 
 	// 获取用户特征
 	userFeatures, err := adapter.GetUserFeatures(ctx, "1001")

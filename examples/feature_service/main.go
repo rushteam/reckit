@@ -151,12 +151,12 @@ func main() {
 		fmt.Printf("物品特征: %v\n", itemFeatures)
 	}
 
-	// 获取实时特征
-	realtimeFeatures, err := featureService.GetRealtimeFeatures(ctx, "42", "1")
+	// 获取单个物品特征
+	singleItemFeatures, err := featureService.GetItemFeatures(ctx, "1")
 	if err != nil {
-		log.Printf("获取实时特征失败: %v", err)
+		log.Printf("获取物品特征失败: %v", err)
 	} else {
-		fmt.Printf("用户 42 对物品 1 的实时特征: %v\n", realtimeFeatures)
+		fmt.Printf("物品 1 的特征: %v\n", singleItemFeatures)
 	}
 }
 

@@ -205,34 +205,6 @@ func (v *VersionedFeatureService) BatchGetItemFeatures(
 	return service.BatchGetItemFeatures(ctx, itemIDs)
 }
 
-// GetRealtimeFeatures 获取实时特征
-func (v *VersionedFeatureService) GetRealtimeFeatures(
-	ctx context.Context,
-	userID, itemID string,
-) (map[string]float64, error) {
-	version := v.selectVersion(userID)
-	service, ok := v.services[version]
-	if !ok {
-		service = v.services[v.config.DefaultVersion]
-	}
-
-	return service.GetRealtimeFeatures(ctx, userID, itemID)
-}
-
-// BatchGetRealtimeFeatures 批量获取实时特征
-func (v *VersionedFeatureService) BatchGetRealtimeFeatures(
-	ctx context.Context,
-	pairs []feature.UserItemPair,
-) (map[feature.UserItemPair]map[string]float64, error) {
-	version := v.config.DefaultVersion
-	service, ok := v.services[version]
-	if !ok {
-		return nil, fmt.Errorf("default version %s not found", version)
-	}
-
-	return service.BatchGetRealtimeFeatures(ctx, pairs)
-}
-
 // Close 关闭服务
 func (v *VersionedFeatureService) Close(ctx context.Context) error {
 	for _, service := range v.services {
@@ -296,18 +268,16 @@ func createVersionedFeatureService(store core.Store) *VersionedFeatureService {
 
 	// 创建 v1 版本的特征服务
 	v1KeyPrefix := feature.KeyPrefix{
-		User:     "user:features:v1:",
-		Item:     "item:features:v1:",
-		Realtime: "realtime:features:v1:",
+		User: "user:features:v1:",
+		Item: "item:features:v1:",
 	}
 	v1Provider := feature.NewStoreFeatureProvider(store, v1KeyPrefix)
 	v1Service := feature.NewBaseFeatureService(v1Provider)
 
 	// 创建 v2 版本的特征服务
 	v2KeyPrefix := feature.KeyPrefix{
-		User:     "user:features:v2:",
-		Item:     "item:features:v2:",
-		Realtime: "realtime:features:v2:",
+		User: "user:features:v2:",
+		Item: "item:features:v2:",
 	}
 	v2Provider := feature.NewStoreFeatureProvider(store, v2KeyPrefix)
 	v2Service := feature.NewBaseFeatureService(v2Provider)
