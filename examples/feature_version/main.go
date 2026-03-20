@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"log"
+	"sort"
 	"time"
 
 	"github.com/rushteam/reckit/core"
@@ -15,7 +16,7 @@ import (
 	"github.com/rushteam/reckit/rank"
 	"github.com/rushteam/reckit/recall"
 	"github.com/rushteam/reckit/store"
-	
+
 	// Redis Store 扩展包
 	redisstore "github.com/rushteam/reckit/ext/store/redis"
 )
@@ -66,7 +67,7 @@ func (r *FeatureVersionRegistry) ListVersions() []string {
 
 // VersionConfig 版本配置
 type VersionConfig struct {
-	DefaultVersion string            // 默认版本
+	DefaultVersion string             // 默认版本
 	TrafficSplit   map[string]float64 // 流量分配，例如 {"v2": 0.1, "v1": 0.9}
 }
 
@@ -76,6 +77,16 @@ type VersionedFeatureService struct {
 	services map[string]core.FeatureService
 	config   *VersionConfig
 	registry *FeatureVersionRegistry
+}
+
+func (v *VersionedFeatureService) getServiceByVersion(version string) (core.FeatureService, error) {
+	if svc, ok := v.services[version]; ok && svc != nil {
+		return svc, nil
+	}
+	if svc, ok := v.services[v.config.DefaultVersion]; ok && svc != nil {
+		return svc, nil
+	}
+	return nil, fmt.Errorf("feature service not found for version=%s (default=%s)", version, v.config.DefaultVersion)
 }
 
 // NewVersionedFeatureService 创建版本化特征服务
@@ -114,17 +125,16 @@ func (v *VersionedFeatureService) GetUserFeatures(
 	userID string,
 ) (map[string]float64, error) {
 	version := v.selectVersion(userID)
-	service, ok := v.services[version]
-	if !ok {
-		// 降级到默认版本
-		service = v.services[v.config.DefaultVersion]
+	service, err := v.getServiceByVersion(version)
+	if err != nil {
+		return nil, err
 	}
 
 	features, err := service.GetUserFeatures(ctx, userID)
 	if err != nil {
 		// 如果新版本失败，尝试降级到旧版本
 		if version != v.config.DefaultVersion {
-			if fallbackService, ok := v.services[v.config.DefaultVersion]; ok {
+			if fallbackService, ok := v.services[v.config.DefaultVersion]; ok && fallbackService != nil {
 				log.Printf("版本 %s 获取失败，降级到 %s", version, v.config.DefaultVersion)
 				return fallbackService.GetUserFeatures(ctx, userID)
 			}
@@ -150,16 +160,16 @@ func (v *VersionedFeatureService) BatchGetUserFeatures(
 	// 合并结果
 	result := make(map[string]map[string]float64)
 	for version, ids := range versionGroups {
-		service, ok := v.services[version]
-		if !ok {
-			service = v.services[v.config.DefaultVersion]
+		service, err := v.getServiceByVersion(version)
+		if err != nil {
+			return nil, err
 		}
 
 		features, err := service.BatchGetUserFeatures(ctx, ids)
 		if err != nil {
 			// 降级处理
 			if version != v.config.DefaultVersion {
-				if fallbackService, ok := v.services[v.config.DefaultVersion]; ok {
+				if fallbackService, ok := v.services[v.config.DefaultVersion]; ok && fallbackService != nil {
 					features, err = fallbackService.BatchGetUserFeatures(ctx, ids)
 				}
 			}
@@ -183,9 +193,9 @@ func (v *VersionedFeatureService) GetItemFeatures(
 ) (map[string]float64, error) {
 	// 物品特征通常使用默认版本（或根据配置）
 	version := v.config.DefaultVersion
-	service, ok := v.services[version]
-	if !ok {
-		return nil, fmt.Errorf("default version %s not found", version)
+	service, err := v.getServiceByVersion(version)
+	if err != nil {
+		return nil, err
 	}
 
 	return service.GetItemFeatures(ctx, itemID)
@@ -197,12 +207,38 @@ func (v *VersionedFeatureService) BatchGetItemFeatures(
 	itemIDs []string,
 ) (map[string]map[string]float64, error) {
 	version := v.config.DefaultVersion
-	service, ok := v.services[version]
-	if !ok {
-		return nil, fmt.Errorf("default version %s not found", version)
+	service, err := v.getServiceByVersion(version)
+	if err != nil {
+		return nil, err
 	}
 
 	return service.BatchGetItemFeatures(ctx, itemIDs)
+}
+
+// GetRealtimeFeatures 获取用户-物品实时特征
+func (v *VersionedFeatureService) GetRealtimeFeatures(
+	ctx context.Context,
+	userID, itemID string,
+) (map[string]float64, error) {
+	version := v.config.DefaultVersion
+	service, err := v.getServiceByVersion(version)
+	if err != nil {
+		return nil, err
+	}
+	return service.GetRealtimeFeatures(ctx, userID, itemID)
+}
+
+// BatchGetRealtimeFeatures 批量获取用户-物品实时特征
+func (v *VersionedFeatureService) BatchGetRealtimeFeatures(
+	ctx context.Context,
+	pairs []core.FeatureUserItemPair,
+) (map[core.FeatureUserItemPair]map[string]float64, error) {
+	version := v.config.DefaultVersion
+	service, err := v.getServiceByVersion(version)
+	if err != nil {
+		return nil, err
+	}
+	return service.BatchGetRealtimeFeatures(ctx, pairs)
 }
 
 // Close 关闭服务
@@ -226,7 +262,13 @@ func (v *VersionedFeatureService) selectVersion(userID string) string {
 	ratio := float64(hash%100) / 100.0
 
 	cumulative := 0.0
-	for version, split := range v.config.TrafficSplit {
+	versions := make([]string, 0, len(v.config.TrafficSplit))
+	for version := range v.config.TrafficSplit {
+		versions = append(versions, version)
+	}
+	sort.Strings(versions)
+	for _, version := range versions {
+		split := v.config.TrafficSplit[version]
 		cumulative += split
 		if ratio < cumulative {
 			return version
