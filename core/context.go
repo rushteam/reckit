@@ -25,6 +25,9 @@ type RecommendContext struct {
 	// - 请求参数：latitude, longitude, time_of_day, query, device_type 等
 	// - 实时特征：realtime_ctr, realtime_exposure 等（建议加 realtime_ 前缀区分）
 	Params map[string]any
+
+	// ext 存放已注册的 Extension 实例，按 ExtensionName() 索引。懒初始化。
+	ext map[string]Extension
 }
 
 // PutLabel 写入用户级 Label。
@@ -46,4 +49,25 @@ func (rctx *RecommendContext) GetLabel(key string) (utils.Label, bool) {
 	}
 	lbl, ok := rctx.Labels[key]
 	return lbl, ok
+}
+
+// SetExtension 注册一个 Extension 到 Context，按 ExtensionName() 索引。
+// rctx 或 e 为 nil 时静默忽略。
+func (rctx *RecommendContext) SetExtension(e Extension) {
+	if rctx == nil || e == nil {
+		return
+	}
+	if rctx.ext == nil {
+		rctx.ext = make(map[string]Extension)
+	}
+	rctx.ext[e.ExtensionName()] = e
+}
+
+// GetExtension 按名称获取已注册的 Extension。
+func (rctx *RecommendContext) GetExtension(name string) (Extension, bool) {
+	if rctx == nil || rctx.ext == nil {
+		return nil, false
+	}
+	e, ok := rctx.ext[name]
+	return e, ok
 }

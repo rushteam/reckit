@@ -75,6 +75,13 @@ type BatchFilter interface {
     FilterBatch(ctx context.Context, rctx *core.RecommendContext, items []*core.Item) ([]*core.Item, error)
 }
 
+// Context 扩展接口（可插拔扩展点）
+type Extension interface {
+ ExtensionName() string // 全局唯一标识，如 "aippy.abtest"
+}
+// 泛型辅助：类型安全地获取 Extension
+func ExtensionAs[T Extension](rctx *RecommendContext, name string) (T, bool)
+
 // 存储接口（领域层接口，在 core 包）
 type Store interface {
     Get(ctx context.Context, key string) ([]byte, error)
@@ -261,7 +268,14 @@ type RecommendContext struct {
     Attributes map[string]any         // 用户级属性（框架读取用户数据的标准通道）
     Labels     map[string]utils.Label // 用户级标签
     Params     map[string]any         // 请求级上下文参数
+
+    ext map[string]Extension          // 可插拔扩展（懒初始化，private）
 }
+
+// Extension 操作方法
+rctx.SetExtension(e Extension)                       // 注册扩展（nil-safe）
+rctx.GetExtension(name string) (Extension, bool)     // 按名称获取
+core.ExtensionAs[T](rctx, name) (T, bool)            // 泛型类型安全获取
 ```
 
 ### Item
@@ -367,6 +381,7 @@ github.com/rushteam/reckit/
 - `core/context.go` - RecommendContext 定义
 - `core/user_profile.go` - UserProfile 定义
 - `core/config.go` - 配置接口定义
+- `core/extension.go` - Extension 接口和 ExtensionAs 泛型函数
 - `pipeline/node.go` - Node 接口定义
 - `pipeline/pipeline.go` - Pipeline 执行器和 Hook
 - `pipeline/error_hook.go` - ErrorHook 接口和内置实现（WarnAndSkip / KindRecovery / ErrorCallback）
@@ -965,6 +980,32 @@ rctx := &core.RecommendContext{
         "user_embedding": []float64{0.1, 0.2, 0.3},
     },
 }
+```
+
+### 使用 Extension（Context 扩展）
+
+```go
+import "github.com/rushteam/reckit/core"
+
+// 1. 定义扩展（实现 Extension 接口）
+type ABTestExt struct {
+ Group  string
+ Bucket int
+}
+func (e *ABTestExt) ExtensionName() string { return "aippy.abtest" }
+
+// 2. 注册扩展到 Context
+rctx := &core.RecommendContext{UserID: "u1"}
+rctx.SetExtension(&ABTestExt{Group: "experiment_a", Bucket: 3})
+
+// 3. 在 Node 中类型安全地获取
+ab, ok := core.ExtensionAs[*ABTestExt](rctx, "aippy.abtest")
+if ok {
+ fmt.Println(ab.Group, ab.Bucket) // "experiment_a" 3
+}
+
+// 4. 也可用 GetExtension 获取（需手动 type assert）
+e, ok := rctx.GetExtension("aippy.abtest")
 ```
 
 ### 使用 Label DSL
