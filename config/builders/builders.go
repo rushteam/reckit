@@ -1,6 +1,7 @@
 package builders
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/rushteam/reckit/model"
 	"github.com/rushteam/reckit/pipeline"
 	"github.com/rushteam/reckit/pkg/conv"
+	"github.com/rushteam/reckit/postprocess"
 	"github.com/rushteam/reckit/rank"
 	"github.com/rushteam/reckit/recall"
 	"github.com/rushteam/reckit/rerank"
@@ -27,13 +29,22 @@ var (
 // Dependencies 是内置 builders 的实例级依赖集合。
 // 推荐在创建 NodeFactory 时通过 NewFactory/ApplyBuiltins 绑定，避免使用全局可变状态。
 type Dependencies struct {
-	FilterStore        core.Store
-	BloomFilterChecker filter.BloomFilterChecker
-	FeatureService     core.FeatureService
+	FilterStore          core.Store
+	BloomFilterChecker   filter.BloomFilterChecker
+	BatchExposureChecker filter.BatchExposureChecker
+	FeatureService       core.FeatureService
 	// TrafficPlanner 用于 rerank.traffic_plan（planner: "inject" 时必填）。
 	TrafficPlanner rerank.TrafficPlanner
 	// ScoreWeightProvider 用于 rerank.score_weight（必填）。
 	ScoreWeightProvider rerank.ScoreWeightProvider
+	// FrequencyCapStore 用于 filter.frequency_cap。
+	FrequencyCapStore filter.FrequencyCapStore
+	// BanditStatsProvider 用于 rerank.ucb / rerank.thompson_sampling / rerank.cold_start_boost。
+	BanditStatsProvider rerank.BanditStatsProvider
+	// VectorService 用于 recall.ann 等需要向量搜索的召回源。
+	VectorService core.VectorService
+	// PaddingFunc 用于 postprocess.padding 的动态补足策略。
+	PaddingFunc postprocess.PaddingFunc
 }
 
 func (d Dependencies) filterStoreAdapter() *filter.StoreAdapter {
@@ -75,12 +86,39 @@ func ApplyBuiltins(factory *pipeline.NodeFactory, deps Dependencies) {
 	factory.Register("rerank.recall_channel_mix", func(cfg map[string]interface{}) (pipeline.Node, error) {
 		return buildRecallChannelMixNodeWithDeps(cfg, deps)
 	})
+	factory.Register("rerank.dpp_diversity", buildDPPDiversityNode)
+	factory.Register("rerank.ssd_diversity", buildSSDDiversityNode)
+	factory.Register("rerank.sample", buildSampleNode)
+	factory.Register("rerank.fair_interleave", buildFairInterleaveNode)
+	factory.Register("rerank.weighted_interleave", buildWeightedInterleaveNode)
+	factory.Register("rerank.group_quota", buildGroupQuotaNode)
+	factory.Register("rerank.epsilon_greedy", buildEpsilonGreedyNode)
+	factory.Register("rerank.ucb", func(cfg map[string]interface{}) (pipeline.Node, error) {
+		return buildUCBNodeWithDeps(cfg, deps)
+	})
+	factory.Register("rerank.thompson_sampling", func(cfg map[string]interface{}) (pipeline.Node, error) {
+		return buildThompsonSamplingNodeWithDeps(cfg, deps)
+	})
+	factory.Register("rerank.cold_start_boost", func(cfg map[string]interface{}) (pipeline.Node, error) {
+		return buildColdStartBoostNodeWithDeps(cfg, deps)
+	})
+	factory.Register("filter.conditional", func(cfg map[string]interface{}) (pipeline.Node, error) {
+		return buildConditionalNodeWithDeps(cfg, deps, factory)
+	})
 	factory.Register("filter", func(cfg map[string]interface{}) (pipeline.Node, error) {
 		return buildFilterNodeWithDeps(cfg, deps)
 	})
 	factory.Register("feature.enrich", func(cfg map[string]interface{}) (pipeline.Node, error) {
 		return buildFeatureEnrichNodeWithDeps(cfg, deps)
 	})
+	factory.Register("postprocess.padding", func(cfg map[string]interface{}) (pipeline.Node, error) {
+		return buildPaddingNodeWithDeps(cfg, deps)
+	})
+	factory.Register("postprocess.truncate_fields", buildTruncateFieldsNode)
+
+	// recall sources
+	factory.Register("recall.rpc", buildRPCRecallNode)
+	factory.Register("recall.graph", buildGraphRecallNode)
 }
 
 // NewFactory 创建只包含内置 Node builders 的工厂（推荐）。
@@ -212,6 +250,16 @@ func buildMergeStrategy(cfg map[string]interface{}) (recall.MergeStrategy, error
 			s.SourceRatios = conv.MapToFloat64(sr)
 		}
 		return s, nil
+	case "hybrid_ratio":
+		s := &recall.HybridRatioMergeStrategy{
+			TotalLimit:                int(conv.ConfigGetInt64(cfg, "total_limit", 0)),
+			DropUnconfiguredSources:   conv.ConfigGet(cfg, "drop_unconfigured_sources", false),
+			SortByPriorityBeforeDedup: conv.ConfigGet(cfg, "sort_by_priority_before_dedup", false),
+		}
+		if sr, ok := cfg["source_ratios"].(map[string]interface{}); ok {
+			s.SourceRatios = conv.MapToFloat64(sr)
+		}
+		return s, nil
 	case "round_robin":
 		s := &recall.RoundRobinMergeStrategy{
 			TopN: int(conv.ConfigGetInt64(cfg, "top_n", 0)),
@@ -279,7 +327,15 @@ func BuildLRNode(cfg map[string]interface{}) (pipeline.Node, error) {
 	weights := conv.MapToFloat64(weightsMap)
 	bias := conv.ConfigGet(cfg, "bias", 0.0)
 	lr := &model.LRModel{Bias: bias, Weights: weights}
-	return &rank.LRNode{Model: lr}, nil
+	node := &rank.LRNode{Model: lr}
+	if explain, ok := cfg["explain"].(map[string]interface{}); ok {
+		node.Explain = &rank.LRExplainConfig{
+			EmitRawScore:        conv.ConfigGet(explain, "emit_raw_score", false),
+			EmitMissingFlag:     conv.ConfigGet(explain, "emit_missing_flag", false),
+			EmitFeatureCoverage: conv.ConfigGet(explain, "emit_feature_coverage", false),
+		}
+	}
+	return node, nil
 }
 
 // buildKServeRPCModel 从配置中构建基于 KServe V2 协议的 RPCModel。
@@ -367,19 +423,36 @@ func BuildDINNode(cfg map[string]interface{}) (pipeline.Node, error) {
 }
 
 func BuildDiversityNode(cfg map[string]interface{}) (pipeline.Node, error) {
-	labelKey := conv.ConfigGet(cfg, "label_key", "category")
-	if labelKey == "" {
-		labelKey = "category"
+	node := &rerank.Diversity{
+		LabelKey:        conv.ConfigGet(cfg, "label_key", ""),
+		DiversityKeys:   conv.SliceAnyToString(cfg["diversity_keys"]),
+		MaxConsecutive:  int(conv.ConfigGetInt64(cfg, "max_consecutive", 0)),
+		WindowSize:      int(conv.ConfigGetInt64(cfg, "window_size", 0)),
+		ChannelLabelKey: conv.ConfigGet(cfg, "channel_label_key", ""),
+		Limit:           int(conv.ConfigGetInt64(cfg, "limit", 0)),
+		ExploreLimit:    int(conv.ConfigGetInt64(cfg, "explore_limit", 0)),
 	}
-	diversityKeys := conv.SliceAnyToString(cfg["diversity_keys"])
-	maxConsecutive := int(conv.ConfigGetInt64(cfg, "max_consecutive", 0))
-	windowSize := int(conv.ConfigGetInt64(cfg, "window_size", 0))
-	return &rerank.Diversity{
-		LabelKey:       labelKey,
-		DiversityKeys:  diversityKeys,
-		MaxConsecutive: maxConsecutive,
-		WindowSize:     windowSize,
-	}, nil
+	if ch, ok := cfg["exclude_channels"].([]interface{}); ok {
+		node.ExcludeChannels = conv.SliceAnyToString(ch)
+	}
+	if rawConstraints, ok := cfg["constraints"].([]interface{}); ok {
+		for _, rc := range rawConstraints {
+			cm, ok := rc.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			c := rerank.DiversityConstraint{
+				Dimensions:          conv.SliceAnyToString(cm["dimensions"]),
+				MaxConsecutive:      int(conv.ConfigGetInt64(cm, "max_consecutive", 0)),
+				WindowSize:          int(conv.ConfigGetInt64(cm, "window_size", 0)),
+				MaxPerWindow:        int(conv.ConfigGetInt64(cm, "max_per_window", 0)),
+				Weight:              conv.ConfigGet(cm, "weight", 0.0),
+				MultiValueDelimiter: conv.ConfigGet(cm, "multi_value_delimiter", ""),
+			}
+			node.Constraints = append(node.Constraints, c)
+		}
+	}
+	return node, nil
 }
 
 func BuildMMoENode(cfg map[string]interface{}) (pipeline.Node, error) {
@@ -438,6 +511,40 @@ func parseFilterFromMap(filterMap map[string]interface{}, deps Dependencies) (fi
 		timeWindow := conv.ConfigGetInt64(filterMap, "time_window", 0)
 		bloomFilterDayWindow := conv.ConfigGet(filterMap, "bloom_filter_day_window", 0)
 		return filter.NewExposedFilter(storeAdapter, keyPrefix, timeWindow, bloomFilterDayWindow), nil
+	case "exposed_batch":
+		keyPrefix := conv.ConfigGet(filterMap, "key_prefix", "")
+		timeWindow := conv.ConfigGetInt64(filterMap, "time_window", 0)
+		bloomFilterDayWindow := conv.ConfigGet(filterMap, "bloom_filter_day_window", 0)
+		return filter.NewBatchExposedFilter(storeAdapter, deps.BatchExposureChecker, keyPrefix, timeWindow, bloomFilterDayWindow), nil
+	case "expr":
+		return &filter.ExprFilter{
+			Expr:   conv.ConfigGet(filterMap, "expr", ""),
+			Invert: conv.ConfigGet(filterMap, "invert", false),
+		}, nil
+	case "quality_gate":
+		return &filter.QualityGateFilter{
+			MinScore: conv.ConfigGet(filterMap, "min_score", 0.0),
+		}, nil
+	case "dedup_field":
+		return &filter.DedupByFieldFilter{
+			FieldKey: conv.ConfigGet(filterMap, "field_key", ""),
+		}, nil
+	case "time_decay":
+		maxAgeSec := conv.ConfigGetInt64(filterMap, "max_age_seconds", 0)
+		return &filter.TimeDecayFilter{
+			TimeField: conv.ConfigGet(filterMap, "time_field", ""),
+			MaxAge:    time.Duration(maxAgeSec) * time.Second,
+		}, nil
+	case "frequency_cap":
+		if deps.FrequencyCapStore == nil {
+			return nil, fmt.Errorf("filter.frequency_cap requires Dependencies.FrequencyCapStore")
+		}
+		windowSec := conv.ConfigGetInt64(filterMap, "window_seconds", 0)
+		return &filter.FrequencyCapFilter{
+			Store:    deps.FrequencyCapStore,
+			MaxCount: int(conv.ConfigGetInt64(filterMap, "max_count", 3)),
+			Window:   time.Duration(windowSec) * time.Second,
+		}, nil
 	default:
 		return nil, fmt.Errorf("unknown filter type: %s", filterType)
 	}
@@ -609,4 +716,215 @@ func sliceAnyToIntSlice(raw []interface{}) []int {
 		}
 	}
 	return out
+}
+
+func buildSampleNode(cfg map[string]interface{}) (pipeline.Node, error) {
+	n := int(conv.ConfigGetInt64(cfg, "n", 0))
+	shuffle := conv.ConfigGet(cfg, "shuffle", false)
+	return &rerank.SampleNode{N: n, Shuffle: shuffle}, nil
+}
+
+func buildFairInterleaveNode(cfg map[string]interface{}) (pipeline.Node, error) {
+	return &rerank.FairInterleaveNode{
+		N:        int(conv.ConfigGetInt64(cfg, "n", 0)),
+		LabelKey: conv.ConfigGet(cfg, "label_key", ""),
+	}, nil
+}
+
+func buildWeightedInterleaveNode(cfg map[string]interface{}) (pipeline.Node, error) {
+	node := &rerank.WeightedInterleaveNode{
+		N:        int(conv.ConfigGetInt64(cfg, "n", 0)),
+		LabelKey: conv.ConfigGet(cfg, "label_key", ""),
+	}
+	if wm, ok := cfg["weights"].(map[string]interface{}); ok {
+		node.Weights = conv.MapToFloat64(wm)
+	}
+	return node, nil
+}
+
+func buildGroupQuotaNode(cfg map[string]interface{}) (pipeline.Node, error) {
+	node := &rerank.GroupQuotaNode{
+		N:        int(conv.ConfigGetInt64(cfg, "n", 0)),
+		FieldKey: conv.ConfigGet(cfg, "field_key", ""),
+		Strategy: rerank.GroupQuotaStrategy(conv.ConfigGet(cfg, "strategy", "")),
+		GroupMin: int(conv.ConfigGetInt64(cfg, "group_min", 0)),
+		GroupMax: int(conv.ConfigGetInt64(cfg, "group_max", 0)),
+	}
+	if caps, ok := cfg["group_caps"].(map[string]interface{}); ok {
+		node.GroupCaps = make(map[string]int, len(caps))
+		for k := range caps {
+			node.GroupCaps[k] = int(conv.ConfigGetInt64(caps, k, 0))
+		}
+	}
+	if rawGroups, ok := cfg["expr_groups"].([]interface{}); ok {
+		for _, rg := range rawGroups {
+			gm, ok := rg.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			node.ExprGroups = append(node.ExprGroups, rerank.ExprGroup{
+				Name:  conv.ConfigGet(gm, "name", ""),
+				Expr:  conv.ConfigGet(gm, "expr", ""),
+				Quota: int(conv.ConfigGetInt64(gm, "quota", 0)),
+			})
+		}
+	}
+	return node, nil
+}
+
+func buildDPPDiversityNode(cfg map[string]interface{}) (pipeline.Node, error) {
+	return &rerank.DPPDiversityNode{
+		N:            int(conv.ConfigGetInt64(cfg, "n", 0)),
+		Alpha:        conv.ConfigGet(cfg, "alpha", 1.0),
+		WindowSize:   int(conv.ConfigGetInt64(cfg, "window_size", 0)),
+		EmbeddingKey: conv.ConfigGet(cfg, "embedding_key", ""),
+		NormalizeEmb: conv.ConfigGet(cfg, "normalize_emb", true),
+		ScoreNorm:    rerank.ScoreNormMode(conv.ConfigGetInt64(cfg, "score_norm", 0)),
+	}, nil
+}
+
+func buildSSDDiversityNode(cfg map[string]interface{}) (pipeline.Node, error) {
+	return &rerank.SSDDiversityNode{
+		N:            int(conv.ConfigGetInt64(cfg, "n", 0)),
+		Gamma:        conv.ConfigGet(cfg, "gamma", 0.25),
+		WindowSize:   int(conv.ConfigGetInt64(cfg, "window_size", 5)),
+		EmbeddingKey: conv.ConfigGet(cfg, "embedding_key", ""),
+		NormalizeEmb: conv.ConfigGet(cfg, "normalize_emb", true),
+		ScoreNorm:    rerank.ScoreNormMode(conv.ConfigGetInt64(cfg, "score_norm", 0)),
+	}, nil
+}
+
+func buildConditionalNodeWithDeps(cfg map[string]interface{}, deps Dependencies, factory *pipeline.NodeFactory) (pipeline.Node, error) {
+	nodeCfg, ok := cfg["node"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("filter.conditional: node config required")
+	}
+	nodeType := conv.ConfigGet(nodeCfg, "type", "")
+	if nodeType == "" {
+		return nil, fmt.Errorf("filter.conditional: node.type required")
+	}
+	innerCfg, _ := nodeCfg["config"].(map[string]interface{})
+	if innerCfg == nil {
+		innerCfg = make(map[string]interface{})
+	}
+	inner, err := factory.Build(nodeType, innerCfg)
+	if err != nil {
+		return nil, fmt.Errorf("filter.conditional: build inner node %q: %w", nodeType, err)
+	}
+	return &filter.ConditionalNode{
+		Node: inner,
+	}, nil
+}
+
+// ---------------------------------------------------------------------------
+// Explore / Exploit builders
+// ---------------------------------------------------------------------------
+
+func buildEpsilonGreedyNode(cfg map[string]interface{}) (pipeline.Node, error) {
+	return &rerank.EpsilonGreedyNode{
+		Epsilon:     conv.ConfigGet(cfg, "epsilon", 0.1),
+		ExploitSize: int(conv.ConfigGetInt64(cfg, "exploit_size", 0)),
+	}, nil
+}
+
+func buildUCBNodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
+	if deps.BanditStatsProvider == nil {
+		return nil, fmt.Errorf("rerank.ucb requires Dependencies.BanditStatsProvider")
+	}
+	return &rerank.UCBNode{
+		Provider: deps.BanditStatsProvider,
+		C:        conv.ConfigGet(cfg, "c", 1.0),
+		N:        int(conv.ConfigGetInt64(cfg, "n", 0)),
+	}, nil
+}
+
+func buildThompsonSamplingNodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
+	if deps.BanditStatsProvider == nil {
+		return nil, fmt.Errorf("rerank.thompson_sampling requires Dependencies.BanditStatsProvider")
+	}
+	return &rerank.ThompsonSamplingNode{
+		Provider:    deps.BanditStatsProvider,
+		N:           int(conv.ConfigGetInt64(cfg, "n", 0)),
+		PureExplore: conv.ConfigGet(cfg, "pure_explore", false),
+	}, nil
+}
+
+func buildColdStartBoostNodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
+	return &rerank.ColdStartBoostNode{
+		Provider:      deps.BanditStatsProvider,
+		ImpressionKey: conv.ConfigGet(cfg, "impression_key", ""),
+		Threshold:     conv.ConfigGetInt64(cfg, "threshold", 100),
+		BoostValue:    conv.ConfigGet(cfg, "boost_value", 1.0),
+	}, nil
+}
+
+// ---------------------------------------------------------------------------
+// PostProcess builders
+// ---------------------------------------------------------------------------
+
+func buildPaddingNodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
+	return &postprocess.PaddingNode{
+		N:            int(conv.ConfigGetInt64(cfg, "n", 0)),
+		FallbackFunc: deps.PaddingFunc,
+	}, nil
+}
+
+func buildTruncateFieldsNode(cfg map[string]interface{}) (pipeline.Node, error) {
+	return &postprocess.TruncateFieldsNode{
+		ClearFeatures: conv.ConfigGet(cfg, "clear_features", false),
+		ClearMeta:     conv.ConfigGet(cfg, "clear_meta", false),
+		ClearLabels:   conv.ConfigGet(cfg, "clear_labels", false),
+		KeepMetaKeys:  conv.SliceAnyToString(cfg["keep_meta_keys"]),
+	}, nil
+}
+
+// ---------------------------------------------------------------------------
+// Recall source builders
+// ---------------------------------------------------------------------------
+
+func buildRPCRecallNode(cfg map[string]interface{}) (pipeline.Node, error) {
+	endpoint := conv.ConfigGet(cfg, "endpoint", "")
+	if endpoint == "" {
+		return nil, fmt.Errorf("recall.rpc: endpoint required")
+	}
+	timeout := 5 * time.Second
+	if sec := conv.ConfigGetInt64(cfg, "timeout", 5); sec > 0 {
+		timeout = time.Duration(sec) * time.Second
+	}
+	r := recall.NewRPCRecall(endpoint, timeout)
+	if topK := int(conv.ConfigGetInt64(cfg, "top_k", 0)); topK > 0 {
+		r.TopK = topK
+	}
+	return wrapSourceAsNode(r), nil
+}
+
+func buildGraphRecallNode(cfg map[string]interface{}) (pipeline.Node, error) {
+	endpoint := conv.ConfigGet(cfg, "endpoint", "")
+	if endpoint == "" {
+		return nil, fmt.Errorf("recall.graph: endpoint required")
+	}
+	timeout := 5 * time.Second
+	if sec := conv.ConfigGetInt64(cfg, "timeout", 5); sec > 0 {
+		timeout = time.Duration(sec) * time.Second
+	}
+	return wrapSourceAsNode(&recall.GraphRecall{
+		Endpoint: endpoint,
+		Timeout:  timeout,
+		TopK:     int(conv.ConfigGetInt64(cfg, "top_k", 20)),
+	}), nil
+}
+
+// sourceNodeAdapter 将 recall.Source 适配为 pipeline.Node。
+type sourceNodeAdapter struct {
+	source recall.Source
+}
+
+func wrapSourceAsNode(s recall.Source) pipeline.Node {
+	return &sourceNodeAdapter{source: s}
+}
+
+func (a *sourceNodeAdapter) Name() string        { return a.source.Name() }
+func (a *sourceNodeAdapter) Kind() pipeline.Kind { return pipeline.KindRecall }
+func (a *sourceNodeAdapter) Process(ctx context.Context, rctx *core.RecommendContext, _ []*core.Item) ([]*core.Item, error) {
+	return a.source.Recall(ctx, rctx)
 }

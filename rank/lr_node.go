@@ -2,7 +2,9 @@ package rank
 
 import (
 	"context"
+	"math"
 	"sort"
+	"strconv"
 
 	"github.com/rushteam/reckit/core"
 	"github.com/rushteam/reckit/model"
@@ -65,11 +67,11 @@ func (s *MultiFieldSortStrategy) Sort(items []*core.Item) {
 		if items[j] == nil {
 			return true
 		}
-		
+
 		for _, field := range s.Fields {
 			var valI, valJ float64
 			var okI, okJ bool
-			
+
 			if field.IsLabel {
 				if _, ok := items[i].Labels[field.Key]; ok {
 					// 简化：假设 Label Value 是数值字符串
@@ -83,7 +85,7 @@ func (s *MultiFieldSortStrategy) Sort(items []*core.Item) {
 				valI, okI = items[i].Features[field.Key]
 				valJ, okJ = items[j].Features[field.Key]
 			}
-			
+
 			if !okI && !okJ {
 				continue
 			}
@@ -93,7 +95,7 @@ func (s *MultiFieldSortStrategy) Sort(items []*core.Item) {
 			if !okJ {
 				return true
 			}
-			
+
 			if field.Ascending {
 				if valI < valJ {
 					return true
@@ -118,8 +120,24 @@ func (s *MultiFieldSortStrategy) Sort(items []*core.Item) {
 // - 写入 labels：rank_model
 // - 更新 item.Score 并按分数降序排序
 type LRNode struct {
-	Model       model.RankModel
+	Model        model.RankModel
 	SortStrategy SortStrategy // 必需，如果为 nil 则使用默认降序排序
+	// Explain 控制调试标签输出；nil 表示不输出额外 explain。
+	Explain *LRExplainConfig
+}
+
+const (
+	LabelKeyRankModel           = "rank_model"
+	LabelKeyRankLinearRaw       = "rank_linear_raw"
+	LabelKeyRankFeaturesMissing = "rank_features_missing"
+	LabelKeyRankFeatureCoverage = "rank_feature_coverage"
+)
+
+// LRExplainConfig 控制 LR 排序过程中的解释性标签输出。
+type LRExplainConfig struct {
+	EmitRawScore        bool
+	EmitMissingFlag     bool
+	EmitFeatureCoverage bool
 }
 
 func (n *LRNode) Name() string        { return "rank.model" }
@@ -143,7 +161,8 @@ func (n *LRNode) Process(
 			return nil, err
 		}
 		it.Score = score
-		it.PutLabel("rank_model", utils.Label{Value: n.Model.Name(), Source: "rank"})
+		it.PutLabel(LabelKeyRankModel, utils.Label{Value: n.Model.Name(), Source: "rank"})
+		n.emitExplainLabels(it)
 	}
 
 	// 使用局部变量兜底，避免并发请求中写共享字段导致 data race。
@@ -152,6 +171,67 @@ func (n *LRNode) Process(
 		strategy = &ScoreDescSortStrategy{} // 默认降序
 	}
 	strategy.Sort(items)
-	
+
 	return items, nil
+}
+
+func (n *LRNode) emitExplainLabels(it *core.Item) {
+	if n == nil || n.Explain == nil || it == nil {
+		return
+	}
+	features := it.Features
+	if features == nil {
+		features = map[string]float64{}
+	}
+
+	if n.Explain.EmitRawScore {
+		raw := lrLinearRaw(n.Model, features, it.Score)
+		it.PutLabel(LabelKeyRankLinearRaw, utils.Label{
+			Value:  strconv.FormatFloat(raw, 'f', 6, 64),
+			Source: "rank",
+		})
+	}
+	if n.Explain.EmitMissingFlag {
+		missing := "0"
+		if v, ok := features["item_features_missing"]; ok && v > 0 {
+			missing = "1"
+		}
+		it.PutLabel(LabelKeyRankFeaturesMissing, utils.Label{Value: missing, Source: "rank"})
+	}
+	if n.Explain.EmitFeatureCoverage {
+		total, present := 0, 0
+		switch m := n.Model.(type) {
+		case *model.LRModel:
+			total = len(m.Weights)
+			for k := range m.Weights {
+				if _, ok := features[k]; ok {
+					present++
+				}
+			}
+		default:
+			return
+		}
+		if total > 0 {
+			coverage := float64(present) / float64(total)
+			it.PutLabel(LabelKeyRankFeatureCoverage, utils.Label{
+				Value:  strconv.FormatFloat(coverage, 'f', 4, 64),
+				Source: "rank",
+			})
+		}
+	}
+}
+
+func lrLinearRaw(rm model.RankModel, features map[string]float64, score float64) float64 {
+	if m, ok := rm.(*model.LRModel); ok {
+		raw := m.Bias
+		for k, w := range m.Weights {
+			raw += w * features[k]
+		}
+		return raw
+	}
+	// 未知模型时尽量从 score 反推 logit，边界值返回 0。
+	if score <= 0 || score >= 1 {
+		return 0
+	}
+	return math.Log(score / (1 - score))
 }

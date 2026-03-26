@@ -27,6 +27,8 @@ type StoreAdapter struct {
 	BloomFilterChecker BloomFilterChecker
 }
 
+var _ BatchExposureChecker = (*StoreAdapter)(nil)
+
 // NewStoreAdapter 创建一个 core.Store 适配器。
 func NewStoreAdapter(s core.Store) *StoreAdapter {
 	return &StoreAdapter{store: s}
@@ -135,4 +137,49 @@ func (a *StoreAdapter) CheckExposedInBloomFilter(ctx context.Context, userID str
 
 	// 所有日期的布隆过滤器都返回 false，表示一定不在
 	return false, nil
+}
+
+// CheckExposedBatch 批量判断 item 是否已曝光。
+// 默认实现采用「近期 IDs 一次加载 + Bloom 逐条检查」，
+// 可被扩展实现（如 TairBloom pipeline）覆盖以提升性能。
+func (a *StoreAdapter) CheckExposedBatch(
+	ctx context.Context,
+	userID string,
+	itemIDs []string,
+	keyPrefix string,
+	timeWindow int64,
+	dayWindow int,
+) (map[string]bool, error) {
+	out := make(map[string]bool, len(itemIDs))
+	if len(itemIDs) == 0 || userID == "" {
+		return out, nil
+	}
+
+	if timeWindow > 0 {
+		exposedIDs, err := a.GetExposedItems(ctx, userID, keyPrefix, timeWindow)
+		if err == nil {
+			set := make(map[string]struct{}, len(exposedIDs))
+			for _, id := range exposedIDs {
+				set[id] = struct{}{}
+			}
+			for _, id := range itemIDs {
+				if _, ok := set[id]; ok {
+					out[id] = true
+				}
+			}
+		}
+	}
+	if dayWindow <= 0 || a.BloomFilterChecker == nil {
+		return out, nil
+	}
+	for _, id := range itemIDs {
+		if out[id] {
+			continue
+		}
+		exists, err := a.CheckExposedInBloomFilter(ctx, userID, id, keyPrefix, dayWindow)
+		if err == nil && exists {
+			out[id] = true
+		}
+	}
+	return out, nil
 }

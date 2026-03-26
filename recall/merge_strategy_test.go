@@ -293,6 +293,59 @@ func TestRatioMerge_Normalization(t *testing.T) {
 	}
 }
 
+func TestHybridRatioMerge_KeepUnconfiguredAndAllocateExplicit(t *testing.T) {
+	items := []*core.Item{
+		makeItem("u1", 9, "unconfigured"),
+		makeItem("u2", 8, "unconfigured"),
+		makeItem("a1", 7, "a"),
+		makeItem("a2", 6, "a"),
+		makeItem("b1", 7, "b"),
+		makeItem("b2", 6, "b"),
+	}
+	s := &HybridRatioMergeStrategy{
+		SourceRatios: map[string]float64{"a": 1, "b": 1},
+		TotalLimit:   5,
+	}
+	out := s.Merge(items, true)
+	if len(out) != 5 {
+		t.Fatalf("want 5, got %d", len(out))
+	}
+
+	counts := map[string]int{}
+	for _, it := range out {
+		counts[it.Labels["recall_source"].Value]++
+	}
+	// 未配置源保留 2 个，剩余 3 个按 1:1 分配（2 + 1）
+	if counts["unconfigured"] != 2 {
+		t.Fatalf("unconfigured want 2, got %d", counts["unconfigured"])
+	}
+	if counts["a"]+counts["b"] != 3 {
+		t.Fatalf("configured total want 3, got %d", counts["a"]+counts["b"])
+	}
+}
+
+func TestHybridRatioMerge_DropUnconfigured(t *testing.T) {
+	items := []*core.Item{
+		makeItem("u1", 9, "unconfigured"),
+		makeItem("a1", 7, "a"),
+		makeItem("b1", 7, "b"),
+	}
+	s := &HybridRatioMergeStrategy{
+		SourceRatios:            map[string]float64{"a": 1, "b": 1},
+		TotalLimit:              2,
+		DropUnconfiguredSources: true,
+	}
+	out := s.Merge(items, true)
+	if len(out) != 2 {
+		t.Fatalf("want 2, got %d", len(out))
+	}
+	for _, it := range out {
+		if it.Labels["recall_source"].Value == "unconfigured" {
+			t.Fatal("unconfigured source should be dropped")
+		}
+	}
+}
+
 // --- RoundRobinMergeStrategy ---
 
 func TestRoundRobinMerge_Basic(t *testing.T) {
@@ -673,8 +726,8 @@ func TestFanout_NestedWithDifferentStrategies(t *testing.T) {
 		Dedup: true,
 		MergeStrategy: &QuotaMergeStrategy{
 			SourceQuotas: map[string]int{
-				"recall.personalized":     4,
-				"recall.hot":              2,
+				"recall.personalized": 4,
+				"recall.hot":          2,
 			},
 			DefaultQuota: 10,
 		},

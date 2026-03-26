@@ -384,6 +384,108 @@ func (s *RatioMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.Item 
 	return out
 }
 
+// HybridRatioMergeStrategy 混合比例合并：
+// 1) 可选按 recall_priority 预排序并去重（保留优先级高者）
+// 2) 未配置在 SourceRatios 的源整路保留（按组内分数降序）
+// 3) SourceRatios 中配置的源在剩余槽位内按比例分配
+//
+// 适用于“核心召回路固定保留 + 实验召回按比例占坑”的在线场景。
+type HybridRatioMergeStrategy struct {
+	// SourceRatios 显式参与比例分配的源（source -> ratio）
+	SourceRatios map[string]float64
+	// TotalLimit 合并总上限，<=0 时视为不截断（使用去重后总长度）
+	TotalLimit int
+	// DropUnconfiguredSources 是否丢弃未配置 ratio 的源，默认 false（即保留）
+	DropUnconfiguredSources bool
+	// SortByPriorityBeforeDedup 去重前是否按 recall_priority 排序，默认 false
+	SortByPriorityBeforeDedup bool
+}
+
+func (s *HybridRatioMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.Item {
+	if len(items) == 0 {
+		return items
+	}
+
+	if s.SortByPriorityBeforeDedup {
+		sort.SliceStable(items, func(i, j int) bool {
+			pi, pj := priorityFromLabel(items[i]), priorityFromLabel(items[j])
+			if pi != pj {
+				return pi < pj
+			}
+			if items[i] == nil || items[j] == nil {
+				return false
+			}
+			return items[i].ID < items[j].ID
+		})
+	}
+
+	if dedup {
+		items = dedupItems(items)
+	}
+
+	limit := s.TotalLimit
+	if limit <= 0 {
+		limit = len(items)
+	}
+
+	keepUnconfigured := !s.DropUnconfiguredSources
+
+	order := sourceOrder(items)
+	groups := groupBySource(items)
+	for _, g := range groups {
+		sortByScoreDesc(g)
+	}
+
+	out := make([]*core.Item, 0, len(items))
+	explicitItems := make([]*core.Item, 0, len(items))
+	explicitRatios := make(map[string]float64)
+
+	for _, src := range order {
+		group := groups[src]
+		if len(group) == 0 {
+			continue
+		}
+		ratio, configured := s.SourceRatios[src]
+		if configured && ratio > 0 {
+			explicitRatios[src] = ratio
+			explicitItems = append(explicitItems, group...)
+			continue
+		}
+		if keepUnconfigured {
+			out = append(out, group...)
+		}
+	}
+
+	remain := limit - len(out)
+	if remain > 0 && len(explicitItems) > 0 {
+		merged := (&RatioMergeStrategy{
+			SourceRatios: explicitRatios,
+			TotalLimit:   remain,
+		}).Merge(explicitItems, false)
+		out = append(out, merged...)
+	}
+
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out
+}
+
+func priorityFromLabel(it *core.Item) int {
+	if it == nil {
+		return 999
+	}
+	lbl, ok := it.Labels["recall_priority"]
+	if !ok || len(lbl.Value) == 0 {
+		return 999
+	}
+	c := lbl.Value[0]
+	if c >= '0' && c <= '9' {
+		return int(c - '0')
+	}
+	return 999
+}
+
 // RoundRobinMergeStrategy 从各召回源轮流取 item，实现均匀交叉排列。
 // 适用于信息流等需要内容多样性的场景。
 type RoundRobinMergeStrategy struct {
