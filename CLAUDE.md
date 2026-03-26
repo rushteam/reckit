@@ -339,7 +339,7 @@ github.com/rushteam/reckit/
 ├── recall/            # 召回模块（Source, Fanout, CF, ANN, Content 等）
 ├── filter/            # 过滤模块（Blacklist, UserBlock, Exposed）
 ├── rank/              # 排序模块（LR, DNN, DIN, RPC 等）
-├── rerank/            # 重排模块（Diversity）
+├── rerank/            # 重排模块（Diversity、TrafficPlan、ScoreAdjust、RecallChannelMix 等）
 ├── model/             # 排序模型抽象和实现
 ├── feature/           # 特征服务（Enrich, Service, Provider）
 ├── store/             # 存储抽象（Memory，Redis 移至扩展包）
@@ -420,6 +420,13 @@ github.com/rushteam/reckit/
 
 - `rerank/diversity.go` - 多样性重排（类别去重 + 作者打散，字段查找优先级：Labels > Meta > Features）
 - `rerank/topn.go` - TopN 截断
+- `rerank/traffic_plan.go` - `TrafficPlanNode` + `TrafficPlanner`（调控 id/位次写入 `LabelKeyTrafficControlID` / `LabelKeyTrafficSlot`，可选重排）
+- `rerank/score_adjust.go` - `ScoreAdjust`（`Filter` / CEL 规则改分）与 `ScoreWeightBoost` + `ScoreWeightProvider`（按 ID 外部权重）
+- `rerank/recall_channel_mix.go` - `RecallChannelMix`（精排后按召回通道固定/随机槽位混排）
+
+**与 `recall.MergeStrategy` 的分工**：`MergeStrategy` 作用于召回阶段，负责多路结果的**合并、去重、加权与配额**；`RecallChannelMix` 作用于**精排之后**，依赖物品上的 `recall_source`（默认取合并标签的首段，见 `PrimaryRecallChannel`），按规则做**槽位占位与剩余策略**，用于运营位次/通道曝光。二者互补，不要混用职责。
+
+**YAML 构建器**（`config/builders`，需 `_ "github.com/rushteam/reckit/config/builders"`）：`rerank.traffic_plan`（`planner`: `noop` / `static` / `inject` + `Dependencies.TrafficPlanner`）、`rerank.score_adjust`、`rerank.score_weight`（`Dependencies.ScoreWeightProvider`）、`rerank.recall_channel_mix`。
 
 ### 特征模块
 

@@ -30,6 +30,10 @@ type Dependencies struct {
 	FilterStore        core.Store
 	BloomFilterChecker filter.BloomFilterChecker
 	FeatureService     core.FeatureService
+	// TrafficPlanner 用于 rerank.traffic_plan（planner: "inject" 时必填）。
+	TrafficPlanner rerank.TrafficPlanner
+	// ScoreWeightProvider 用于 rerank.score_weight（必填）。
+	ScoreWeightProvider rerank.ScoreWeightProvider
 }
 
 func (d Dependencies) filterStoreAdapter() *filter.StoreAdapter {
@@ -59,6 +63,18 @@ func ApplyBuiltins(factory *pipeline.NodeFactory, deps Dependencies) {
 	factory.Register("rerank.diversity", BuildDiversityNode)
 	factory.Register("rerank.mmoe", BuildMMoENode)
 	factory.Register("rerank.topn", BuildTopNNode)
+	factory.Register("rerank.traffic_plan", func(cfg map[string]interface{}) (pipeline.Node, error) {
+		return buildTrafficPlanNodeWithDeps(cfg, deps)
+	})
+	factory.Register("rerank.score_adjust", func(cfg map[string]interface{}) (pipeline.Node, error) {
+		return buildScoreAdjustNodeWithDeps(cfg, deps)
+	})
+	factory.Register("rerank.score_weight", func(cfg map[string]interface{}) (pipeline.Node, error) {
+		return buildScoreWeightBoostNodeWithDeps(cfg, deps)
+	})
+	factory.Register("rerank.recall_channel_mix", func(cfg map[string]interface{}) (pipeline.Node, error) {
+		return buildRecallChannelMixNodeWithDeps(cfg, deps)
+	})
 	factory.Register("filter", func(cfg map[string]interface{}) (pipeline.Node, error) {
 		return buildFilterNodeWithDeps(cfg, deps)
 	})
@@ -403,38 +419,46 @@ func BuildFilterNodeWithDependencies(cfg map[string]interface{}, deps Dependenci
 	return buildFilterNodeWithDeps(cfg, deps)
 }
 
+func parseFilterFromMap(filterMap map[string]interface{}, deps Dependencies) (filter.Filter, error) {
+	filterType := conv.ConfigGet(filterMap, "type", "")
+	storeAdapter := deps.filterStoreAdapter()
+	switch filterType {
+	case "blacklist":
+		ids := conv.SliceAnyToString(filterMap["item_ids"])
+		if ids == nil {
+			ids = []string{}
+		}
+		key := conv.ConfigGet(filterMap, "key", "")
+		return filter.NewBlacklistFilter(ids, storeAdapter, key), nil
+	case "user_block":
+		keyPrefix := conv.ConfigGet(filterMap, "key_prefix", "")
+		return filter.NewUserBlockFilter(storeAdapter, keyPrefix), nil
+	case "exposed":
+		keyPrefix := conv.ConfigGet(filterMap, "key_prefix", "")
+		timeWindow := conv.ConfigGetInt64(filterMap, "time_window", 0)
+		bloomFilterDayWindow := conv.ConfigGet(filterMap, "bloom_filter_day_window", 0)
+		return filter.NewExposedFilter(storeAdapter, keyPrefix, timeWindow, bloomFilterDayWindow), nil
+	default:
+		return nil, fmt.Errorf("unknown filter type: %s", filterType)
+	}
+}
+
 func buildFilterNodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
 	filtersConfig, ok := cfg["filters"].([]interface{})
 	if !ok {
 		return nil, fmt.Errorf("filters not found or invalid")
 	}
-	storeAdapter := deps.filterStoreAdapter()
 	filters := make([]filter.Filter, 0, len(filtersConfig))
 	for _, fc := range filtersConfig {
 		filterMap, ok := fc.(map[string]interface{})
 		if !ok {
 			continue
 		}
-		filterType := conv.ConfigGet(filterMap, "type", "")
-		switch filterType {
-		case "blacklist":
-			ids := conv.SliceAnyToString(filterMap["item_ids"])
-			if ids == nil {
-				ids = []string{}
-			}
-			key := conv.ConfigGet(filterMap, "key", "")
-			filters = append(filters, filter.NewBlacklistFilter(ids, storeAdapter, key))
-		case "user_block":
-			keyPrefix := conv.ConfigGet(filterMap, "key_prefix", "")
-			filters = append(filters, filter.NewUserBlockFilter(storeAdapter, keyPrefix))
-		case "exposed":
-			keyPrefix := conv.ConfigGet(filterMap, "key_prefix", "")
-			timeWindow := conv.ConfigGetInt64(filterMap, "time_window", 0)
-			bloomFilterDayWindow := conv.ConfigGet(filterMap, "bloom_filter_day_window", 0)
-			filters = append(filters, filter.NewExposedFilter(storeAdapter, keyPrefix, timeWindow, bloomFilterDayWindow))
-		default:
-			return nil, fmt.Errorf("unknown filter type: %s", filterType)
+		f, err := parseFilterFromMap(filterMap, deps)
+		if err != nil {
+			return nil, err
 		}
+		filters = append(filters, f)
 	}
 	return &filter.FilterNode{Filters: filters}, nil
 }
@@ -455,4 +479,134 @@ func buildFeatureEnrichNodeWithDeps(cfg map[string]interface{}, deps Dependencie
 		ItemFeaturePrefix:  conv.ConfigGet(cfg, "item_feature_prefix", ""),
 		CrossFeaturePrefix: conv.ConfigGet(cfg, "cross_feature_prefix", ""),
 	}, nil
+}
+
+func buildTrafficPlanNodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
+	kind := conv.ConfigGet(cfg, "planner", "noop")
+	var planner rerank.TrafficPlanner
+	switch kind {
+	case "noop", "":
+		planner = rerank.NoOpTrafficPlanner{}
+	case "static":
+		planner = &rerank.StaticTrafficPlanner{
+			ControlID: conv.ConfigGet(cfg, "control_id", ""),
+			Slot:      conv.ConfigGet(cfg, "slot", ""),
+		}
+	case "inject":
+		if deps.TrafficPlanner == nil {
+			return nil, fmt.Errorf(`rerank.traffic_plan: planner "inject" requires Dependencies.TrafficPlanner`)
+		}
+		planner = deps.TrafficPlanner
+	default:
+		return nil, fmt.Errorf("rerank.traffic_plan: unknown planner %q", kind)
+	}
+	return &rerank.TrafficPlanNode{
+		Planner:     planner,
+		LabelSource: conv.ConfigGet(cfg, "label_source", ""),
+	}, nil
+}
+
+func buildScoreAdjustNodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
+	rawRules, ok := cfg["rules"].([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("rerank.score_adjust: rules not found or invalid")
+	}
+	rules := make([]rerank.ScoreAdjustRule, 0, len(rawRules))
+	for i, rr := range rawRules {
+		rm, ok := rr.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		rule := rerank.ScoreAdjustRule{
+			Expr:  conv.ConfigGet(rm, "expr", ""),
+			Mode:  rerank.ScoreAdjustMode(conv.ConfigGet(rm, "mode", "add")),
+			Value: conv.ConfigGet(rm, "value", 0.0),
+		}
+		if fm, ok := rm["filter"].(map[string]interface{}); ok {
+			f, err := parseFilterFromMap(fm, deps)
+			if err != nil {
+				return nil, fmt.Errorf("rerank.score_adjust rules[%d]: %w", i, err)
+			}
+			rule.Filter = f
+		}
+		if rule.Filter == nil && rule.Expr == "" {
+			return nil, fmt.Errorf("rerank.score_adjust: rules[%d] needs expr and/or filter", i)
+		}
+		rules = append(rules, rule)
+	}
+	if len(rules) == 0 {
+		return nil, fmt.Errorf("rerank.score_adjust: no valid rules")
+	}
+	return &rerank.ScoreAdjust{
+		Rules:         rules,
+		MatchAllRules: conv.ConfigGet(cfg, "match_all_rules", false),
+	}, nil
+}
+
+func buildScoreWeightBoostNodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
+	if deps.ScoreWeightProvider == nil {
+		return nil, fmt.Errorf("rerank.score_weight requires Dependencies.ScoreWeightProvider")
+	}
+	mode := conv.ConfigGet(cfg, "mode", "mul")
+	if mode == "" {
+		mode = "mul"
+	}
+	return &rerank.ScoreWeightBoost{
+		Provider: deps.ScoreWeightProvider,
+		Mode:     rerank.ScoreWeightApplyMode(mode),
+	}, nil
+}
+
+func buildRecallChannelMixNodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
+	rawRules, ok := cfg["rules"].([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("rerank.recall_channel_mix: rules not found or invalid")
+	}
+	rules := make([]rerank.ChannelRule, 0, len(rawRules))
+	for i, rr := range rawRules {
+		rm, ok := rr.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		rule := rerank.ChannelRule{
+			Kind:            rerank.ChannelSlotKind(conv.ConfigGet(rm, "kind", "")),
+			RandomSlotStart: int(conv.ConfigGetInt64(rm, "random_slot_start", 0)),
+			RandomSlotEnd:   int(conv.ConfigGetInt64(rm, "random_slot_end", 0)),
+			RandomCount:     int(conv.ConfigGetInt64(rm, "random_count", 0)),
+			Expr:            conv.ConfigGet(rm, "expr", ""),
+		}
+		if ch, ok := rm["channels"].([]interface{}); ok {
+			rule.Channels = conv.SliceAnyToString(ch)
+		}
+		if fs, ok := rm["fixed_slots"].([]interface{}); ok {
+			rule.FixedSlots = sliceAnyToIntSlice(fs)
+		}
+		if fm, ok := rm["filter"].(map[string]interface{}); ok {
+			f, err := parseFilterFromMap(fm, deps)
+			if err != nil {
+				return nil, fmt.Errorf("rerank.recall_channel_mix rules[%d]: %w", i, err)
+			}
+			rule.Filter = f
+		}
+		rules = append(rules, rule)
+	}
+	if len(rules) == 0 {
+		return nil, fmt.Errorf("rerank.recall_channel_mix: no valid rules")
+	}
+	return &rerank.RecallChannelMix{
+		LabelKey:        conv.ConfigGet(cfg, "label_key", ""),
+		OutputSize:      int(conv.ConfigGetInt64(cfg, "output_size", 0)),
+		RemainderPolicy: rerank.RemainderPolicy(conv.ConfigGet(cfg, "remainder_policy", "")),
+		Rules:           rules,
+	}, nil
+}
+
+func sliceAnyToIntSlice(raw []interface{}) []int {
+	out := make([]int, 0, len(raw))
+	for _, x := range raw {
+		if n, ok := conv.ToInt(x); ok {
+			out = append(out, n)
+		}
+	}
+	return out
 }

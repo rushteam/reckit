@@ -115,50 +115,90 @@ func (e *Eval) Evaluate(expr string) (bool, error) {
 	return result, nil
 }
 
-// buildInput 构建 CEL 表达式的输入数据
 func (e *Eval) buildInput() map[string]interface{} {
-	// 构建 label map
+	return BuildInputMap(e.item, e.rctx)
+}
+
+// BuildInputMap 构建 CEL 表达式的输入数据（item / label / rctx 三个顶层变量）。
+func BuildInputMap(it *core.Item, rctx *core.RecommendContext) map[string]interface{} {
 	labels := make(map[string]interface{})
-	for k, v := range e.item.Labels {
-		labels[k] = map[string]interface{}{
-			"value":  v.Value,
-			"source": v.Source,
+	if it != nil {
+		for k, v := range it.Labels {
+			labels[k] = map[string]interface{}{
+				"value":  v.Value,
+				"source": v.Source,
+			}
 		}
 	}
 
-	// 构建 item map
-	item := map[string]interface{}{
-		"id":       e.item.ID,
-		"score":    e.item.Score,
-		"features": e.item.Features,
-		"meta":     e.item.Meta,
-		"labels":   labels,
+	itemMap := map[string]interface{}{}
+	if it != nil {
+		itemMap["id"] = it.ID
+		itemMap["score"] = it.Score
+		itemMap["features"] = it.Features
+		itemMap["meta"] = it.Meta
+		itemMap["labels"] = labels
 	}
 
-	// 构建 rctx map
-	rctx := map[string]interface{}{
-		"user_id":      e.rctx.UserID,
-		"device_id":    e.rctx.DeviceID,
-		"scene":        e.rctx.Scene,
-		"attributes": e.rctx.Attributes,
-		"params":       e.rctx.Params,
+	rctxMap := map[string]interface{}{}
+	if rctx != nil {
+		rctxMap["user_id"] = rctx.UserID
+		rctxMap["device_id"] = rctx.DeviceID
+		rctxMap["scene"] = rctx.Scene
+		rctxMap["attributes"] = rctx.Attributes
+		rctxMap["params"] = rctx.Params
 	}
 
-	// 为了兼容旧的语法，提供 label 作为顶层访问
-	// 例如 label.recall_source 可以直接访问
-	// 注意：CEL 访问不存在的 key 会报错，所以使用 null 作为默认值
-	// 用户可以使用 label.key != null 来检查存在性
-	labelAccessor := make(map[string]interface{})
+	labelAccessor := make(map[string]interface{}, len(labels))
 	for k, v := range labels {
-		// label.recall_source 返回 value
 		labelAccessor[k] = v.(map[string]interface{})["value"]
 	}
 
 	return map[string]interface{}{
-		"item":  item,
+		"item":  itemMap,
 		"label": labelAccessor,
-		"rctx":  rctx,
+		"rctx":  rctxMap,
 	}
+}
+
+// CompiledExpr 预编译的 CEL 表达式，可对不同 item/rctx 重复求值。
+// cel.Program 本身是线程安全的，CompiledExpr 也可并发调用 Eval。
+type CompiledExpr struct {
+	prg cel.Program
+}
+
+// Compile 预编译 CEL 表达式。表达式为空时返回 (nil, nil)。
+func Compile(expr string) (*CompiledExpr, error) {
+	if expr == "" {
+		return nil, nil
+	}
+	env, err := getCELEnv()
+	if err != nil {
+		return nil, fmt.Errorf("cel env: %w", err)
+	}
+	ast, issues := env.Compile(expr)
+	if issues != nil && issues.Err() != nil {
+		return nil, fmt.Errorf("compile error: %v", issues.Err())
+	}
+	prg, err := env.Program(ast)
+	if err != nil {
+		return nil, fmt.Errorf("program error: %v", err)
+	}
+	return &CompiledExpr{prg: prg}, nil
+}
+
+// Eval 对预编译表达式求值，返回布尔结果。
+func (c *CompiledExpr) Eval(item *core.Item, rctx *core.RecommendContext) (bool, error) {
+	input := BuildInputMap(item, rctx)
+	out, _, err := c.prg.Eval(input)
+	if err != nil {
+		return false, fmt.Errorf("eval error: %v", err)
+	}
+	result, ok := out.Value().(bool)
+	if !ok {
+		return false, fmt.Errorf("expression must return boolean, got %T", out.Value())
+	}
+	return result, nil
 }
 
 // 提供辅助函数来转换旧语法到 CEL 语法
