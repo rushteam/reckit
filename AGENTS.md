@@ -183,6 +183,41 @@ type ErrorHook interface {
 //   ErrorCallbackHook     - 仅上报 metrics/alerting，不降级
 //   CompositeErrorHook    - 组合多个 ErrorHook
 
+// 条件接口（filter/conditional.go）
+type Condition interface {
+    Evaluate(ctx context.Context, rctx *core.RecommendContext) (bool, error)
+}
+// 便捷函数适配：ConditionFunc
+
+// 多样性约束（rerank/diversity.go，高级模式）
+type DiversityConstraint struct {
+    Dimensions          []string  // 组合维度
+    MaxConsecutive      int       // 最大连续同组数
+    WindowSize          int       // 滑动窗口大小
+    MaxPerWindow        int       // 窗口内同组最大出现次数
+    Weight              float64   // 权重回退选择用
+    MultiValueDelimiter string    // 多值拆分符
+}
+// Diversity.Constraints 非空时启用高级模式
+
+// 分数标准化模式（rerank/vecmath.go）
+// ScoreNormNone / ScoreNormZScore / ScoreNormMinMax
+
+// Bandit 统计接口（rerank/bandit.go）
+type BanditStatsProvider interface {
+    BatchGetStats(ctx context.Context, rctx *core.RecommendContext, itemIDs []string) (map[string]BanditStats, error)
+}
+type BanditStats struct { Impressions, Conversions int64 }
+// 供 UCBNode / ThompsonSamplingNode / ColdStartBoostNode 使用
+
+// 曝光频次存储接口（filter/frequency_cap.go）
+type FrequencyCapStore interface {
+    GetImpressionCount(ctx context.Context, userID, itemID string, window time.Duration) (int, error)
+}
+
+// 后处理补位函数（postprocess/padding.go）
+type PaddingFunc func(ctx context.Context, rctx *core.RecommendContext, need int) ([]*core.Item, error)
+
 // 特征元数据加载器接口（feature/metadata_loader.go）
 type MetadataLoader interface {
     Load(ctx context.Context, source string) (*FeatureMetadata, error)
@@ -337,9 +372,10 @@ github.com/rushteam/reckit/
 ├── core/              # 核心数据结构（Item, Context, UserProfile, Config）
 ├── pipeline/          # Pipeline 和 Node 接口
 ├── recall/            # 召回模块（Source, Fanout, CF, ANN, Content 等）
-├── filter/            # 过滤模块（Blacklist, UserBlock, Exposed）
+├── filter/            # 过滤模块（Blacklist, UserBlock, Exposed, Expr, QualityGate, DedupField, TimeDecay, FrequencyCap, ConditionalNode 等）
 ├── rank/              # 排序模块（LR, DNN, DIN, RPC 等）
-├── rerank/            # 重排模块（Diversity、TrafficPlan、ScoreAdjust、RecallChannelMix 等）
+├── rerank/            # 重排模块（Diversity、DPP、SSD、Sample、FairInterleave、WeightedInterleave、GroupQuota、TrafficPlan、ScoreAdjust、RecallChannelMix、EpsilonGreedy、UCB、ThompsonSampling、ColdStartBoost 等）
+├── postprocess/       # 后处理模块（Padding、TruncateFields）
 ├── model/             # 排序模型抽象和实现
 ├── feature/           # 特征服务（Enrich, Service, Provider）
 ├── store/             # 存储抽象（Memory，Redis 移至扩展包）
@@ -402,6 +438,20 @@ github.com/rushteam/reckit/
 - `recall/hot.go` - 热门召回
 - `recall/user_history.go` - 用户历史召回
 
+### 过滤模块
+
+- `filter/filter.go` - Filter / BatchFilter 接口
+- `filter/node.go` - FilterNode（组合多个 Filter；BatchFilter 优先整批过滤，再逐条过滤）
+- `filter/blacklist.go` - 黑名单过滤
+- `filter/user_block.go` - 用户级屏蔽过滤
+- `filter/exposed.go` - 已曝光过滤
+- `filter/expr_filter.go` - `ExprFilter`（CEL/DSL 表达式过滤；`Invert` 翻转语义）
+- `filter/quality_gate.go` - `QualityGateFilter`（分数门槛：Score < MinScore 过滤）
+- `filter/dedup_field.go` - `DedupByFieldFilter`（`BatchFilter` 实现，按字段去重保留首条）
+- `filter/time_decay.go` - `TimeDecayFilter`（按 `Meta[TimeField]` 时间戳过滤过期内容）
+- `filter/frequency_cap.go` - `FrequencyCapFilter`（`FrequencyCapStore` 接口，user-item 粒度曝光频次控制）
+- `filter/conditional.go` - `ConditionalNode`（条件节点：Condition 为 true 时执行内部 Node，否则透传；适用于 AB 实验、场景开关）
+
 ### 排序模块
 
 - `rank/lr_node.go` - LR 排序节点（含排序策略）
@@ -418,15 +468,37 @@ github.com/rushteam/reckit/
 
 ### 重排模块
 
-- `rerank/diversity.go` - 多样性重排（类别去重 + 作者打散，字段查找优先级：Labels > Meta > Features）
+- `rerank/diversity.go` - 多样性重排，三种模式：① 类别去重 ② 多 key 打散 ③ 高级 Constraints（多规则独立约束 + 权重回退 + 多值维度 + 通道隔离 + 探索限制）
+- `rerank/dpp_diversity.go` - `DPPDiversityNode`（基于 Determinantal Point Process 的 embedding 级多样性重排；Greedy MAP + 窗口化 DPP）
+- `rerank/ssd_diversity.go` - `SSDDiversityNode`（滑动子空间多样性，Gram-Schmidt 正交化；比 DPP 更轻量，适合在线低延迟）
+- `rerank/vecmath.go` - DPP / SSD 共享的向量数学工具（dot、norm、scale 等，无外部依赖）
 - `rerank/topn.go` - TopN 截断
+- `rerank/sample.go` - `SampleNode`（采样降量；`Shuffle=true` Fisher-Yates 洗牌后取前 N，适用于增加探索性）
+- `rerank/fair_interleave.go` - `FairInterleaveNode`（按召回通道等权轮询交叉，组内按 Score 降序）
+- `rerank/weighted_interleave.go` - `WeightedInterleaveNode`（按通道权重交叉混排；residual 贪心算法分配曝光比例）
+- `rerank/group_quota.go` - `GroupQuotaNode`（按维度字段或 CEL 表达式分组，softmax/avg 配额分配 + GroupMin/GroupMax/GroupCaps 约束）
 - `rerank/traffic_plan.go` - `TrafficPlanNode` + `TrafficPlanner`（调控 id/位次写入 `LabelKeyTrafficControlID` / `LabelKeyTrafficSlot`，可选重排）
 - `rerank/score_adjust.go` - `ScoreAdjust`（`Filter` / CEL 规则改分）与 `ScoreWeightBoost` + `ScoreWeightProvider`（按 ID 外部权重）
 - `rerank/recall_channel_mix.go` - `RecallChannelMix`（精排后按召回通道固定/随机槽位混排）
+- `rerank/epsilon_greedy.go` - `EpsilonGreedyNode`（ε-贪心探索：以概率 Epsilon 将 explore 池中的物品提到 exploit 区）
+- `rerank/bandit.go` - `UCBNode`（UCB1 公式重排，需 `BanditStatsProvider`）+ `ThompsonSamplingNode`（Beta-Bernoulli 汤普森采样，`PureExplore` 可选纯探索模式）+ `BanditStatsProvider` / `BanditStats` 接口
+- `rerank/cold_start_boost.go` - `ColdStartBoostNode`（新物品提权：曝光 < Threshold 时按线性衰减加成）
+
+### 后处理模块
+
+- `postprocess/padding.go` - `PaddingNode`（结果不足 N 条时用 `FallbackItems` / `PaddingFunc` 补足，去重并打 `__padding__` 标签）
+- `postprocess/truncate_fields.go` - `TruncateFieldsNode`（响应前裁剪 Features / Meta / Labels，可选 `KeepMetaKeys` 仅保留指定 Meta key）
 
 **与 `recall.MergeStrategy` 的分工**：`MergeStrategy` 作用于召回阶段，负责多路结果的**合并、去重、加权与配额**；`RecallChannelMix` 作用于**精排之后**，依赖物品上的 `recall_source`（默认取合并标签的首段，见 `PrimaryRecallChannel`），按规则做**槽位占位与剩余策略**，用于运营位次/通道曝光。二者互补，不要混用职责。
 
-**YAML 构建器**（`config/builders`，需 `_ "github.com/rushteam/reckit/config/builders"`）：`rerank.traffic_plan`（`planner`: `noop` / `static` / `inject` + `Dependencies.TrafficPlanner`）、`rerank.score_adjust`、`rerank.score_weight`（`Dependencies.ScoreWeightProvider`）、`rerank.recall_channel_mix`。
+**YAML 构建器**（`config/builders`，需 `_ "github.com/rushteam/reckit/config/builders"`）：
+- **Recall**：`recall.fanout`、`recall.hot`、`recall.ann`、`recall.rpc`（`endpoint` / `timeout` / `top_k`）、`recall.graph`（`endpoint` / `timeout` / `top_k`）
+- **Filter**：`filter`（含 `blacklist` / `user_block` / `exposed` / `expr` / `quality_gate` / `dedup_field` / `time_decay` / `frequency_cap`）、`filter.conditional`
+- **Rank**：`rank.lr`、`rank.rpc`、`rank.wide_deep`、`rank.two_tower`、`rank.dnn`、`rank.din`
+- **ReRank**：`rerank.diversity`（含 `constraints` 高级模式）、`rerank.dpp_diversity`、`rerank.ssd_diversity`、`rerank.topn`、`rerank.sample`、`rerank.fair_interleave`、`rerank.weighted_interleave`、`rerank.group_quota`、`rerank.traffic_plan`、`rerank.score_adjust`、`rerank.score_weight`、`rerank.recall_channel_mix`、`rerank.mmoe`
+- **Explore/Exploit**：`rerank.epsilon_greedy`、`rerank.ucb`（`Dependencies.BanditStatsProvider`）、`rerank.thompson_sampling`（`Dependencies.BanditStatsProvider`）、`rerank.cold_start_boost`
+- **PostProcess**：`postprocess.padding`（`Dependencies.PaddingFunc`）、`postprocess.truncate_fields`
+- **Feature**：`feature.enrich`
 
 ### 特征模块
 
@@ -1192,10 +1264,74 @@ combined := &rerank.Diversity{
     MaxConsecutive: 2,
 }
 
+// 4. 高级模式：多规则独立约束 + 权重回退 + 多值维度
+advancedDiversity := &rerank.Diversity{
+    Constraints: []rerank.DiversityConstraint{
+        {
+            Dimensions:     []string{"category"},
+            MaxConsecutive: 2,                    // 同类别最多连续 2 次
+            Weight:         1.0,
+        },
+        {
+            Dimensions:     []string{"author"},
+            WindowSize:     5,
+            MaxPerWindow:   2,                    // 5 个位置内同作者最多 2 次
+            Weight:         0.5,
+        },
+        {
+            Dimensions:          []string{"tags"},
+            MaxConsecutive:      1,
+            MultiValueDelimiter: "|",             // "体育|科技" 拆分后任一交集即同组
+            Weight:              0.3,
+        },
+    },
+    ExcludeChannels: []string{"ad"},              // 广告通道不参与多样性，尾部追加
+    Limit:           50,                          // 只对前 50 个位置做多样性
+    ExploreLimit:    20,                          // 每位置最多扫描 20 个候选
+}
+
 // 字段查找优先级：Labels > Meta > Features
 // - Labels["category"].Value = "tech"     → 使用 "tech"
 // - Meta["category"] = "tech" (string)    → 使用 "tech"（Labels 未找到时）
 // - Features["category_id"] = 3.0         → 使用 "3"（Labels、Meta 均未找到时）
+```
+
+### 使用 DPP / SSD 多样性重排（基于 Embedding）
+
+```go
+import "github.com/rushteam/reckit/rerank"
+
+// DPP 多样性（Determinantal Point Process）
+// 需要 item.Meta["embedding"] = []float64{...}，由 feature.EnrichNode 提前注入
+dppNode := &rerank.DPPDiversityNode{
+    N:            30,          // 输出 30 条
+    Alpha:        0.5,         // 质量-多样性权衡（越小越多样）
+    WindowSize:   10,          // 窗口化 DPP（大列表时分块处理）
+    EmbeddingKey: "embedding", // item.Meta 中 embedding 的 key
+    NormalizeEmb: true,        // L2 归一化
+    ScoreNorm:    rerank.ScoreNormMinMax, // 分数标准化到 [ε, 1]
+}
+
+// SSD 多样性（Sliding Subspace Diversity，比 DPP 更轻量）
+ssdNode := &rerank.SSDDiversityNode{
+    N:            30,
+    Gamma:        0.25,        // 质量-多样性权衡（越大越多样）
+    WindowSize:   5,           // 滑动窗口大小（遗忘速度）
+    EmbeddingKey: "embedding",
+    NormalizeEmb: true,
+    ScoreNorm:    rerank.ScoreNormZScore, // Z-Score 标准化
+}
+
+// 在 Pipeline 中使用
+p := &pipeline.Pipeline{
+    Nodes: []pipeline.Node{
+        recallNode,
+        filterNode,
+        &feature.EnrichNode{FeatureService: featureService},
+        rankNode,
+        dppNode, // 或 ssdNode
+    },
+}
 ```
 
 ### 使用 DeepFM 模型（PyTorch）

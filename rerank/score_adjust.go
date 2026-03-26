@@ -3,6 +3,7 @@ package rerank
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/rushteam/reckit/core"
 	"github.com/rushteam/reckit/filter"
@@ -43,7 +44,8 @@ type ScoreAdjust struct {
 	Rules         []ScoreAdjustRule
 	MatchAllRules bool
 
-	validated bool // 首次 Process 时校验 Rules 合法性
+	validateOnce sync.Once
+	validateErr  error
 }
 
 func (n *ScoreAdjust) Name() string {
@@ -59,14 +61,17 @@ func (n *ScoreAdjust) Process(
 	rctx *core.RecommendContext,
 	items []*core.Item,
 ) ([]*core.Item, error) {
-	if !n.validated {
+	n.validateOnce.Do(func() {
 		for ri := range n.Rules {
 			r := &n.Rules[ri]
 			if r.Filter == nil && r.Expr == "" {
-				return nil, fmt.Errorf("rerank.score_adjust: Rules[%d] must set Filter and/or Expr", ri)
+				n.validateErr = fmt.Errorf("rerank.score_adjust: Rules[%d] must set Filter and/or Expr", ri)
+				return
 			}
 		}
-		n.validated = true
+	})
+	if n.validateErr != nil {
+		return nil, n.validateErr
 	}
 	for _, item := range items {
 		if item == nil {

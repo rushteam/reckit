@@ -2,40 +2,70 @@ package rerank
 
 import (
 	"context"
+	"strings"
 
 	"github.com/rushteam/reckit/core"
 	"github.com/rushteam/reckit/pipeline"
 )
 
-// Diversity 是一个多样性 ReRank 节点，支持两种规则，可以单独或组合使用：
-// 1. 按类别去重（保留首个出现的类别）
-// 2. 按一个或多个 key 打散（避免连续出现相同属性）
-//
-// 使用方式：
-// - 只设置 LabelKey：仅按类别去重
-// - 只设置 DiversityKeys：按一个或多个 key 打散
-// - 设置 DiversityKeys：按多个 key 同时打散（例如 author + category）
-// - 同时设置 LabelKey 和 DiversityKeys：先按类别去重，再按多 key 打散
-//
-// 类别/作者来源优先级：
-// - label[key].Value
-// - meta[key] (string)
-type Diversity struct {
-	// LabelKey 用于类别去重模式的字段 key，默认 "category"
-	// 如果设置了 LabelKey，会先执行类别去重
-	LabelKey string
+// DiversityConstraint 单条多样性约束规则。
+// 多条 Constraint 之间为 AND 语义——候选物品需同时满足所有约束才算"完美匹配"。
+// 当无完美匹配时，选 Weight 总和最高的候选作为回退。
+type DiversityConstraint struct {
+	// Dimensions 组合维度；多个维度的值用 "\x00" 拼接成复合 key。
+	// 值从 Labels > Meta > Features 读取。
+	Dimensions []string
 
-	// DiversityKeys 用于多 key 打散，支持同时按多个字段约束连续出现次数。
-	// 例如：[]string{"author", "category"} 表示同时约束作者与分类。
-	DiversityKeys []string
-
-	// MaxConsecutive 允许同一 key 值连续出现的最大次数，默认 1（不能连续出现）
-	// 例如：MaxConsecutive=1 表示不能连续出现，MaxConsecutive=2 表示最多连续出现2次
+	// MaxConsecutive 最大连续同组数（0 = 不检查连续）。
+	// 例如 2 表示同组最多连续出现 2 次。
 	MaxConsecutive int
 
-	// WindowSize 滑动窗口大小，用于检查最近出现的值，默认等于 MaxConsecutive+1
-	// 如果为 0，则自动设置为 MaxConsecutive+1
+	// WindowSize 滑动窗口大小（与 MaxPerWindow 搭配）。
 	WindowSize int
+
+	// MaxPerWindow 窗口内同组最大出现次数（0 = 不检查窗口频率）。
+	// 需要 WindowSize > MaxPerWindow 才有意义。
+	MaxPerWindow int
+
+	// Weight 当前约束的权重，用于无完美匹配时的加权回退选择。
+	Weight float64
+
+	// MultiValueDelimiter 多值分隔符。非空时维度值按此分隔，
+	// 两个物品在某维度上存在任意交集即视为"同组"。
+	MultiValueDelimiter string
+}
+
+// Diversity 多样性 ReRank 节点，支持三种模式：
+//
+// 模式 1（简单）：设置 LabelKey → 按类别去重（保留首个出现的类别）
+// 模式 2（简单）：设置 DiversityKeys → 多 key 滑动窗口打散
+// 模式 3（高级）：设置 Constraints → 多规则独立约束 + 权重回退 + 多值维度
+//
+// Constraints 非空时优先使用模式 3；否则按 LabelKey / DiversityKeys 走旧逻辑。
+type Diversity struct {
+	// --- 简单模式字段（模式 1 / 2，向后兼容）---
+
+	// LabelKey 类别去重的字段 key，默认 "category"
+	LabelKey string
+	// DiversityKeys 多 key 打散
+	DiversityKeys []string
+	// MaxConsecutive 允许同一 key 值连续出现的最大次数，默认 1
+	MaxConsecutive int
+	// WindowSize 滑动窗口大小，默认 MaxConsecutive+1
+	WindowSize int
+
+	// --- 高级模式字段（模式 3）---
+
+	// Constraints 多规则约束；非空时启用高级模式。
+	Constraints []DiversityConstraint
+	// ExcludeChannels 召回通道名列表；匹配的物品不参与多样性重排，最后追加。
+	ExcludeChannels []string
+	// ChannelLabelKey 用于识别召回通道的标签 key，默认 "recall_source"。
+	ChannelLabelKey string
+	// Limit 只对前 N 个位置做多样性；0 = 全部。
+	Limit int
+	// ExploreLimit 每个位置最多扫描候选数；0 = 不限。
+	ExploreLimit int
 }
 
 func (n *Diversity) Name() string {
@@ -46,7 +76,6 @@ func (n *Diversity) Kind() pipeline.Kind {
 	return pipeline.KindReRank
 }
 
-// getValue 委托给 Item.GetValue，统一按 Labels > Meta > Features 查找。
 func (n *Diversity) getValue(item *core.Item, key string) string {
 	if item == nil {
 		return ""
@@ -55,19 +84,21 @@ func (n *Diversity) getValue(item *core.Item, key string) string {
 	return v
 }
 
-// Process 处理 items，根据配置执行类别去重和/或多 key 打散。
 func (n *Diversity) Process(
-	_ context.Context,
-	_ *core.RecommendContext,
+	ctx context.Context,
+	rctx *core.RecommendContext,
 	items []*core.Item,
 ) ([]*core.Item, error) {
 	if len(items) == 0 {
 		return items, nil
 	}
 
+	if len(n.Constraints) > 0 {
+		return n.processConstraintDiversity(items)
+	}
+
 	result := items
 
-	// 如果设置了 LabelKey，先执行类别去重
 	if n.LabelKey != "" {
 		var err error
 		result, err = n.processCategoryDeduplication(result)
@@ -76,7 +107,6 @@ func (n *Diversity) Process(
 		}
 	}
 
-	// 如果设置了打散 key，再执行多 key 打散
 	diversityKeys := n.getDiversityKeys()
 	if len(diversityKeys) > 0 {
 		var err error
@@ -89,7 +119,239 @@ func (n *Diversity) Process(
 	return result, nil
 }
 
-// processCategoryDeduplication 按类别去重（保留首个出现的类别）
+// ---------------------------------------------------------------------------
+// 高级模式：多规则约束 + 权重回退
+// ---------------------------------------------------------------------------
+
+// dimVals 存储物品在某条约束下的维度值集合。
+// 单值时只有一个元素；多值时拆分成多个。
+type dimVals struct {
+	parts [][]string // 每个 Dimension 对应一个 string slice
+}
+
+// overlaps 判断两个 dimVals 是否"同组"：每个维度都需有交集（AND）。
+func (a dimVals) overlaps(b dimVals) bool {
+	for i := range a.parts {
+		if !sliceHasOverlap(a.parts[i], b.parts[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func sliceHasOverlap(a, b []string) bool {
+	for _, va := range a {
+		for _, vb := range b {
+			if va == vb {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (c *DiversityConstraint) extractDimVals(item *core.Item) dimVals {
+	dv := dimVals{parts: make([][]string, len(c.Dimensions))}
+	for i, dim := range c.Dimensions {
+		raw, _ := item.GetValue(dim)
+		if c.MultiValueDelimiter != "" && strings.Contains(raw, c.MultiValueDelimiter) {
+			segs := strings.Split(raw, c.MultiValueDelimiter)
+			trimmed := make([]string, 0, len(segs))
+			for _, s := range segs {
+				s = strings.TrimSpace(s)
+				if s != "" {
+					trimmed = append(trimmed, s)
+				}
+			}
+			dv.parts[i] = trimmed
+		} else {
+			dv.parts[i] = []string{raw}
+		}
+	}
+	return dv
+}
+
+// constraintState 跟踪一条约束的已选历史。
+type constraintState struct {
+	history []dimVals
+}
+
+func (s *constraintState) checkConsecutive(cand dimVals, maxCons int) bool {
+	if maxCons <= 0 {
+		return true
+	}
+	run := 0
+	for i := len(s.history) - 1; i >= 0; i-- {
+		if s.history[i].overlaps(cand) {
+			run++
+		} else {
+			break
+		}
+	}
+	return run < maxCons
+}
+
+func (s *constraintState) checkWindow(cand dimVals, windowSize, maxPer int) bool {
+	if maxPer <= 0 || windowSize <= 0 {
+		return true
+	}
+	start := len(s.history) - windowSize
+	if start < 0 {
+		start = 0
+	}
+	count := 0
+	for i := start; i < len(s.history); i++ {
+		if s.history[i].overlaps(cand) {
+			count++
+		}
+	}
+	return count < maxPer
+}
+
+func (s *constraintState) append(dv dimVals) {
+	s.history = append(s.history, dv)
+}
+
+func (n *Diversity) processConstraintDiversity(items []*core.Item) ([]*core.Item, error) {
+	// 按 ExcludeChannels 拆分
+	var candidates, excluded []*core.Item
+	if len(n.ExcludeChannels) > 0 {
+		chKey := n.ChannelLabelKey
+		if chKey == "" {
+			chKey = DefaultRecallSourceLabel
+		}
+		excludeSet := make(map[string]bool, len(n.ExcludeChannels))
+		for _, ch := range n.ExcludeChannels {
+			excludeSet[ch] = true
+		}
+		for _, it := range items {
+			if it == nil {
+				continue
+			}
+			ch := PrimaryRecallChannel(it, chKey)
+			if excludeSet[ch] {
+				excluded = append(excluded, it)
+			} else {
+				candidates = append(candidates, it)
+			}
+		}
+	} else {
+		for _, it := range items {
+			if it != nil {
+				candidates = append(candidates, it)
+			}
+		}
+	}
+
+	if len(candidates) == 0 {
+		return append(candidates, excluded...), nil
+	}
+
+	limit := n.Limit
+	if limit <= 0 || limit > len(candidates) {
+		limit = len(candidates)
+	}
+
+	hasWeight := false
+	for i := range n.Constraints {
+		if n.Constraints[i].Weight > 0 {
+			hasWeight = true
+			break
+		}
+	}
+
+	states := make([]constraintState, len(n.Constraints))
+	used := make([]bool, len(candidates))
+	result := make([]*core.Item, 0, limit)
+
+	// 种子：第一个候选
+	result = append(result, candidates[0])
+	used[0] = true
+	for ci := range n.Constraints {
+		states[ci].append(n.Constraints[ci].extractDimVals(candidates[0]))
+	}
+
+	for len(result) < limit {
+		found := false
+		bestIdx := -1
+		bestWeight := -1.0
+		firstEligible := -1
+		scanned := 0
+
+		for i, it := range candidates {
+			if used[i] {
+				continue
+			}
+			if firstEligible < 0 {
+				firstEligible = i
+			}
+			if n.ExploreLimit > 0 {
+				scanned++
+				if scanned > n.ExploreLimit {
+					break
+				}
+			}
+
+			allMatch := true
+			totalWeight := 0.0
+			for ci := range n.Constraints {
+				c := &n.Constraints[ci]
+				dv := c.extractDimVals(it)
+				consOK := states[ci].checkConsecutive(dv, c.MaxConsecutive)
+				winOK := states[ci].checkWindow(dv, c.WindowSize, c.MaxPerWindow)
+				if consOK && winOK {
+					totalWeight += c.Weight
+				} else {
+					allMatch = false
+				}
+			}
+
+			if allMatch {
+				result = append(result, it)
+				used[i] = true
+				for ci := range n.Constraints {
+					states[ci].append(n.Constraints[ci].extractDimVals(it))
+				}
+				found = true
+				break
+			}
+			if hasWeight && totalWeight > bestWeight {
+				bestWeight = totalWeight
+				bestIdx = i
+			}
+		}
+
+		if !found {
+			pick := bestIdx
+			if pick < 0 {
+				pick = firstEligible
+			}
+			if pick < 0 {
+				break
+			}
+			result = append(result, candidates[pick])
+			used[pick] = true
+			for ci := range n.Constraints {
+				states[ci].append(n.Constraints[ci].extractDimVals(candidates[pick]))
+			}
+		}
+	}
+
+	// 追加未选中的候选
+	for i, it := range candidates {
+		if !used[i] {
+			result = append(result, it)
+		}
+	}
+	// 追加被隔离的通道物品
+	result = append(result, excluded...)
+	return result, nil
+}
+
+// ---------------------------------------------------------------------------
+// 简单模式：向后兼容的去重 / 打散逻辑
+// ---------------------------------------------------------------------------
+
 func (n *Diversity) processCategoryDeduplication(items []*core.Item) ([]*core.Item, error) {
 	key := n.LabelKey
 	if key == "" {
@@ -103,7 +365,6 @@ func (n *Diversity) processCategoryDeduplication(items []*core.Item) ([]*core.It
 		if it == nil {
 			continue
 		}
-
 		cate := n.getValue(it, key)
 		if cate == "" {
 			out = append(out, it)
@@ -135,19 +396,17 @@ func (n *Diversity) getDiversityKeys() []string {
 	return keys
 }
 
-// processMultiKeyDiversity 按多个 key 打散，避免连续出现同值。
 func (n *Diversity) processMultiKeyDiversity(items []*core.Item, diversityKeys []string) ([]*core.Item, error) {
 	maxConsecutive := n.MaxConsecutive
 	if maxConsecutive <= 0 {
-		maxConsecutive = 1 // 默认不能连续出现
+		maxConsecutive = 1
 	}
 
 	windowSize := n.WindowSize
 	if windowSize <= 0 {
-		windowSize = maxConsecutive + 1 // 默认窗口大小为 maxConsecutive+1
+		windowSize = maxConsecutive + 1
 	}
 
-	// 每个 key 各维护一套滑动窗口与计数器。
 	windows := make(map[string][]string, len(diversityKeys))
 	valueCount := make(map[string]map[string]int, len(diversityKeys))
 	for _, key := range diversityKeys {
@@ -155,9 +414,7 @@ func (n *Diversity) processMultiKeyDiversity(items []*core.Item, diversityKeys [
 		valueCount[key] = make(map[string]int, 32)
 	}
 
-	// 待处理的 items（因为冲突而延迟插入的）
 	pending := make([]*core.Item, 0)
-	// 最终结果
 	out := make([]*core.Item, 0, len(items))
 
 	canInsert := func(it *core.Item) bool {
@@ -193,7 +450,6 @@ func (n *Diversity) processMultiKeyDiversity(items []*core.Item, diversityKeys [
 		}
 	}
 
-	// 处理所有 items
 	for _, it := range items {
 		if it == nil {
 			continue
@@ -205,12 +461,10 @@ func (n *Diversity) processMultiKeyDiversity(items []*core.Item, diversityKeys [
 		applyInsert(it)
 	}
 
-	// 处理待处理的 items（尝试插入剩余位置）
 	for _, it := range pending {
 		if canInsert(it) {
 			applyInsert(it)
 		}
-		// 如果仍然无法插入，则丢弃该 item（避免无限循环）
 	}
 
 	return out, nil
