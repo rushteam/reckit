@@ -136,9 +136,12 @@ func (m *MemoryStore) cleanup() {
 
 // KeyValueStore 扩展方法（MemoryStore 也实现 KeyValueStore 接口）
 
-// 确保 MemoryStore 实现了 core.Store 和 core.KeyValueStore 接口
-var _ core.Store = (*MemoryStore)(nil)
-var _ core.KeyValueStore = (*MemoryStore)(nil)
+// 确保 MemoryStore 实现了 core.Store、core.KeyValueStore 和 core.SortedSetRangeStore 接口
+var (
+	_ core.Store               = (*MemoryStore)(nil)
+	_ core.KeyValueStore       = (*MemoryStore)(nil)
+	_ core.SortedSetRangeStore = (*MemoryStore)(nil)
+)
 
 func (m *MemoryStore) ZAdd(ctx context.Context, key string, score float64, member string) error {
 	m.mu.Lock()
@@ -204,6 +207,54 @@ func (m *MemoryStore) ZScore(ctx context.Context, key string, member string) (fl
 		return 0, core.ErrStoreNotFound
 	}
 	return score, nil
+}
+
+func (m *MemoryStore) ZRangeWithScores(ctx context.Context, key string, start, stop int64) ([]core.ScoredMember, error) {
+	return m.zRangeInternal(ctx, key, start, stop, true)
+}
+
+func (m *MemoryStore) ZRevRangeWithScores(ctx context.Context, key string, start, stop int64) ([]core.ScoredMember, error) {
+	return m.zRangeInternal(ctx, key, start, stop, false)
+}
+
+func (m *MemoryStore) zRangeInternal(_ context.Context, key string, start, stop int64, asc bool) ([]core.ScoredMember, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	zset, ok := m.zsets[key]
+	if !ok || len(zset) == 0 {
+		return nil, nil
+	}
+
+	type pair struct {
+		member string
+		score  float64
+	}
+	pairs := make([]pair, 0, len(zset))
+	for mb, s := range zset {
+		pairs = append(pairs, pair{member: mb, score: s})
+	}
+	if asc {
+		sort.Slice(pairs, func(i, j int) bool { return pairs[i].score < pairs[j].score })
+	} else {
+		sort.Slice(pairs, func(i, j int) bool { return pairs[i].score > pairs[j].score })
+	}
+
+	if start < 0 {
+		start = 0
+	}
+	if stop < 0 || stop >= int64(len(pairs)) {
+		stop = int64(len(pairs)) - 1
+	}
+	if start > stop {
+		return nil, nil
+	}
+
+	result := make([]core.ScoredMember, 0, stop-start+1)
+	for i := start; i <= stop && i < int64(len(pairs)); i++ {
+		result = append(result, core.ScoredMember{Member: pairs[i].member, Score: pairs[i].score})
+	}
+	return result, nil
 }
 
 func (m *MemoryStore) HGet(ctx context.Context, key, field string) ([]byte, error) {

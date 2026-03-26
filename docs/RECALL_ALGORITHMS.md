@@ -78,7 +78,7 @@
 
 | 算法 | Reckit Node | 支持状态 | 实现文件 | Label | 适用场景 |
 |------|-------------|----------|----------|-------|----------|
-| **热门/Trending** | Hot | ✅ 已实现 | `recall/hot.go` | `recall.hot` | 兜底策略、冷启动 |
+| **热门/Trending** | SortedSetRecall | ✅ 已实现 | `recall/sorted_set.go` | `recall.hot` / `recall.sorted_set` | 热门/趋势/最新/高分等有序集合召回 |
 | **地理位置召回 (LBS)** | - | ❌ 未实现 | - | - | 基于距离的推荐 |
 | **复购召回** | - | ❌ 未实现 | - | - | 快消品、外卖场景 |
 
@@ -135,7 +135,7 @@
 | DSSM | DSSMRecall | Recall | ✅ 已支持 | `recall/dssm_recall.go` | `recall.dssm` |
 | YouTube DNN | YouTubeDNNRecall | Recall | ✅ 已支持 | `recall/youtube_dnn_recall.go` | `recall.youtube_dnn` |
 | Graph/Node2vec | GraphRecall | Recall | ✅ 已支持 | `recall/graph_recall.go` | `recall.graph` |
-| Hot | Hot | Recall | ✅ 已支持 | `recall/hot.go` | `recall.hot` |
+| SortedSet | SortedSetRecall | Recall | ✅ 已支持 | `recall/sorted_set.go` | `recall.hot` / `recall.sorted_set` |
 | UserHistory | UserHistory | Recall | ✅ 已支持 | `recall/user_history.go` | `recall.user_history` |
 | RPC 召回 | RPCRecall | Recall | ✅ 已支持 | `recall/rpc_recall.go` | `recall.rpc` |
 | Swing | - | Recall | ❌ 未实现 | - | - |
@@ -302,7 +302,7 @@ embRecall := &recall.EmbRecall{
 ```go
 fanout := &recall.Fanout{
     Sources: []recall.Source{
-        &recall.Hot{IDs: []string{"1", "2", "3"}},
+        recall.NewHotRecall(store, "hot:feed", 100),
         embRecall, // Embedding 召回
         &recall.I2IRecall{...},
     },
@@ -560,7 +560,7 @@ rpcRecall := recall.NewRPCRecall(
 fanout := &recall.Fanout{
     Sources: []recall.Source{
         rpcRecall,
-        &recall.Hot{IDs: []string{"1", "2", "3"}},
+        &recall.SortedSetRecall{IDs: []string{"1", "2", "3"}, NodeName: "recall.hot"},
     },
     Dedup:         true,
     Timeout:       2 * time.Second,
@@ -733,7 +733,7 @@ fanout := &recall.Fanout{
 ```go
 fanout := &recall.Fanout{
     Sources: []recall.Source{
-        &recall.Hot{...},        // 优先级 0（最高）
+        recall.NewHotRecall(store, "hot:feed", 100), // 优先级 0（最高）
         &recall.I2IRecall{...},  // 优先级 1
         &recall.U2IRecall{...},  // 优先级 2
     },
@@ -756,9 +756,7 @@ fanout := &recall.Fanout{
 // 多路并发召回示例
 fanout := &recall.Fanout{
     Sources: []recall.Source{
-        &recall.Hot{
-            IDs: []string{"1", "2", "3", "4", "5"},
-        },
+        recall.NewHotRecall(store, "hot:feed", 100),
         &recall.U2IRecall{
             Store:            cfStore,
             TopKSimilarUsers: 10,

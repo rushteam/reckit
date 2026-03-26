@@ -70,6 +70,24 @@ type KeyValueStore interface {
 	HGetAll(ctx context.Context, key string) (map[string][]byte, error)
 }
 
+// ScoredMember 表示有序集合中的成员及其分数。
+type ScoredMember struct {
+	Member string
+	Score  float64
+}
+
+// SortedSetRangeStore 是 KeyValueStore 的可选扩展，支持带分数的有序集合查询和双向排序。
+//
+// 当 Store 同时实现此接口时，SortedSetRecall 等模块可获取分数并支持正/倒序查询。
+// 未实现此接口时，降级到 KeyValueStore.ZRange（仅降序、不含分数）。
+type SortedSetRangeStore interface {
+	// ZRangeWithScores 按分数升序获取有序集合成员及分数
+	ZRangeWithScores(ctx context.Context, key string, start, stop int64) ([]ScoredMember, error)
+
+	// ZRevRangeWithScores 按分数降序获取有序集合成员及分数
+	ZRevRangeWithScores(ctx context.Context, key string, start, stop int64) ([]ScoredMember, error)
+}
+
 // Store 错误定义（使用统一的 DomainError）
 var (
 	// ErrStoreNotFound 表示 key 不存在

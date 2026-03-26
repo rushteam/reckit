@@ -28,7 +28,7 @@ func main() {
 	fanout := &recall.Fanout{
 		Sources: []recall.Source{
 			rpcRecall1,
-			&recall.Hot{IDs: []string{"1", "2", "3", "4", "5"}}, // 本地热门召回作为备用
+			&recall.SortedSetRecall{IDs: []string{"1", "2", "3", "4", "5"}, NodeName: "recall.hot"}, // 本地热门召回作为备用
 		},
 		Dedup:         true,
 		Timeout:       2 * time.Second,
@@ -118,7 +118,7 @@ func main() {
 			&recall.Fanout{
 				Sources: []recall.Source{
 					rpcRecall2,
-					&recall.Hot{IDs: []string{"1", "2", "3"}},
+					&recall.SortedSetRecall{IDs: []string{"1", "2", "3"}, NodeName: "recall.hot"},
 				},
 				Dedup:         true,
 				Timeout:       3 * time.Second,

@@ -63,7 +63,7 @@ func main() {
 		Nodes: []pipeline.Node{
 			&recall.Fanout{
 				Sources: []recall.Source{
-					&recall.Hot{IDs: []string{"1", "2", "3", "4", "5"}},
+					&recall.SortedSetRecall{IDs: []string{"1", "2", "3", "4", "5"}, NodeName: "recall.hot"},
 				},
 				Dedup: true,
 			},
@@ -91,7 +91,7 @@ func main() {
 		Nodes: []pipeline.Node{
 			&recall.Fanout{
 				Sources: []recall.Source{
-					&recall.Hot{IDs: []string{"1", "2", "3", "4", "5"}},
+					&recall.SortedSetRecall{IDs: []string{"1", "2", "3", "4", "5"}, NodeName: "recall.hot"},
 				},
 				Dedup: true,
 			},
@@ -115,7 +115,7 @@ func main() {
 		Nodes: []pipeline.Node{
 			&recall.Fanout{
 				Sources: []recall.Source{
-					&recall.Hot{IDs: []string{"1", "2", "3", "4", "5"}},
+					&recall.SortedSetRecall{IDs: []string{"1", "2", "3", "4", "5"}, NodeName: "recall.hot"},
 				},
 				Dedup: true,
 			},
@@ -140,7 +140,7 @@ func main() {
 		Nodes: []pipeline.Node{
 			&recall.Fanout{
 				Sources: []recall.Source{
-					&recall.Hot{IDs: []string{"1", "2", "3", "4", "5"}},
+					&recall.SortedSetRecall{IDs: []string{"1", "2", "3", "4", "5"}, NodeName: "recall.hot"},
 				},
 				Dedup: true,
 			},

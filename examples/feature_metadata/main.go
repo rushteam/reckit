@@ -115,7 +115,7 @@ func main() {
 		Nodes: []pipeline.Node{
 			&recall.Fanout{
 				Sources: []recall.Source{
-					&recall.Hot{IDs: []string{"1", "2", "3"}},
+					&recall.SortedSetRecall{IDs: []string{"1", "2", "3"}, NodeName: "recall.hot"},
 				},
 			},
 			enrichNode,

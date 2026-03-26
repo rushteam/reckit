@@ -46,7 +46,7 @@ import (
 //	fanout := &recall.Fanout{
 //		Sources: []recall.Source{
 //			twoTowerRecall,
-//			&recall.Hot{IDs: []string{"1", "2", "3"}},
+//			&recall.SortedSetRecall{IDs: []string{"1", "2", "3"}, NodeName: "recall.hot"},
 //		},
 //	}
 type TwoTowerRecall struct {

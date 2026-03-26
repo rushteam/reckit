@@ -89,6 +89,14 @@ type Store interface {
     // ...
 }
 
+// 有序集合带分数查询（可选扩展，在 core 包）
+// 实现此接口后 SortedSetRecall 可获取分数并支持正/倒序。
+type SortedSetRangeStore interface {
+    ZRangeWithScores(ctx context.Context, key string, start, stop int64) ([]ScoredMember, error)
+    ZRevRangeWithScores(ctx context.Context, key string, start, stop int64) ([]ScoredMember, error)
+}
+type ScoredMember struct { Member string; Score float64 }
+
 // 特征服务接口（领域层接口，在 core 包）
 type FeatureService interface {
     GetUserFeatures(ctx context.Context, userID string) (map[string]float64, error)
@@ -435,7 +443,7 @@ github.com/rushteam/reckit/
 - `recall/matrix_factorization.go` - 矩阵分解召回
 - `recall/word2vec_recall.go` - Word2Vec / Item2Vec 召回（文本模式 + 序列模式）
 - `recall/bert_recall.go` - BERT 召回（基于语义相似度）
-- `recall/hot.go` - 热门召回
+- `recall/sorted_set.go` - 通用有序集合召回（SortedSetRecall），含 NewHotRecall/NewTrendingRecall/NewLatestRecall/NewTopRatedRecall/NewEditorPickRecall 等便捷构造器
 - `recall/user_history.go` - 用户历史召回
 
 ### 过滤模块
@@ -492,7 +500,7 @@ github.com/rushteam/reckit/
 **与 `recall.MergeStrategy` 的分工**：`MergeStrategy` 作用于召回阶段，负责多路结果的**合并、去重、加权与配额**；`RecallChannelMix` 作用于**精排之后**，依赖物品上的 `recall_source`（默认取合并标签的首段，见 `PrimaryRecallChannel`），按规则做**槽位占位与剩余策略**，用于运营位次/通道曝光。二者互补，不要混用职责。
 
 **YAML 构建器**（`config/builders`，需 `_ "github.com/rushteam/reckit/config/builders"`）：
-- **Recall**：`recall.fanout`、`recall.hot`、`recall.ann`、`recall.rpc`（`endpoint` / `timeout` / `top_k`）、`recall.graph`（`endpoint` / `timeout` / `top_k`）
+- **Recall**：`recall.fanout`、`recall.hot`、`recall.sorted_set`（通用有序集合召回，支持 `key`/`key_prefix`/`order`/`name`）、`recall.ann`、`recall.rpc`（`endpoint` / `timeout` / `top_k`）、`recall.graph`（`endpoint` / `timeout` / `top_k`）
 - **Filter**：`filter`（含 `blacklist` / `user_block` / `exposed` / `expr` / `quality_gate` / `dedup_field` / `time_decay` / `frequency_cap`）、`filter.conditional`
 - **Rank**：`rank.lr`、`rank.rpc`、`rank.wide_deep`、`rank.two_tower`、`rank.dnn`、`rank.din`
 - **ReRank**：`rerank.diversity`（含 `constraints` 高级模式）、`rerank.dpp_diversity`、`rerank.ssd_diversity`、`rerank.topn`、`rerank.sample`、`rerank.fair_interleave`、`rerank.weighted_interleave`、`rerank.group_quota`、`rerank.traffic_plan`、`rerank.score_adjust`、`rerank.score_weight`、`rerank.recall_channel_mix`、`rerank.mmoe`
@@ -529,7 +537,7 @@ p := &pipeline.Pipeline{
         // 召回
         &recall.Fanout{
             Sources: []recall.Source{
-                &recall.Hot{IDs: []string{"1", "2", "3"}},
+                recall.NewHotRecall(nil, "", 0), // 或 &recall.SortedSetRecall{IDs: [...]}
                 &recall.U2IRecall{...},
             },
             Dedup:         true,
@@ -570,6 +578,66 @@ u2i := &recall.U2IRecall{
     SimilarityCalculator: &recall.CosineSimilarity{},
     Config:                config,
 }
+```
+
+### 2.1 通用有序集合召回（SortedSetRecall）
+
+`SortedSetRecall` 是 Hot / Trending / Latest / TopRated 等业务召回的底层抽象：
+从 Store 有序集合按指定方向拉取 TopK 个 item ID 及分数。
+
+```go
+import "github.com/rushteam/reckit/recall"
+
+// 方式 1：便捷构造器（推荐）—— 命名清晰、语义明确
+hotRecall      := recall.NewHotRecall(store, "hot:feed", 100)       // 热门（降序）
+trendingRecall := recall.NewTrendingRecall(store, "trending:feed", 50) // 趋势（降序）
+latestRecall   := recall.NewLatestRecall(store, "latest:feed", 50)  // 最新（降序）
+topRatedRecall := recall.NewTopRatedRecall(store, "rating:feed", 50) // 高分（降序）
+editorRecall   := recall.NewEditorPickRecall(store, "editor:pick", 20) // 编辑推荐
+
+// 方式 2：使用 KeyPrefix，key 按 scene 自动拼接
+// 当 rctx.Scene = "video" 时，实际 key = "hot:video"
+hotByScene := &recall.SortedSetRecall{
+    Store: store, KeyPrefix: "hot", TopK: 100,
+    Order: recall.OrderDesc, NodeName: "recall.hot",
+}
+
+// 方式 3：升序场景（如价格最低）
+cheapest := &recall.SortedSetRecall{
+    Store: store, Key: "price:items", TopK: 50,
+    Order: recall.OrderAsc, NodeName: "recall.cheapest",
+}
+
+// 方式 4：无 Store，使用静态 ID 列表（开发/测试）
+static := &recall.SortedSetRecall{
+    IDs: []string{"item1", "item2", "item3"},
+    NodeName: "recall.static",
+}
+
+// 在 Fanout 中使用
+fanout := &recall.Fanout{
+    Sources: []recall.Source{hotRecall, trendingRecall, latestRecall},
+    Dedup: true,
+    MergeStrategy: &recall.RatioMergeStrategy{
+        SourceRatios: map[string]float64{
+            "recall.hot": 0.5, "recall.trending": 0.3, "recall.latest": 0.2,
+        },
+        TotalLimit: 100,
+    },
+}
+```
+
+**数据读取优先级**：`SortedSetRangeStore`（带分数+双向）→ `KeyValueStore.ZRange`（降序、无分数）→ `Store.Get`（JSON 数组）→ `IDs`（静态列表）。
+当 Store 实现 `core.SortedSetRangeStore` 时，item.Score 自动填充有序集合分数。
+
+**YAML 配置**：
+```yaml
+- type: "recall.sorted_set"
+  config:
+    key_prefix: "hot"
+    top_k: 100
+    order: "desc"
+    name: "recall.hot"
 ```
 
 ### 3. 自定义特征抽取器

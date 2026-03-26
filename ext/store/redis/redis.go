@@ -102,6 +102,31 @@ func (r *RedisStore) ZScore(ctx context.Context, key string, member string) (flo
 	return score, err
 }
 
+func (r *RedisStore) ZRangeWithScores(ctx context.Context, key string, start, stop int64) ([]core.ScoredMember, error) {
+	zs, err := r.client.ZRangeWithScores(ctx, key, start, stop).Result()
+	if err != nil {
+		return nil, err
+	}
+	return redisZToScoredMembers(zs), nil
+}
+
+func (r *RedisStore) ZRevRangeWithScores(ctx context.Context, key string, start, stop int64) ([]core.ScoredMember, error) {
+	zs, err := r.client.ZRevRangeWithScores(ctx, key, start, stop).Result()
+	if err != nil {
+		return nil, err
+	}
+	return redisZToScoredMembers(zs), nil
+}
+
+func redisZToScoredMembers(zs []redis.Z) []core.ScoredMember {
+	out := make([]core.ScoredMember, 0, len(zs))
+	for _, z := range zs {
+		member, _ := z.Member.(string)
+		out = append(out, core.ScoredMember{Member: member, Score: z.Score})
+	}
+	return out
+}
+
 func (r *RedisStore) HGet(ctx context.Context, key, field string) ([]byte, error) {
 	val, err := r.client.HGet(ctx, key, field).Bytes()
 	if err == redis.Nil {
@@ -136,8 +161,9 @@ func (r *RedisStore) GetClient() *redis.Client {
 	return r.client
 }
 
-// 确保 RedisStore 实现了 core.Store 和 core.KeyValueStore 接口
+// 确保 RedisStore 实现了 core.Store、core.KeyValueStore 和 core.SortedSetRangeStore 接口
 var (
-	_ core.Store        = (*RedisStore)(nil)
-	_ core.KeyValueStore = (*RedisStore)(nil)
+	_ core.Store               = (*RedisStore)(nil)
+	_ core.KeyValueStore       = (*RedisStore)(nil)
+	_ core.SortedSetRangeStore = (*RedisStore)(nil)
 )

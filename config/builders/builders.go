@@ -63,7 +63,8 @@ func ApplyBuiltins(factory *pipeline.NodeFactory, deps Dependencies) {
 		return
 	}
 	factory.Register("recall.fanout", BuildFanoutNode)
-	factory.Register("recall.hot", BuildHotNode)
+	factory.Register("recall.hot", BuildSortedSetNode)
+	factory.Register("recall.sorted_set", BuildSortedSetNode)
 	factory.Register("recall.ann", BuildANNNode)
 	factory.Register("rank.lr", BuildLRNode)
 	factory.Register("rank.rpc", BuildRPCNode)
@@ -188,10 +189,13 @@ func BuildFanoutNode(cfg map[string]interface{}) (pipeline.Node, error) {
 		switch sourceType {
 		case "hot":
 			ids := conv.SliceAnyToString(sourceMap["ids"])
-			if ids == nil {
-				ids = []string{}
-			}
-			sources = append(sources, &recall.Hot{IDs: ids})
+			sources = append(sources, &recall.SortedSetRecall{
+				IDs:      ids,
+				NodeName: "recall.hot",
+				Key:      conv.ConfigGet(sourceMap, "key", ""),
+				KeyPrefix: conv.ConfigGet(sourceMap, "key_prefix", ""),
+				TopK:     int(conv.ConfigGetInt64(sourceMap, "top_k", 100)),
+			})
 		case "ann":
 			// ANN 需 VectorService，暂未从配置构建
 		default:
@@ -307,12 +311,34 @@ func buildMergeStrategy(cfg map[string]interface{}) (recall.MergeStrategy, error
 	}
 }
 
-func BuildHotNode(cfg map[string]interface{}) (pipeline.Node, error) {
-	ids := conv.SliceAnyToString(cfg["ids"])
-	if ids == nil {
-		ids = []string{}
+// BuildSortedSetNode 构建 SortedSetRecall 节点。
+// 同时注册为 "recall.hot" 和 "recall.sorted_set"，兼容旧配置。
+//
+// YAML 示例:
+//
+//	type: recall.sorted_set
+//	config:
+//	  key: "hot:feed"          # 完整 key（优先）
+//	  key_prefix: "hot"        # key 前缀（key 为空时，拼接 scene）
+//	  top_k: 100
+//	  order: "desc"            # desc（默认）| asc
+//	  name: "recall.hot"       # 自定义节点名称
+//	  ids: ["fallback1"]       # fallback 静态列表
+func BuildSortedSetNode(cfg map[string]interface{}) (pipeline.Node, error) {
+	node := &recall.SortedSetRecall{
+		Key:       conv.ConfigGet(cfg, "key", ""),
+		KeyPrefix: conv.ConfigGet(cfg, "key_prefix", ""),
+		TopK:      int(conv.ConfigGetInt64(cfg, "top_k", 100)),
+		NodeName:  conv.ConfigGet(cfg, "name", ""),
+		IDs:       conv.SliceAnyToString(cfg["ids"]),
 	}
-	return &recall.Hot{IDs: ids}, nil
+	order := conv.ConfigGet(cfg, "order", "desc")
+	if order == "asc" {
+		node.Order = recall.OrderAsc
+	} else {
+		node.Order = recall.OrderDesc
+	}
+	return node, nil
 }
 
 func BuildANNNode(cfg map[string]interface{}) (pipeline.Node, error) {

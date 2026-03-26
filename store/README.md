@@ -77,15 +77,14 @@ kvStore.ZAdd(ctx, "hot:feed", 100.0, "1")
 
 ## 使用场景
 
-### 1. 热门召回（Hot Recall）
+### 1. 有序集合召回（SortedSetRecall）
 
-从 Store 读取热门物品列表：
+从 Store 有序集合读取物品列表（热门、趋势、最新等）：
 
 ```go
-hotRecall := &recall.Hot{
-    Store: memStore,
-    Key:   "hot:feed",
-}
+hotRecall := recall.NewHotRecall(memStore, "hot:feed", 100)
+trendingRecall := recall.NewTrendingRecall(memStore, "trending:feed", 50)
+latestRecall := recall.NewLatestRecall(memStore, "latest:feed", 50)
 ```
 
 ### 2. 特征存储

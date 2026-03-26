@@ -122,7 +122,7 @@ func main() {
             // 召回：多路并发
             &recall.Fanout{
                 Sources: []recall.Source{
-                    &recall.Hot{Store: memStore, Key: "hot:feed"},
+                    recall.NewHotRecall(memStore, "hot:feed", 100),
                     &recall.U2IRecall{
                         Store: cfStore, TopKSimilarUsers: 10, TopKItems: 20,
                         SimilarityCalculator: &recall.CosineSimilarity{}, Config: config,
@@ -195,7 +195,7 @@ func defaultItems() []*core.Item {
 | **MF/ALS** | `MFRecall` | 矩阵分解 |
 | **Embedding ANN** | `ANNRecall` | 向量检索（Milvus/Faiss） |
 | **Content** | `ContentRecall` | 基于内容的推荐 |
-| **Hot** | `Hot` | 热门召回（兜底） |
+| **SortedSet** | `SortedSetRecall` | 通用有序集合召回（热门/趋势/最新/高分等） |
 | **UserHistory** | `UserHistory` | 用户历史召回 |
 | **Word2Vec/Item2Vec** | `Word2VecRecall` | 文本模式 + 序列模式 |
 | **BERT** | `BERTRecall` | 语义相似度召回 |
@@ -373,7 +373,7 @@ items, _ := p.Run(ctx, rctx, nil)
 
 | 类别 | 支持的 type |
 |------|------------|
-| **Recall** | `recall.fanout`, `recall.hot`, `recall.ann`, `recall.rpc`, `recall.graph` |
+| **Recall** | `recall.fanout`, `recall.hot` / `recall.sorted_set`（通用有序集合召回）, `recall.ann`, `recall.rpc`, `recall.graph` |
 | **Filter** | `filter`（含 `blacklist` / `user_block` / `exposed` / `exposed_batch` / `expr` / `quality_gate` / `dedup_field` / `time_decay` / `frequency_cap`）, `filter.conditional` |
 | **Rank** | `rank.lr`, `rank.rpc`, `rank.wide_deep`, `rank.two_tower`, `rank.dnn`, `rank.din` |
 | **ReRank** | `rerank.diversity`, `rerank.dpp_diversity`, `rerank.ssd_diversity`, `rerank.topn`, `rerank.sample`, `rerank.fair_interleave`, `rerank.weighted_interleave`, `rerank.group_quota`, `rerank.traffic_plan`, `rerank.score_adjust`, `rerank.score_weight`, `rerank.recall_channel_mix`, `rerank.mmoe`, `rerank.epsilon_greedy`, `rerank.ucb`, `rerank.thompson_sampling`, `rerank.cold_start_boost` |

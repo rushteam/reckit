@@ -99,7 +99,7 @@ func main() {
 				Sources: []recall.Source{
 					twoTowerRecall,
 					// 可以与其他召回源组合
-					&recall.Hot{IDs: []string{"item_1", "item_2", "item_3"}},
+					&recall.SortedSetRecall{IDs: []string{"item_1", "item_2", "item_3"}, NodeName: "recall.hot"},
 				},
 				Dedup: true,
 			},

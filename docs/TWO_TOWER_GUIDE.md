@@ -305,7 +305,7 @@ func main() {
             // 召回
             &recall.Fanout{
                 Sources: []recall.Source{
-                    &recall.Hot{IDs: []string{"item_1", "item_2", "item_3"}},
+                    &recall.SortedSetRecall{IDs: []string{"item_1", "item_2", "item_3"}, NodeName: "recall.hot"},
                 },
                 Dedup: true,
             },

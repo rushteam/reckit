@@ -566,10 +566,7 @@ func main() {
 	priorityHot := priorityWord2Vec + 1
 
 	// 5. 热门召回（兜底）
-	sources = append(sources, &recall.Hot{
-		Store: memStore,
-		Key:   "hot:feed",
-	})
+	sources = append(sources, recall.NewHotRecall(memStore, "hot:feed", 100))
 
 	weights := map[string]int{
 		"recall.user_history": 1,

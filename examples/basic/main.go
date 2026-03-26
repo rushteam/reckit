@@ -79,11 +79,7 @@ func main() {
 		Nodes: []pipeline.Node{
 			&recall.Fanout{
 				Sources: []recall.Source{
-					// Hot Recall 从 Store 读取热门物品（如果 Store 为空则使用 fallback IDs）
-					&recall.Hot{
-						Store: memStore,
-						Key:   "hot:feed",
-					},
+				recall.NewHotRecall(memStore, "hot:feed", 100),
 				},
 				Dedup: true,
 			},

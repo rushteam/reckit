@@ -658,7 +658,7 @@ func TestFanout_NestedAsSource(t *testing.T) {
 	personalizedFanout := &Fanout{
 		NodeName: "recall.personalized",
 		Sources: []Source{
-			&Hot{IDs: []string{"p1", "p2", "p3"}},
+			&SortedSetRecall{IDs: []string{"p1", "p2", "p3"}, NodeName: "recall.hot"},
 		},
 		Dedup:         true,
 		MergeStrategy: &FirstMergeStrategy{},
@@ -667,7 +667,7 @@ func TestFanout_NestedAsSource(t *testing.T) {
 	nonPersonalizedFanout := &Fanout{
 		NodeName: "recall.non_personalized",
 		Sources: []Source{
-			&Hot{IDs: []string{"n1", "n2"}},
+			&SortedSetRecall{IDs: []string{"n1", "n2"}, NodeName: "recall.hot"},
 		},
 		Dedup:         true,
 		MergeStrategy: &FirstMergeStrategy{},
@@ -703,9 +703,9 @@ func TestFanout_NestedWithDifferentStrategies(t *testing.T) {
 	ctx := context.Background()
 	rctx := &core.RecommendContext{UserID: "u1"}
 
-	cfSource := &Hot{IDs: []string{"c1", "c2", "c3", "c4", "c5"}}
-	annSource := &Hot{IDs: []string{"a1", "a2", "a3"}}
-	hotSource := &Hot{IDs: []string{"h1", "h2", "h3", "h4"}}
+	cfSource := &SortedSetRecall{IDs: []string{"c1", "c2", "c3", "c4", "c5"}, NodeName: "recall.hot"}
+	annSource := &SortedSetRecall{IDs: []string{"a1", "a2", "a3"}, NodeName: "recall.hot"}
+	hotSource := &SortedSetRecall{IDs: []string{"h1", "h2", "h3", "h4"}, NodeName: "recall.hot"}
 
 	personalizedFanout := &Fanout{
 		NodeName: "recall.personalized",

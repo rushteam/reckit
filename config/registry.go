@@ -21,7 +21,7 @@ var (
 )
 
 // Register 注册一种 Node 的构建逻辑，供 DefaultFactory 与配置驱动使用。
-// 建议在各组件的 init 中调用，例如：func init() { config.Register("recall.hot", BuildHotNode) }
+// 建议在各组件的 init 中调用，例如：func init() { config.Register("recall.sorted_set", BuildSortedSetNode) }
 func Register(typeName string, builder NodeBuilder) {
 	if typeName == "" || builder == nil {
 		return

@@ -110,7 +110,7 @@ func main() {
 	fmt.Println("=== 示例 1: 自定义合并策略 ===")
 	fanout := &recall.Fanout{
 		Sources: []recall.Source{
-			&recall.Hot{IDs: []string{"1", "2", "3"}},
+			&recall.SortedSetRecall{IDs: []string{"1", "2", "3"}, NodeName: "recall.hot"},
 		},
 		Dedup:         true,
 		MergeStrategy: &CustomMergeStrategy{}, // 使用自定义策略

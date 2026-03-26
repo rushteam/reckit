@@ -249,7 +249,7 @@ pipeline := &pipeline.Pipeline{
     Nodes: []pipeline.Node{
         &recall.Fanout{
             Sources: []recall.Source{
-                &recall.Hot{...},           // 热门召回
+                recall.NewHotRecall(store, "hot:feed", 100), // 热门召回
                 &recall.UserHistory{...},   // 用户历史召回
                 &recall.UserBasedCF{...},   // 用户协同过滤
                 &recall.ItemBasedCF{...},   // 物品协同过滤

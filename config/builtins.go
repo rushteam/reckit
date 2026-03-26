@@ -12,7 +12,7 @@ type BuiltinDependencies = builders.Dependencies
 // 该函数可重复调用，后注册会覆盖同名 builder。
 func RegisterBuiltinsWithDeps(deps BuiltinDependencies) {
 	Register("recall.fanout", builders.BuildFanoutNode)
-	Register("recall.hot", builders.BuildHotNode)
+	Register("recall.hot", builders.BuildSortedSetNode)
 	Register("recall.ann", builders.BuildANNNode)
 	Register("rank.lr", builders.BuildLRNode)
 	Register("rank.rpc", builders.BuildRPCNode)

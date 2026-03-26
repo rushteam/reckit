@@ -32,7 +32,7 @@ import (
 //	fanout := &recall.Fanout{
 //		Sources: []recall.Source{
 //			rpcRecall,
-//			&recall.Hot{IDs: []string{"1", "2", "3"}},
+//			&recall.SortedSetRecall{IDs: []string{"1", "2", "3"}, NodeName: "recall.hot"},
 //		},
 //	}
 type RPCRecall struct {
