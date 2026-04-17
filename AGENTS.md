@@ -444,7 +444,7 @@ github.com/rushteam/reckit/
 - `recall/word2vec_recall.go` - Word2Vec / Item2Vec 召回（文本模式 + 序列模式）
 - `recall/bert_recall.go` - BERT 召回（基于语义相似度）
 - `recall/sorted_set.go` - 通用有序集合召回（SortedSetRecall），含 NewHotRecall/NewTrendingRecall/NewLatestRecall/NewTopRatedRecall/NewEditorPickRecall 等便捷构造器
-- `recall/user_history.go` - 用户历史召回
+- `recall/user_history.go` - 用户历史召回（UserHistoryStore 返回带 Score 的 ScoredHistoryItem，支持多行为合并时按时间排序）
 
 ### 过滤模块
 
@@ -500,7 +500,7 @@ github.com/rushteam/reckit/
 **与 `recall.MergeStrategy` 的分工**：`MergeStrategy` 作用于召回阶段，负责多路结果的**合并、去重、加权与配额**；`RecallChannelMix` 作用于**精排之后**，依赖物品上的 `recall_source`（默认取合并标签的首段，见 `PrimaryRecallChannel`），按规则做**槽位占位与剩余策略**，用于运营位次/通道曝光。二者互补，不要混用职责。
 
 **YAML 构建器**（`config/builders`，需 `_ "github.com/rushteam/reckit/config/builders"`）：
-- **Recall**：`recall.fanout`、`recall.hot`、`recall.sorted_set`（通用有序集合召回，支持 `key`/`key_prefix`/`order`/`name`）、`recall.ann`、`recall.rpc`（`endpoint` / `timeout` / `top_k`）、`recall.graph`（`endpoint` / `timeout` / `top_k`）
+- **Recall**：`recall.fanout`、`recall.hot` / `recall.sorted_set`（通用有序集合）、`recall.ann`（`Dependencies.VectorService`）、`recall.u2i`（`Dependencies.RecallDataStore`）、`recall.i2i`（同上）、`recall.content`（同上）、`recall.mf`（同上）、`recall.user_history`（`Dependencies.UserHistoryStore`）、`recall.word2vec`（`Dependencies.Word2VecModel`）、`recall.bert`（`Dependencies.BERTModel` + `BERTStore`）、`recall.two_tower`（`Dependencies.MLService` + `VectorService`）、`recall.youtube_dnn`（`endpoint` + `Dependencies.VectorService`）、`recall.dssm`（`endpoint` + `Dependencies.VectorService`）、`recall.rpc`（`endpoint`）、`recall.graph`（`endpoint`）
 - **Filter**：`filter`（含 `blacklist` / `user_block` / `exposed` / `expr` / `quality_gate` / `dedup_field` / `time_decay` / `frequency_cap`）、`filter.conditional`
 - **Rank**：`rank.lr`、`rank.rpc`、`rank.wide_deep`、`rank.two_tower`、`rank.dnn`、`rank.din`
 - **ReRank**：`rerank.diversity`（含 `constraints` 高级模式）、`rerank.dpp_diversity`、`rerank.ssd_diversity`、`rerank.topn`、`rerank.sample`、`rerank.fair_interleave`、`rerank.weighted_interleave`、`rerank.group_quota`、`rerank.traffic_plan`、`rerank.score_adjust`、`rerank.score_weight`、`rerank.recall_channel_mix`、`rerank.mmoe`

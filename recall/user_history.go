@@ -65,10 +65,19 @@ type UserHistory struct {
 	EnableSimilarExtend bool
 }
 
+// ScoredHistoryItem 带时间戳/分数的历史条目。
+// Score 通常为毫秒时间戳（与 Redis ZSET score 语义一致），
+// 供多行为类型合并时按时间降序归并。
+type ScoredHistoryItem struct {
+	ItemID string
+	Score  float64
+}
+
 // UserHistoryStore 是用户历史存储接口。
 type UserHistoryStore interface {
-	// GetUserHistory 获取用户的历史行为物品列表
-	GetUserHistory(ctx context.Context, userID string, keyPrefix, behaviorType string, timeWindow int64) ([]string, error)
+	// GetUserHistory 获取用户的历史行为物品列表（带时间戳/分数）。
+	// 返回按 Score 降序排列的历史条目，Score 通常为毫秒时间戳。
+	GetUserHistory(ctx context.Context, userID string, keyPrefix, behaviorType string, timeWindow int64) ([]ScoredHistoryItem, error)
 }
 
 // SimilarItemStore 获取相似物品的存储接口
@@ -117,17 +126,21 @@ func (r *UserHistory) Recall(
 		timeWindow = 30 * 24 * 3600
 	}
 
-	// 获取用户历史物品
-	itemIDs, err := r.Store.GetUserHistory(ctx, rctx.UserID, keyPrefix, behaviorType, timeWindow)
+	historyItems, err := r.Store.GetUserHistory(ctx, rctx.UserID, keyPrefix, behaviorType, timeWindow)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(itemIDs) == 0 {
+	if len(historyItems) == 0 {
 		return nil, nil
 	}
 
-	// 如果支持相似物品推荐，获取相似物品
+	// 提取 itemID 列表（保持 score 降序）
+	itemIDs := make([]string, len(historyItems))
+	for i, h := range historyItems {
+		itemIDs[i] = h.ItemID
+	}
+
 	if r.EnableSimilarExtend {
 		if similarStore, ok := r.Store.(SimilarItemStore); ok {
 			topK := r.TopK
@@ -137,20 +150,35 @@ func (r *UserHistory) Recall(
 			similarIDs, err := similarStore.GetSimilarItems(ctx, itemIDs, topK)
 			if err == nil && len(similarIDs) > 0 {
 				itemIDs = similarIDs
+				// 扩展后 historyItems 不再有效，清空以走 fallback 权重
+				historyItems = nil
 			}
 		}
 	}
 
-	// 限制返回数量
 	topK := r.TopK
 	if topK > 0 && len(itemIDs) > topK {
 		itemIDs = itemIDs[:topK]
+		if historyItems != nil && len(historyItems) > topK {
+			historyItems = historyItems[:topK]
+		}
 	}
 
-	// 构建结果
+	// 构建 score→item 索引，用于保留原始 score
+	scoreMap := make(map[string]float64, len(historyItems))
+	for _, h := range historyItems {
+		scoreMap[h.ItemID] = h.Score
+	}
+
 	out := make([]*core.Item, 0, len(itemIDs))
-	for _, id := range itemIDs {
+	for i, id := range itemIDs {
 		it := core.NewItem(id)
+		if s, ok := scoreMap[id]; ok {
+			it.Score = s
+		} else {
+			// SimilarExtend 或无 score 时按位置衰减
+			it.Score = 1.0 / float64(i+1)
+		}
 		it.PutLabel("behavior_type", utils.Label{Value: behaviorType, Source: "recall"})
 		out = append(out, it)
 	}

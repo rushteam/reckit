@@ -41,10 +41,25 @@ type Dependencies struct {
 	FrequencyCapStore filter.FrequencyCapStore
 	// BanditStatsProvider 用于 rerank.ucb / rerank.thompson_sampling / rerank.cold_start_boost。
 	BanditStatsProvider rerank.BanditStatsProvider
-	// VectorService 用于 recall.ann 等需要向量搜索的召回源。
+	// VectorService 用于 recall.ann / recall.two_tower / recall.youtube_dnn / recall.dssm 等。
 	VectorService core.VectorService
 	// PaddingFunc 用于 postprocess.padding 的动态补足策略。
 	PaddingFunc postprocess.PaddingFunc
+
+	// --- Recall 依赖 ---
+
+	// RecallDataStore 用于 recall.u2i / recall.i2i / recall.content / recall.mf。
+	RecallDataStore core.RecallDataStore
+	// UserHistoryStore 用于 recall.user_history。
+	UserHistoryStore recall.UserHistoryStore
+	// MLService 用于 recall.two_tower（用户塔推理）。
+	MLService core.MLService
+	// Word2VecModel 用于 recall.word2vec。
+	Word2VecModel *model.Word2VecModel
+	// BERTModel 用于 recall.bert。
+	BERTModel *model.BERTModel
+	// BERTStore 用于 recall.bert。
+	BERTStore recall.BERTStore
 }
 
 func (d Dependencies) filterStoreAdapter() *filter.StoreAdapter {
@@ -65,7 +80,39 @@ func ApplyBuiltins(factory *pipeline.NodeFactory, deps Dependencies) {
 	factory.Register("recall.fanout", BuildFanoutNode)
 	factory.Register("recall.hot", BuildSortedSetNode)
 	factory.Register("recall.sorted_set", BuildSortedSetNode)
-	factory.Register("recall.ann", BuildANNNode)
+	factory.Register("recall.ann", func(cfg map[string]interface{}) (pipeline.Node, error) {
+		return buildANNNodeWithDeps(cfg, deps)
+	})
+	factory.Register("recall.u2i", func(cfg map[string]interface{}) (pipeline.Node, error) {
+		return buildU2INodeWithDeps(cfg, deps)
+	})
+	factory.Register("recall.i2i", func(cfg map[string]interface{}) (pipeline.Node, error) {
+		return buildI2INodeWithDeps(cfg, deps)
+	})
+	factory.Register("recall.content", func(cfg map[string]interface{}) (pipeline.Node, error) {
+		return buildContentRecallNodeWithDeps(cfg, deps)
+	})
+	factory.Register("recall.mf", func(cfg map[string]interface{}) (pipeline.Node, error) {
+		return buildMFRecallNodeWithDeps(cfg, deps)
+	})
+	factory.Register("recall.user_history", func(cfg map[string]interface{}) (pipeline.Node, error) {
+		return buildUserHistoryNodeWithDeps(cfg, deps)
+	})
+	factory.Register("recall.word2vec", func(cfg map[string]interface{}) (pipeline.Node, error) {
+		return buildWord2VecRecallNodeWithDeps(cfg, deps)
+	})
+	factory.Register("recall.bert", func(cfg map[string]interface{}) (pipeline.Node, error) {
+		return buildBERTRecallNodeWithDeps(cfg, deps)
+	})
+	factory.Register("recall.two_tower", func(cfg map[string]interface{}) (pipeline.Node, error) {
+		return buildTwoTowerRecallNodeWithDeps(cfg, deps)
+	})
+	factory.Register("recall.youtube_dnn", func(cfg map[string]interface{}) (pipeline.Node, error) {
+		return buildYouTubeDNNRecallNodeWithDeps(cfg, deps)
+	})
+	factory.Register("recall.dssm", func(cfg map[string]interface{}) (pipeline.Node, error) {
+		return buildDSSMRecallNodeWithDeps(cfg, deps)
+	})
 	factory.Register("rank.lr", BuildLRNode)
 	factory.Register("rank.rpc", BuildRPCNode)
 	factory.Register("rank.wide_deep", BuildWideDeepNode)
@@ -342,7 +389,184 @@ func BuildSortedSetNode(cfg map[string]interface{}) (pipeline.Node, error) {
 }
 
 func BuildANNNode(cfg map[string]interface{}) (pipeline.Node, error) {
-	return nil, fmt.Errorf("ann node not fully implemented: requires VectorService injection")
+	return nil, fmt.Errorf("recall.ann requires Dependencies.VectorService; use ApplyBuiltins")
+}
+
+func buildANNNodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
+	if deps.VectorService == nil {
+		return nil, fmt.Errorf("recall.ann requires Dependencies.VectorService")
+	}
+	return wrapSourceAsNode(&recall.ANN{
+		VectorService: deps.VectorService,
+		Collection:    conv.ConfigGet(cfg, "collection", ""),
+		TopK:          int(conv.ConfigGetInt64(cfg, "top_k", 50)),
+		Metric:        conv.ConfigGet(cfg, "metric", "cosine"),
+	}), nil
+}
+
+func buildU2INodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
+	if deps.RecallDataStore == nil {
+		return nil, fmt.Errorf("recall.u2i requires Dependencies.RecallDataStore")
+	}
+	return wrapSourceAsNode(&recall.UserBasedCF{
+		Store:                deps.RecallDataStore,
+		TopKSimilarUsers:     int(conv.ConfigGetInt64(cfg, "top_k_similar_users", 0)),
+		TopKItems:            int(conv.ConfigGetInt64(cfg, "top_k", 0)),
+		MinCommonItems:       int(conv.ConfigGetInt64(cfg, "min_common_items", 0)),
+		SimilarityCalculator: parseSimilarityCalculator(conv.ConfigGet(cfg, "similarity", "cosine")),
+		Config:               &core.DefaultRecallConfig{},
+	}), nil
+}
+
+func buildI2INodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
+	if deps.RecallDataStore == nil {
+		return nil, fmt.Errorf("recall.i2i requires Dependencies.RecallDataStore")
+	}
+	return wrapSourceAsNode(&recall.ItemBasedCF{
+		Store:                deps.RecallDataStore,
+		TopKSimilarItems:     int(conv.ConfigGetInt64(cfg, "top_k_similar_items", 0)),
+		TopKItems:            int(conv.ConfigGetInt64(cfg, "top_k", 0)),
+		MinCommonUsers:       int(conv.ConfigGetInt64(cfg, "min_common_users", 0)),
+		SimilarityCalculator: parseSimilarityCalculator(conv.ConfigGet(cfg, "similarity", "cosine")),
+		Config:               &core.DefaultRecallConfig{},
+	}), nil
+}
+
+func buildContentRecallNodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
+	if deps.RecallDataStore == nil {
+		return nil, fmt.Errorf("recall.content requires Dependencies.RecallDataStore")
+	}
+	return wrapSourceAsNode(&recall.ContentRecall{
+		Store:              deps.RecallDataStore,
+		TopK:               int(conv.ConfigGetInt64(cfg, "top_k", 20)),
+		Metric:             conv.ConfigGet(cfg, "metric", "cosine"),
+		UserPreferencesKey: conv.ConfigGet(cfg, "user_preferences_key", ""),
+	}), nil
+}
+
+func buildMFRecallNodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
+	if deps.RecallDataStore == nil {
+		return nil, fmt.Errorf("recall.mf requires Dependencies.RecallDataStore")
+	}
+	return wrapSourceAsNode(&recall.MFRecall{
+		Store:            deps.RecallDataStore,
+		TopK:             int(conv.ConfigGetInt64(cfg, "top_k", 20)),
+		UserEmbeddingKey: conv.ConfigGet(cfg, "user_embedding_key", ""),
+	}), nil
+}
+
+func buildUserHistoryNodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
+	if deps.UserHistoryStore == nil {
+		return nil, fmt.Errorf("recall.user_history requires Dependencies.UserHistoryStore")
+	}
+	return wrapSourceAsNode(&recall.UserHistory{
+		Store:               deps.UserHistoryStore,
+		KeyPrefix:           conv.ConfigGet(cfg, "key_prefix", ""),
+		BehaviorType:        conv.ConfigGet(cfg, "behavior_type", "click"),
+		TopK:                int(conv.ConfigGetInt64(cfg, "top_k", 20)),
+		TimeWindow:          conv.ConfigGetInt64(cfg, "time_window", 0),
+		EnableSimilarExtend: conv.ConfigGet(cfg, "enable_similar_extend", false),
+	}), nil
+}
+
+func buildWord2VecRecallNodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
+	if deps.Word2VecModel == nil {
+		return nil, fmt.Errorf("recall.word2vec requires Dependencies.Word2VecModel")
+	}
+	if deps.RecallDataStore == nil {
+		return nil, fmt.Errorf("recall.word2vec requires Dependencies.RecallDataStore (as Word2VecStore)")
+	}
+	w2vStore, ok := deps.RecallDataStore.(recall.Word2VecStore)
+	if !ok {
+		return nil, fmt.Errorf("recall.word2vec: RecallDataStore must implement recall.Word2VecStore")
+	}
+	return wrapSourceAsNode(&recall.Word2VecRecall{
+		Model:     deps.Word2VecModel,
+		Store:     w2vStore,
+		TopK:      int(conv.ConfigGetInt64(cfg, "top_k", 20)),
+		Mode:      conv.ConfigGet(cfg, "mode", "text"),
+		TextField: conv.ConfigGet(cfg, "text_field", "title"),
+	}), nil
+}
+
+func buildBERTRecallNodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
+	if deps.BERTModel == nil {
+		return nil, fmt.Errorf("recall.bert requires Dependencies.BERTModel")
+	}
+	if deps.BERTStore == nil {
+		return nil, fmt.Errorf("recall.bert requires Dependencies.BERTStore")
+	}
+	return wrapSourceAsNode(&recall.BERTRecall{
+		Model:     deps.BERTModel,
+		Store:     deps.BERTStore,
+		TopK:      int(conv.ConfigGetInt64(cfg, "top_k", 20)),
+		Mode:      conv.ConfigGet(cfg, "mode", "text"),
+		TextField: conv.ConfigGet(cfg, "text_field", "title"),
+		BatchSize: int(conv.ConfigGetInt64(cfg, "batch_size", 32)),
+	}), nil
+}
+
+func buildTwoTowerRecallNodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
+	if deps.MLService == nil {
+		return nil, fmt.Errorf("recall.two_tower requires Dependencies.MLService")
+	}
+	if deps.VectorService == nil {
+		return nil, fmt.Errorf("recall.two_tower requires Dependencies.VectorService")
+	}
+	return wrapSourceAsNode(&recall.TwoTowerRecall{
+		FeatureService:   deps.FeatureService,
+		UserTowerService: deps.MLService,
+		VectorService:    deps.VectorService,
+		TopK:             int(conv.ConfigGetInt64(cfg, "top_k", 50)),
+		Collection:       conv.ConfigGet(cfg, "collection", ""),
+		Metric:           conv.ConfigGet(cfg, "metric", "inner_product"),
+	}), nil
+}
+
+func buildYouTubeDNNRecallNodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
+	endpoint := conv.ConfigGet(cfg, "endpoint", "")
+	if endpoint == "" {
+		return nil, fmt.Errorf("recall.youtube_dnn: endpoint required")
+	}
+	if deps.VectorService == nil {
+		return nil, fmt.Errorf("recall.youtube_dnn requires Dependencies.VectorService")
+	}
+	return wrapSourceAsNode(&recall.YouTubeDNNRecall{
+		FeatureService: deps.FeatureService,
+		Endpoint:       endpoint,
+		Timeout:        time.Duration(conv.ConfigGetInt64(cfg, "timeout_ms", 2000)) * time.Millisecond,
+		VectorService:  deps.VectorService,
+		TopK:           int(conv.ConfigGetInt64(cfg, "top_k", 50)),
+		Collection:     conv.ConfigGet(cfg, "collection", ""),
+		Metric:         conv.ConfigGet(cfg, "metric", "inner_product"),
+	}), nil
+}
+
+func buildDSSMRecallNodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
+	endpoint := conv.ConfigGet(cfg, "endpoint", "")
+	if endpoint == "" {
+		return nil, fmt.Errorf("recall.dssm: endpoint required")
+	}
+	if deps.VectorService == nil {
+		return nil, fmt.Errorf("recall.dssm requires Dependencies.VectorService")
+	}
+	return wrapSourceAsNode(&recall.DSSMRecall{
+		Endpoint:      endpoint,
+		Timeout:       time.Duration(conv.ConfigGetInt64(cfg, "timeout_ms", 2000)) * time.Millisecond,
+		VectorService: deps.VectorService,
+		TopK:          int(conv.ConfigGetInt64(cfg, "top_k", 50)),
+		Collection:    conv.ConfigGet(cfg, "collection", ""),
+		Metric:        conv.ConfigGet(cfg, "metric", "inner_product"),
+	}), nil
+}
+
+func parseSimilarityCalculator(name string) recall.SimilarityCalculator {
+	switch name {
+	case "pearson":
+		return &recall.PearsonCorrelation{}
+	default:
+		return &recall.CosineSimilarity{}
+	}
 }
 
 func BuildLRNode(cfg map[string]interface{}) (pipeline.Node, error) {

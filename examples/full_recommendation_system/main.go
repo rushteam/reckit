@@ -32,19 +32,23 @@ func NewMockUserHistoryStore(s core.Store) *MockUserHistoryStore {
 	return &MockUserHistoryStore{store: s}
 }
 
-func (m *MockUserHistoryStore) GetUserHistory(ctx context.Context, userID string, keyPrefix, behaviorType string, timeWindow int64) ([]string, error) {
+func (m *MockUserHistoryStore) GetUserHistory(ctx context.Context, userID string, keyPrefix, behaviorType string, timeWindow int64) ([]recall.ScoredHistoryItem, error) {
 	key := fmt.Sprintf("%s:%s:%s", keyPrefix, userID, behaviorType)
 	data, err := m.store.Get(ctx, key)
 	if err != nil {
 		if core.IsStoreNotFound(err) {
-			return []string{}, nil
+			return []recall.ScoredHistoryItem{}, nil
 		}
 		return nil, err
 	}
 
-	var items []string
-	if err := json.Unmarshal(data, &items); err != nil {
+	var ids []string
+	if err := json.Unmarshal(data, &ids); err != nil {
 		return nil, err
+	}
+	items := make([]recall.ScoredHistoryItem, len(ids))
+	for i, id := range ids {
+		items[i] = recall.ScoredHistoryItem{ItemID: id, Score: float64(len(ids) - i)}
 	}
 	return items, nil
 }

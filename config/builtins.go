@@ -13,6 +13,7 @@ type BuiltinDependencies = builders.Dependencies
 func RegisterBuiltinsWithDeps(deps BuiltinDependencies) {
 	Register("recall.fanout", builders.BuildFanoutNode)
 	Register("recall.hot", builders.BuildSortedSetNode)
+	Register("recall.sorted_set", builders.BuildSortedSetNode)
 	Register("recall.ann", builders.BuildANNNode)
 	Register("rank.lr", builders.BuildLRNode)
 	Register("rank.rpc", builders.BuildRPCNode)

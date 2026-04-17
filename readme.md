@@ -373,7 +373,7 @@ items, _ := p.Run(ctx, rctx, nil)
 
 | 类别 | 支持的 type |
 |------|------------|
-| **Recall** | `recall.fanout`, `recall.hot` / `recall.sorted_set`（通用有序集合召回）, `recall.ann`, `recall.rpc`, `recall.graph` |
+| **Recall** | `recall.fanout`, `recall.hot` / `recall.sorted_set`, `recall.ann`, `recall.u2i`, `recall.i2i`, `recall.content`, `recall.mf`, `recall.user_history`, `recall.word2vec`, `recall.bert`, `recall.two_tower`, `recall.youtube_dnn`, `recall.dssm`, `recall.rpc`, `recall.graph` |
 | **Filter** | `filter`（含 `blacklist` / `user_block` / `exposed` / `exposed_batch` / `expr` / `quality_gate` / `dedup_field` / `time_decay` / `frequency_cap`）, `filter.conditional` |
 | **Rank** | `rank.lr`, `rank.rpc`, `rank.wide_deep`, `rank.two_tower`, `rank.dnn`, `rank.din` |
 | **ReRank** | `rerank.diversity`, `rerank.dpp_diversity`, `rerank.ssd_diversity`, `rerank.topn`, `rerank.sample`, `rerank.fair_interleave`, `rerank.weighted_interleave`, `rerank.group_quota`, `rerank.traffic_plan`, `rerank.score_adjust`, `rerank.score_weight`, `rerank.recall_channel_mix`, `rerank.mmoe`, `rerank.epsilon_greedy`, `rerank.ucb`, `rerank.thompson_sampling`, `rerank.cold_start_boost` |
