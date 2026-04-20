@@ -102,7 +102,9 @@ func (r *SortedSetRecall) Recall(
 		}
 	}
 
-	// 策略 2: KeyValueStore.ZRange（仅降序、不含分数）
+	// 策略 2: KeyValueStore.ZRange（按 core.KeyValueStore 约定返回降序结果，不含分数）
+	// 注意：core.KeyValueStore.ZRange 约定为降序（与 Redis 原生 ZRANGE 升序不同），
+	// 如实现 Redis 适配器请在适配层调用 ZREVRANGE。
 	if key != "" && r.Store != nil {
 		if kvStore, ok := r.Store.(core.KeyValueStore); ok {
 			ids, err := kvStore.ZRange(ctx, key, 0, stop)

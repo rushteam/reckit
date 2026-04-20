@@ -2,6 +2,7 @@ package recall
 
 import (
 	"sort"
+	"strconv"
 
 	"github.com/rushteam/reckit/core"
 )
@@ -83,8 +84,8 @@ func (s *PriorityMergeStrategy) getPriority(item *core.Item) int {
 		}
 	}
 	if lbl, ok := item.Labels["recall_priority"]; ok {
-		if len(lbl.Value) > 0 {
-			return int(lbl.Value[0] - '0')
+		if v, err := strconv.Atoi(lbl.Value); err == nil {
+			return v
 		}
 	}
 	return 999
@@ -479,9 +480,8 @@ func priorityFromLabel(it *core.Item) int {
 	if !ok || len(lbl.Value) == 0 {
 		return 999
 	}
-	c := lbl.Value[0]
-	if c >= '0' && c <= '9' {
-		return int(c - '0')
+	if v, err := strconv.Atoi(lbl.Value); err == nil {
+		return v
 	}
 	return 999
 }

@@ -5,6 +5,7 @@ import (
 	"math"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/rushteam/reckit/core"
 	"github.com/rushteam/reckit/model"
@@ -73,13 +74,11 @@ func (s *MultiFieldSortStrategy) Sort(items []*core.Item) {
 			var okI, okJ bool
 
 			if field.IsLabel {
-				if _, ok := items[i].Labels[field.Key]; ok {
-					// 简化：假设 Label Value 是数值字符串
-					// 实际使用时需要更完善的解析
-					valI, okI = 0, true // 占位
+				if lbl, ok := items[i].Labels[field.Key]; ok {
+					valI, okI = parseLabelNumeric(lbl.Value)
 				}
-				if _, ok := items[j].Labels[field.Key]; ok {
-					valJ, okJ = 0, true // 占位
+				if lbl, ok := items[j].Labels[field.Key]; ok {
+					valJ, okJ = parseLabelNumeric(lbl.Value)
 				}
 			} else {
 				valI, okI = items[i].Features[field.Key]
@@ -219,6 +218,20 @@ func (n *LRNode) emitExplainLabels(it *core.Item) {
 			})
 		}
 	}
+}
+
+// parseLabelNumeric 尝试将 Label.Value 解析为 float64。
+// 对于合并后的多值标签（如 "hot|cf"），取第一个可解析的段。
+func parseLabelNumeric(s string) (float64, bool) {
+	if v, err := strconv.ParseFloat(s, 64); err == nil {
+		return v, true
+	}
+	if idx := strings.IndexByte(s, '|'); idx >= 0 {
+		if v, err := strconv.ParseFloat(s[:idx], 64); err == nil {
+			return v, true
+		}
+	}
+	return 0, false
 }
 
 func lrLinearRaw(rm model.RankModel, features map[string]float64, score float64) float64 {

@@ -23,12 +23,11 @@ func (h *StatsHook) BeforeNode(_ context.Context, rctx *core.RecommendContext, n
 	if rctx == nil || node == nil {
 		return items, nil
 	}
-	ensureStatsMaps(rctx)
+	inMap, _ := ensureStatsMaps(rctx)
 	if _, ok := rctx.Params[ParamPipelineInputCount]; !ok {
 		rctx.Params[ParamPipelineInputCount] = len(items)
 	}
-	in := rctx.Params[ParamNodeInputCountMap].(map[string]int)
-	in[node.Name()] = len(items)
+	inMap[node.Name()] = len(items)
 	return items, nil
 }
 
@@ -36,21 +35,27 @@ func (h *StatsHook) AfterNode(_ context.Context, rctx *core.RecommendContext, no
 	if rctx == nil || node == nil {
 		return items, err
 	}
-	ensureStatsMaps(rctx)
-	out := rctx.Params[ParamNodeOutputCountMap].(map[string]int)
-	out[node.Name()] = len(items)
+	_, outMap := ensureStatsMaps(rctx)
+	outMap[node.Name()] = len(items)
 	rctx.Params[ParamPipelineOutputCount] = len(items)
 	return items, err
 }
 
-func ensureStatsMaps(rctx *core.RecommendContext) {
+// ensureStatsMaps 保证 Params 中的统计 map 存在且类型正确，
+// 返回 (inputCountMap, outputCountMap)，调用方无需再做类型断言。
+func ensureStatsMaps(rctx *core.RecommendContext) (map[string]int, map[string]int) {
 	if rctx.Params == nil {
 		rctx.Params = make(map[string]any)
 	}
-	if _, ok := rctx.Params[ParamNodeInputCountMap]; !ok {
-		rctx.Params[ParamNodeInputCountMap] = make(map[string]int)
+	inMap, ok := rctx.Params[ParamNodeInputCountMap].(map[string]int)
+	if !ok {
+		inMap = make(map[string]int)
+		rctx.Params[ParamNodeInputCountMap] = inMap
 	}
-	if _, ok := rctx.Params[ParamNodeOutputCountMap]; !ok {
-		rctx.Params[ParamNodeOutputCountMap] = make(map[string]int)
+	outMap, ok := rctx.Params[ParamNodeOutputCountMap].(map[string]int)
+	if !ok {
+		outMap = make(map[string]int)
+		rctx.Params[ParamNodeOutputCountMap] = outMap
 	}
+	return inMap, outMap
 }

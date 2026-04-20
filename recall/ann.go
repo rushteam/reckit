@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/rushteam/reckit/core"
+	"github.com/rushteam/reckit/pipeline"
 	"github.com/rushteam/reckit/pkg/utils"
 )
 
@@ -35,7 +36,13 @@ type ANN struct {
 	UserEmbeddingExtractor func(rctx *core.RecommendContext) []float64
 }
 
-func (r *ANN) Name() string { return "recall.emb" } // 工业标准命名：emb (Embedding)
+func (r *ANN) Name() string        { return "recall.emb" } // 工业标准命名：emb (Embedding)
+func (r *ANN) Kind() pipeline.Kind { return pipeline.KindRecall }
+
+// Process 实现 pipeline.Node 接口，使 ANN 可直接放入 Pipeline.Nodes。
+func (r *ANN) Process(ctx context.Context, rctx *core.RecommendContext, _ []*core.Item) ([]*core.Item, error) {
+	return r.Recall(ctx, rctx)
+}
 
 // EmbRecall 是 ANN 的类型别名，提供更符合工业习惯的命名。
 type EmbRecall = ANN

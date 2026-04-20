@@ -464,6 +464,8 @@ func (n *Diversity) processMultiKeyDiversity(items []*core.Item, diversityKeys [
 	for _, it := range pending {
 		if canInsert(it) {
 			applyInsert(it)
+		} else {
+			out = append(out, it)
 		}
 	}
 

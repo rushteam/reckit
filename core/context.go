@@ -1,6 +1,10 @@
 package core
 
-import "github.com/rushteam/reckit/pkg/utils"
+import (
+	"sync"
+
+	"github.com/rushteam/reckit/pkg/utils"
+)
 
 // RecommendContext 承载用户/场景/实时信息，贯穿整个 Pipeline 透传。
 type RecommendContext struct {
@@ -27,7 +31,8 @@ type RecommendContext struct {
 	Params map[string]any
 
 	// ext 存放已注册的 Extension 实例，按 ExtensionName() 索引。懒初始化。
-	ext map[string]Extension
+	extMu sync.RWMutex
+	ext   map[string]Extension
 }
 
 // PutLabel 写入用户级 Label。
@@ -52,20 +57,27 @@ func (rctx *RecommendContext) GetLabel(key string) (utils.Label, bool) {
 }
 
 // SetExtension 注册一个 Extension 到 Context，按 ExtensionName() 索引。
-// rctx 或 e 为 nil 时静默忽略。
+// rctx 或 e 为 nil 时静默忽略。并发安全。
 func (rctx *RecommendContext) SetExtension(e Extension) {
 	if rctx == nil || e == nil {
 		return
 	}
+	rctx.extMu.Lock()
+	defer rctx.extMu.Unlock()
 	if rctx.ext == nil {
 		rctx.ext = make(map[string]Extension)
 	}
 	rctx.ext[e.ExtensionName()] = e
 }
 
-// GetExtension 按名称获取已注册的 Extension。
+// GetExtension 按名称获取已注册的 Extension。并发安全。
 func (rctx *RecommendContext) GetExtension(name string) (Extension, bool) {
-	if rctx == nil || rctx.ext == nil {
+	if rctx == nil {
+		return nil, false
+	}
+	rctx.extMu.RLock()
+	defer rctx.extMu.RUnlock()
+	if rctx.ext == nil {
 		return nil, false
 	}
 	e, ok := rctx.ext[name]

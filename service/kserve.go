@@ -239,7 +239,7 @@ func (c *KServeClient) predictV2(ctx context.Context, req *core.MLPredictRequest
 		var rows int
 		if len(req.Features) > 0 {
 			rows = len(req.Features)
-			keys := c.sortedFeatureKeys(req.Features[0])
+			keys := c.collectAllFeatureKeys(req.Features)
 			dim := len(keys)
 			data = make([]float64, 0, rows*dim)
 			for _, m := range req.Features {
@@ -321,6 +321,23 @@ func (c *KServeClient) predictV2(ctx context.Context, req *core.MLPredictRequest
 func (c *KServeClient) sortedFeatureKeys(m map[string]float64) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// collectAllFeatureKeys 合并所有 instance 的 feature key 后排序，
+// 保证异构特征集的 item 也能正确展平（缺失 key 填 0）。
+func (c *KServeClient) collectAllFeatureKeys(features []map[string]float64) []string {
+	seen := make(map[string]struct{})
+	for _, m := range features {
+		for k := range m {
+			seen[k] = struct{}{}
+		}
+	}
+	keys := make([]string, 0, len(seen))
+	for k := range seen {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)

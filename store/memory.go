@@ -12,11 +12,12 @@ import (
 // MemoryStore 是内存实现的 Store，用于测试/开发/原型。
 // 支持 TTL（过期时间），但进程重启后数据丢失。
 type MemoryStore struct {
-	mu    sync.RWMutex
-	data  map[string]*entry
-	ttl   map[string]time.Time
-	zsets map[string]map[string]float64 // zset key -> member -> score
-	clean *time.Ticker
+	mu          sync.RWMutex
+	data        map[string]*entry
+	ttl         map[string]time.Time
+	zsets        map[string]map[string]float64 // zset key -> member -> score
+	clean       *time.Ticker
+	stopCleanup chan struct{}
 }
 
 type entry struct {
@@ -26,10 +27,11 @@ type entry struct {
 
 func NewMemoryStore() *MemoryStore {
 	ms := &MemoryStore{
-		data:  make(map[string]*entry),
-		ttl:   make(map[string]time.Time),
-		zsets: make(map[string]map[string]float64),
-		clean: time.NewTicker(10 * time.Second),
+		data:        make(map[string]*entry),
+		ttl:         make(map[string]time.Time),
+		zsets:        make(map[string]map[string]float64),
+		clean:       time.NewTicker(10 * time.Second),
+		stopCleanup: make(chan struct{}),
 	}
 	go ms.cleanup()
 	return ms
@@ -117,20 +119,26 @@ func (m *MemoryStore) Close(ctx context.Context) error {
 	if m.clean != nil {
 		m.clean.Stop()
 	}
+	close(m.stopCleanup)
 	return nil
 }
 
 func (m *MemoryStore) cleanup() {
-	for range m.clean.C {
-		m.mu.Lock()
-		now := time.Now()
-		for k, expire := range m.ttl {
-			if now.After(expire) {
-				delete(m.data, k)
-				delete(m.ttl, k)
+	for {
+		select {
+		case <-m.clean.C:
+			m.mu.Lock()
+			now := time.Now()
+			for k, expire := range m.ttl {
+				if now.After(expire) {
+					delete(m.data, k)
+					delete(m.ttl, k)
+				}
 			}
+			m.mu.Unlock()
+		case <-m.stopCleanup:
+			return
 		}
-		m.mu.Unlock()
 	}
 }
 

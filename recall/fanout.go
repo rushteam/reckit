@@ -2,6 +2,7 @@ package recall
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"time"
 
@@ -62,9 +63,9 @@ func (n *Fanout) Process(
 	}
 
 	var (
-		mu    sync.Mutex
-		all   []*core.Item
-		eg, _ = errgroup.WithContext(ctx)
+		mu      sync.Mutex
+		all     []*core.Item
+		eg, egCtx = errgroup.WithContext(ctx)
 	)
 
 	// 限流：使用 semaphore 控制并发数
@@ -90,11 +91,12 @@ func (n *Fanout) Process(
 				defer func() { <-sem }()
 			}
 
-			// 超时控制
-			recallCtx := ctx
+			// 超时控制：基于 errgroup 的 derived context，
+			// 任一 source 返回 error 后其它 goroutine 能感知取消。
+			recallCtx := egCtx
 			if n.Timeout > 0 {
 				var cancel context.CancelFunc
-				recallCtx, cancel = context.WithTimeout(ctx, n.Timeout)
+				recallCtx, cancel = context.WithTimeout(egCtx, n.Timeout)
 				defer cancel()
 			}
 
@@ -116,7 +118,7 @@ func (n *Fanout) Process(
 			// 记录召回来源 label，方便 explain / 观测
 			for _, it := range items {
 				it.PutLabel("recall_source", utils.Label{Value: s.Name(), Source: "recall"})
-				it.PutLabel("recall_priority", utils.Label{Value: string(rune('0' + priority)), Source: "recall"})
+				it.PutLabel("recall_priority", utils.Label{Value: strconv.Itoa(priority), Source: "recall"})
 			}
 
 			mu.Lock()

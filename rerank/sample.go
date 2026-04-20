@@ -41,8 +41,10 @@ func (n *SampleNode) Process(
 	if rng == nil {
 		rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 	}
-	rng.Shuffle(len(items), func(i, j int) {
-		items[i], items[j] = items[j], items[i]
+	cp := make([]*core.Item, len(items))
+	copy(cp, items)
+	rng.Shuffle(len(cp), func(i, j int) {
+		cp[i], cp[j] = cp[j], cp[i]
 	})
-	return items[:n.N], nil
+	return cp[:n.N], nil
 }

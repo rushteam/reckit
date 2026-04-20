@@ -54,7 +54,9 @@ type KeyValueStore interface {
 	// ZAdd 向有序集合添加成员（用于热门排序、时间线等）
 	ZAdd(ctx context.Context, key string, score float64, member string) error
 
-	// ZRange 按分数范围获取有序集合成员（降序，用于 TopN 召回）
+	// ZRange 按分数降序获取有序集合成员（用于 TopN 召回）。
+	// 注意：本接口约定为降序（高分在前），与 Redis 原生 ZRANGE（升序）不同。
+	// 实现 Redis 适配器时应在内部调用 ZREVRANGE 以满足此约定。
 	ZRange(ctx context.Context, key string, start, stop int64) ([]string, error)
 
 	// ZScore 获取成员的分数

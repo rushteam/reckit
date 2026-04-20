@@ -2,6 +2,7 @@ package recall
 
 import (
 	"context"
+	"strconv"
 	"testing"
 
 	"github.com/rushteam/reckit/core"
@@ -754,7 +755,7 @@ func TestFanout_DefaultName(t *testing.T) {
 func makeItemWithPriority(id string, score float64, source string, priority int) *core.Item {
 	it := makeItem(id, score, source)
 	it.PutLabel("recall_priority", utils.Label{
-		Value:  string(rune('0' + priority)),
+		Value:  strconv.Itoa(priority),
 		Source: "recall",
 	})
 	return it

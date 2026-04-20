@@ -141,6 +141,7 @@ func (r *UserHistory) Recall(
 		itemIDs[i] = h.ItemID
 	}
 
+	extended := false
 	if r.EnableSimilarExtend {
 		if similarStore, ok := r.Store.(SimilarItemStore); ok {
 			topK := r.TopK
@@ -150,8 +151,8 @@ func (r *UserHistory) Recall(
 			similarIDs, err := similarStore.GetSimilarItems(ctx, itemIDs, topK)
 			if err == nil && len(similarIDs) > 0 {
 				itemIDs = similarIDs
-				// 扩展后 historyItems 不再有效，清空以走 fallback 权重
 				historyItems = nil
+				extended = true
 			}
 		}
 	}
@@ -179,7 +180,12 @@ func (r *UserHistory) Recall(
 			// SimilarExtend 或无 score 时按位置衰减
 			it.Score = 1.0 / float64(i+1)
 		}
-		it.PutLabel("behavior_type", utils.Label{Value: behaviorType, Source: "recall"})
+		if extended {
+			it.PutLabel("behavior_type", utils.Label{Value: "similar_extend", Source: "recall"})
+			it.PutLabel("recall_method", utils.Label{Value: "i2i", Source: "recall"})
+		} else {
+			it.PutLabel("behavior_type", utils.Label{Value: behaviorType, Source: "recall"})
+		}
 		out = append(out, it)
 	}
 

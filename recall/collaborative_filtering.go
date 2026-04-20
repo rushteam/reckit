@@ -95,6 +95,14 @@ func (r *UserBasedCF) Recall(
 		return nil, nil
 	}
 
+	// 验证必需字段
+	if r.SimilarityCalculator == nil {
+		return nil, fmt.Errorf("SimilarityCalculator is required")
+	}
+	if r.Config == nil {
+		return nil, fmt.Errorf("Config is required")
+	}
+
 	// 获取目标用户的交互物品
 	targetUserItems, err := r.Store.GetUserItems(ctx, rctx.UserID)
 	if err != nil {
@@ -125,14 +133,6 @@ func (r *UserBasedCF) Recall(
 	minCommon := r.MinCommonItems
 	if minCommon <= 0 {
 		minCommon = r.Config.DefaultMinCommonItems()
-	}
-
-	// 验证必需字段
-	if r.SimilarityCalculator == nil {
-		return nil, fmt.Errorf("SimilarityCalculator is required")
-	}
-	if r.Config == nil {
-		return nil, fmt.Errorf("Config is required")
 	}
 
 	// 计算每个用户与目标用户的相似度
@@ -339,6 +339,14 @@ func (r *ItemBasedCF) Recall(
 		}
 	}
 
+	// 验证必需字段
+	if r.SimilarityCalculator == nil {
+		return nil, fmt.Errorf("SimilarityCalculator is required")
+	}
+	if r.Config == nil {
+		return nil, fmt.Errorf("Config is required")
+	}
+
 	if len(userItems) == 0 {
 		return nil, nil
 	}
@@ -357,20 +365,12 @@ func (r *ItemBasedCF) Recall(
 
 	topKSimilar := r.TopKSimilarItems
 	if topKSimilar <= 0 {
-		topKSimilar = r.Config.DefaultTopKItems() // 使用 TopKItems 作为默认值
+		topKSimilar = r.Config.DefaultTopKItems()
 	}
 
 	minCommon := r.MinCommonUsers
 	if minCommon <= 0 {
 		minCommon = r.Config.DefaultMinCommonUsers()
-	}
-
-	// 验证必需字段
-	if r.SimilarityCalculator == nil {
-		return nil, fmt.Errorf("SimilarityCalculator is required")
-	}
-	if r.Config == nil {
-		return nil, fmt.Errorf("Config is required")
 	}
 
 	// 为每个用户历史物品，找到相似物品

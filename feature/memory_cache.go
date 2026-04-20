@@ -17,6 +17,7 @@ type MemoryFeatureCache struct {
 	cleanupInterval   time.Duration
 	cleanupTicker     *time.Ticker
 	stopCleanup       chan struct{}
+	closeOnce         sync.Once
 }
 
 type cacheEntry struct {
@@ -102,24 +103,22 @@ func (c *MemoryFeatureCache) evictLRU() {
 }
 
 func (c *MemoryFeatureCache) evictLRUFromMap(m map[string]*cacheEntry) {
-	if len(m) <= c.maxSize {
-		return
-	}
+	for len(m) >= c.maxSize {
+		var oldestKey string
+		var oldestTime time.Time
+		first := true
 
-	// 找到最久未访问的条目
-	var oldestKey string
-	var oldestTime time.Time
-	first := true
-
-	for key, entry := range m {
-		if first || entry.accessTime.Before(oldestTime) {
-			oldestKey = key
-			oldestTime = entry.accessTime
-			first = false
+		for key, entry := range m {
+			if first || entry.accessTime.Before(oldestTime) {
+				oldestKey = key
+				oldestTime = entry.accessTime
+				first = false
+			}
 		}
-	}
 
-	if !first {
+		if first {
+			break
+		}
 		delete(m, oldestKey)
 	}
 }
@@ -225,8 +224,10 @@ func (c *MemoryFeatureCache) Clear(ctx context.Context) {
 	c.itemFeatures = make(map[string]*cacheEntry)
 }
 
-// Close 关闭缓存，停止清理协程
+// Close 关闭缓存，停止清理协程。多次调用是安全的。
 func (c *MemoryFeatureCache) Close(ctx context.Context) error {
-	close(c.stopCleanup)
+	c.closeOnce.Do(func() {
+		close(c.stopCleanup)
+	})
 	return nil
 }

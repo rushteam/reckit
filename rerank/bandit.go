@@ -71,8 +71,9 @@ func (n *UCBNode) Process(
 	logN := math.Log(float64(totalN))
 
 	type scored struct {
-		item     *core.Item
-		adjusted float64
+		item       *core.Item
+		adjusted   float64
+		coldStart  bool
 	}
 	ranked := make([]scored, 0, len(items))
 	for _, it := range items {
@@ -80,15 +81,21 @@ func (n *UCBNode) Process(
 			continue
 		}
 		s := statsMap[it.ID]
-		bonus := 0.0
 		if s.Impressions == 0 {
-			bonus = math.MaxFloat64
+			ranked = append(ranked, scored{item: it, adjusted: it.Score, coldStart: true})
 		} else {
-			bonus = c * math.Sqrt(logN/float64(s.Impressions))
+			bonus := c * math.Sqrt(logN/float64(s.Impressions))
+			ranked = append(ranked, scored{item: it, adjusted: it.Score + bonus, coldStart: false})
 		}
-		ranked = append(ranked, scored{item: it, adjusted: it.Score + bonus})
 	}
-	sort.SliceStable(ranked, func(i, j int) bool { return ranked[i].adjusted > ranked[j].adjusted })
+	// 冷启动物品（0 曝光）优先探索，组内按原 score 排序；
+	// 非冷启动物品按 adjusted score 排序。
+	sort.SliceStable(ranked, func(i, j int) bool {
+		if ranked[i].coldStart != ranked[j].coldStart {
+			return ranked[i].coldStart
+		}
+		return ranked[i].adjusted > ranked[j].adjusted
+	})
 
 	topN := n.N
 	if topN <= 0 || topN > len(ranked) {
