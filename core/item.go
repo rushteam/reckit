@@ -17,7 +17,7 @@ type Item struct {
 	Features map[string]float64
 	Meta     map[string]any
 	Labels   map[string]utils.Label
-	
+
 	// LabelMergeStrategy 自定义 Label 合并策略（可选）
 	// 如果为 nil，则使用默认策略
 	LabelMergeStrategy utils.LabelMergeStrategy
@@ -60,6 +60,11 @@ func (it *Item) GetValue(key string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func (it *Item) GetValueString(key string) string {
+	v, _ := it.GetValue(key)
+	return v
 }
 
 // PutLabel 写入 Label；若已存在同名 key，则按合并策略合并。
