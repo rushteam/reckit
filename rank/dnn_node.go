@@ -19,7 +19,7 @@ func (n *DNNNode) Name() string        { return "rank.dnn" }
 func (n *DNNNode) Kind() pipeline.Kind { return pipeline.KindRank }
 
 func (n *DNNNode) Process(
-	_ context.Context,
+	ctx context.Context,
 	_ *core.RecommendContext,
 	items []*core.Item,
 ) ([]*core.Item, error) {
@@ -31,7 +31,7 @@ func (n *DNNNode) Process(
 		if it == nil {
 			continue
 		}
-		score, err := n.Model.Predict(it.Features)
+		score, err := n.Model.Predict(ctx, it.Features)
 		if err != nil {
 			return nil, err
 		}

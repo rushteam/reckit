@@ -2,6 +2,7 @@ package filter
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/rushteam/reckit/core"
@@ -35,7 +36,7 @@ func (f *FrequencyCapFilter) ShouldFilter(
 	}
 	cnt, err := f.Store.GetImpressionCount(ctx, rctx.UserID, item.ID, f.Window)
 	if err != nil {
-		return false, nil
+		return false, fmt.Errorf("filter.frequency_cap: get impression count for user=%q item=%q: %w", rctx.UserID, item.ID, err)
 	}
 	return cnt >= f.MaxCount, nil
 }

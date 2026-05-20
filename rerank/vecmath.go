@@ -82,7 +82,9 @@ const (
 func normalizeScores(items []*core.Item, mode ScoreNormMode) []float64 {
 	scores := make([]float64, len(items))
 	for i, it := range items {
-		scores[i] = it.Score
+		if it != nil {
+			scores[i] = it.Score
+		}
 	}
 	switch mode {
 	case ScoreNormZScore:
@@ -138,6 +140,9 @@ func loadEmbeddings(items []*core.Item, key, nodeName string, normalize, clone b
 	embeddings := make([][]float64, len(items))
 	dim := 0
 	for i, it := range items {
+		if it == nil {
+			return nil, 0, fmt.Errorf("%s: item at index %d is nil", nodeName, i)
+		}
 		raw, ok := it.Meta[key]
 		if !ok {
 			return nil, 0, fmt.Errorf("%s: item %q missing Meta[%q]", nodeName, it.ID, key)

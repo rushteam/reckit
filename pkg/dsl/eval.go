@@ -50,20 +50,22 @@ func getCELEnv() (*cel.Env, error) {
 //   - `label.rank_model == "lr" && item.score > 0.7` → LR 模型且分数 > 0.7
 //   - `label.category != null && label.category == "A"` → 存在 category 且为 "A"
 type Eval struct {
-	item  *core.Item
-	rctx  *core.RecommendContext
-	env   *cel.Env
-	prg   cel.Program
+	item   *core.Item
+	rctx   *core.RecommendContext
+	env    *cel.Env
+	envErr error
+	prg    cel.Program
 }
 
 // NewEval 创建一个新的 DSL 解释器。
 // 表达式会被编译并缓存，可以多次调用 Evaluate 方法。
 func NewEval(item *core.Item, rctx *core.RecommendContext) *Eval {
-	env, _ := getCELEnv()
+	env, err := getCELEnv()
 	return &Eval{
-		item: item,
-		rctx: rctx,
-		env:  env,
+		item:   item,
+		rctx:   rctx,
+		env:    env,
+		envErr: err,
 	}
 }
 
@@ -81,6 +83,9 @@ func NewEval(item *core.Item, rctx *core.RecommendContext) *Eval {
 func (e *Eval) Evaluate(expr string) (bool, error) {
 	if expr == "" {
 		return true, nil
+	}
+	if e.envErr != nil {
+		return false, fmt.Errorf("cel env init failed: %w", e.envErr)
 	}
 
 	// 编译表达式

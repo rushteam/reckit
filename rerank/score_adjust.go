@@ -33,7 +33,7 @@ type ScoreAdjustRule struct {
 	Value     float64
 	ValueFunc ScoreAdjustValueFunc
 
-	compiledExpr *dsl.CompiledExpr // 懒编译缓存
+	compiled *exprCache
 }
 
 // ScoreAdjust 按规则顺序对候选提权/改分；典型插入点为精排之后、截断之前。
@@ -97,15 +97,10 @@ func (n *ScoreAdjust) Process(
 }
 
 func (r *ScoreAdjustRule) getCompiledExpr() (*dsl.CompiledExpr, error) {
-	if r.compiledExpr != nil {
-		return r.compiledExpr, nil
+	if r.compiled == nil {
+		r.compiled = &exprCache{}
 	}
-	c, err := dsl.Compile(r.Expr)
-	if err != nil {
-		return nil, err
-	}
-	r.compiledExpr = c
-	return c, nil
+	return r.compiled.get(r.Expr)
 }
 
 func (n *ScoreAdjust) ruleMatches(

@@ -123,11 +123,7 @@ func StoreBlacklistProvider(store BlacklistStore, key string) BlacklistProvider 
 		if store == nil || key == "" {
 			return nil, nil
 		}
-		ids, err := store.GetBlacklist(ctx, key)
-		if err != nil {
-			return nil, nil
-		}
-		return ids, nil
+		return store.GetBlacklist(ctx, key)
 	})
 }
 

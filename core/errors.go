@@ -1,5 +1,7 @@
 package core
 
+import "errors"
+
 // DomainError 是领域层的统一错误类型。
 //
 // 设计原则：
@@ -16,28 +18,31 @@ type DomainError struct {
 	Code    string // 错误代码（如 "NOT_FOUND", "NOT_SUPPORTED"）
 	Message string // 错误消息
 	Module  string // 模块名称（如 "store", "feature", "vector"）
+	Cause   error  // 底层原因（可选）
 }
 
 func (e *DomainError) Error() string {
+	if e.Cause != nil {
+		return e.Message + ": " + e.Cause.Error()
+	}
 	return e.Message
 }
 
-// IsDomainError 检查错误是否为 DomainError 类型
-func IsDomainError(err error) bool {
-	if err == nil {
-		return false
-	}
-	_, ok := err.(*DomainError)
-	return ok
+func (e *DomainError) Unwrap() error {
+	return e.Cause
 }
 
-// GetDomainError 获取 DomainError，如果不是则返回 nil
+// IsDomainError 检查错误链中是否包含 DomainError 类型
+func IsDomainError(err error) bool {
+	var de *DomainError
+	return errors.As(err, &de)
+}
+
+// GetDomainError 从错误链中获取 DomainError，如果不存在则返回 nil
 func GetDomainError(err error) *DomainError {
-	if err == nil {
-		return nil
-	}
-	if domainErr, ok := err.(*DomainError); ok {
-		return domainErr
+	var de *DomainError
+	if errors.As(err, &de) {
+		return de
 	}
 	return nil
 }

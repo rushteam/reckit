@@ -87,7 +87,7 @@ func (n *EnrichNode) Name() string {
 }
 
 func (n *EnrichNode) Kind() pipeline.Kind {
-	return pipeline.KindPostProcess
+	return pipeline.KindFeature
 }
 
 func (n *EnrichNode) Process(
@@ -180,7 +180,11 @@ func (n *EnrichNode) Process(
 			}
 		}
 		if len(itemIDs) > 0 {
-			itemFeaturesMap, _ = n.FeatureService.BatchGetItemFeatures(ctx, itemIDs)
+			var err error
+			itemFeaturesMap, err = n.FeatureService.BatchGetItemFeatures(ctx, itemIDs)
+			if err != nil {
+				return nil, fmt.Errorf("enrich: batch get item features: %w", err)
+			}
 		}
 	}
 

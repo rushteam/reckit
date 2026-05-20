@@ -11,7 +11,7 @@ import (
 type ErrorHandler interface {
 	// HandleError 处理召回源错误。
 	// 返回 error != nil 时将中断整个 Fanout。
-	HandleError(source Source, err error, rctx *core.RecommendContext) ([]*core.Item, error)
+	HandleError(ctx context.Context, source Source, err error, rctx *core.RecommendContext) ([]*core.Item, error)
 }
 
 // IgnoreErrorHandler 忽略错误，返回空结果，不中断其他召回源。
@@ -20,7 +20,7 @@ type IgnoreErrorHandler struct {
 	OnError func(source Source, err error)
 }
 
-func (h *IgnoreErrorHandler) HandleError(source Source, err error, _ *core.RecommendContext) ([]*core.Item, error) {
+func (h *IgnoreErrorHandler) HandleError(_ context.Context, source Source, err error, _ *core.RecommendContext) ([]*core.Item, error) {
 	if h.OnError != nil {
 		h.OnError(source, err)
 	}
@@ -38,7 +38,7 @@ type RetryErrorHandler struct {
 	OnGiveUp func(source Source, err error)
 }
 
-func (h *RetryErrorHandler) HandleError(source Source, err error, rctx *core.RecommendContext) ([]*core.Item, error) {
+func (h *RetryErrorHandler) HandleError(ctx context.Context, source Source, err error, rctx *core.RecommendContext) ([]*core.Item, error) {
 	maxRetries := h.MaxRetries
 	if maxRetries <= 0 {
 		maxRetries = 1
@@ -51,7 +51,7 @@ func (h *RetryErrorHandler) HandleError(source Source, err error, rctx *core.Rec
 		if h.RetryDelay > 0 {
 			time.Sleep(h.RetryDelay)
 		}
-		items, retryErr := source.Recall(context.Background(), rctx)
+		items, retryErr := source.Recall(ctx, rctx)
 		if retryErr == nil {
 			return items, nil
 		}
@@ -70,12 +70,12 @@ type FallbackErrorHandler struct {
 	OnFallback func(source Source, err error)
 }
 
-func (h *FallbackErrorHandler) HandleError(source Source, err error, rctx *core.RecommendContext) ([]*core.Item, error) {
+func (h *FallbackErrorHandler) HandleError(ctx context.Context, source Source, err error, rctx *core.RecommendContext) ([]*core.Item, error) {
 	if h.OnFallback != nil {
 		h.OnFallback(source, err)
 	}
 	if h.FallbackSource != nil {
-		return h.FallbackSource.Recall(context.Background(), rctx)
+		return h.FallbackSource.Recall(ctx, rctx)
 	}
 	return nil, nil
 }

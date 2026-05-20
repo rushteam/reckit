@@ -1,7 +1,30 @@
 // Package conv 提供类型转换、map/slice 转换等泛型工具，用于简化各模块中的重复逻辑。
 package conv
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
+
+// StandardFeaturePrefixes 是推荐系统标准特征前缀列表。
+var StandardFeaturePrefixes = []string{"item_", "user_", "cross_", "scene_"}
+
+// StripFeaturePrefix 去掉 user_、item_、cross_、scene_ 等前缀，得到无前缀特征名。
+// 用于兼容训练时 FEATURE_COLUMNS 为无前缀的模型。
+func StripFeaturePrefix(features map[string]float64) map[string]float64 {
+	out := make(map[string]float64, len(features))
+	for k, v := range features {
+		key := k
+		for _, p := range StandardFeaturePrefixes {
+			if strings.HasPrefix(k, p) {
+				key = strings.TrimPrefix(k, p)
+				break
+			}
+		}
+		out[key] = v
+	}
+	return out
+}
 
 // ToFloat64 将 any 转为 float64。
 // 支持 float64、float32、int、int64、int32；bool 视为 1.0/0.0。

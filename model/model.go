@@ -9,16 +9,13 @@ import (
 
 // RankModel 是排序阶段的最小抽象：输入特征，输出一个可比较的分数。
 //
-// 定位：**本地轻量模型**（LR、GBDT 等可在进程内计算的模型）。
-// 签名刻意保持简洁（无 context、单条 in/out），适合嵌入式使用。
-//
-// 如果需要调用远程模型服务（TF Serving、KServe、TorchServe 等），
-// 推荐直接使用 core.MLService 接口 + RPCNode，或通过 MLServiceAdapter 桥接：
+// 适用于本地轻量模型（LR、GBDT）和远程模型服务（KServe、TorchServe）。
+// ctx 用于传递超时/取消信号和 trace metadata。
 //
 //	localModel := model.MLServiceAdapter("deepfm", kserveClient)
 type RankModel interface {
 	Name() string
-	Predict(features map[string]float64) (float64, error)
+	Predict(ctx context.Context, features map[string]float64) (float64, error)
 }
 
 // MLServiceAdapter 将 core.MLService（远程推理服务）适配为 RankModel 接口。
@@ -35,8 +32,8 @@ type mlServiceRankModel struct {
 
 func (m *mlServiceRankModel) Name() string { return m.name }
 
-func (m *mlServiceRankModel) Predict(features map[string]float64) (float64, error) {
-	resp, err := m.svc.Predict(context.Background(), &core.MLPredictRequest{
+func (m *mlServiceRankModel) Predict(ctx context.Context, features map[string]float64) (float64, error) {
+	resp, err := m.svc.Predict(ctx, &core.MLPredictRequest{
 		Features: []map[string]float64{features},
 	})
 	if err != nil {

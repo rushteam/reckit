@@ -3,11 +3,11 @@ package rank
 import (
 	"context"
 	"sort"
-	"strings"
 
 	"github.com/rushteam/reckit/core"
 	"github.com/rushteam/reckit/model"
 	"github.com/rushteam/reckit/pipeline"
+	"github.com/rushteam/reckit/pkg/conv"
 	"github.com/rushteam/reckit/pkg/utils"
 )
 
@@ -68,7 +68,7 @@ func (n *RPCNode) Process(
 	if !ok {
 		// 如果不是 RPCModel，回退到单个预测
 		for i, it := range validItems {
-			score, err := n.Model.Predict(featuresList[i])
+			score, err := n.Model.Predict(ctx, featuresList[i])
 			if err != nil {
 				return nil, err
 			}
@@ -78,7 +78,7 @@ func (n *RPCNode) Process(
 		}
 	} else {
 		// 使用批量预测
-		scores, err := rpcModel.PredictBatch(featuresList)
+		scores, err := rpcModel.PredictBatch(ctx, featuresList)
 		if err != nil {
 			return nil, err
 		}
@@ -101,22 +101,6 @@ func (n *RPCNode) Process(
 	return items, nil
 }
 
-// stripFeaturePrefix 去掉 user_、item_、cross_、scene_ 等前缀，得到无前缀特征名。
-// 仅在 StripFeaturePrefix == true 时使用，用于兼容训练时 FEATURE_COLUMNS 为无前缀的模型。
-// 例如：item_ctr -> ctr, user_age -> age, cross_age_x_ctr -> age_x_ctr, scene_id -> id
 func (n *RPCNode) stripFeaturePrefix(features map[string]float64) map[string]float64 {
-	out := make(map[string]float64)
-	prefixes := []string{"item_", "user_", "cross_", "scene_"}
-
-	for k, v := range features {
-		key := k
-		for _, p := range prefixes {
-			if strings.HasPrefix(k, p) {
-				key = strings.TrimPrefix(k, p)
-				break
-			}
-		}
-		out[key] = v
-	}
-	return out
+	return conv.StripFeaturePrefix(features)
 }

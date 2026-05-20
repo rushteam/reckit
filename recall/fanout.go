@@ -108,18 +108,21 @@ func (n *Fanout) Process(
 					handler = &IgnoreErrorHandler{} // 默认策略
 				}
 				
-				handledItems, handleErr := handler.HandleError(s, err, rctx)
+				handledItems, handleErr := handler.HandleError(recallCtx, s, err, rctx)
 				if handleErr != nil {
 					return handleErr
 				}
 				items = handledItems
 			}
 
-			// 记录召回来源 label，方便 explain / 观测
-			for _, it := range items {
-				it.PutLabel("recall_source", utils.Label{Value: s.Name(), Source: "recall"})
-				it.PutLabel("recall_priority", utils.Label{Value: strconv.Itoa(priority), Source: "recall"})
+		// 记录召回来源 label，方便 explain / 观测
+		for _, it := range items {
+			if it == nil {
+				continue
 			}
+			it.PutLabel("recall_source", utils.Label{Value: s.Name(), Source: "recall"})
+			it.PutLabel("recall_priority", utils.Label{Value: strconv.Itoa(priority), Source: "recall"})
+		}
 
 			mu.Lock()
 			all = append(all, items...)

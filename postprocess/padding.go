@@ -5,6 +5,7 @@ import (
 
 	"github.com/rushteam/reckit/core"
 	"github.com/rushteam/reckit/pipeline"
+	"github.com/rushteam/reckit/pkg/utils"
 )
 
 // PaddingFunc 动态补足策略：返回最多 need 条补位物品。
@@ -67,9 +68,26 @@ func appendPadding(out []*core.Item, candidates []*core.Item, existing map[strin
 			continue
 		}
 		existing[it.ID] = true
-		it.PutLabel("__padding__", labelPadding)
-		out = append(out, it)
+		cloned := cloneItemForPadding(it)
+		cloned.PutLabel("__padding__", labelPadding)
+		out = append(out, cloned)
 		added++
 	}
 	return out
+}
+
+func cloneItemForPadding(src *core.Item) *core.Item {
+	dst := &core.Item{
+		ID:       src.ID,
+		Score:    src.Score,
+		Features: src.Features,
+		Meta:     src.Meta,
+	}
+	if src.Labels != nil {
+		dst.Labels = make(map[string]utils.Label, len(src.Labels)+1)
+		for k, v := range src.Labels {
+			dst.Labels[k] = v
+		}
+	}
+	return dst
 }

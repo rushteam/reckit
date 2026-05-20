@@ -27,19 +27,14 @@ type ExprGroup struct {
 	Expr  string
 	Quota int // > 0 时为固定配额，覆盖按比例分配
 
-	compiledExpr *dsl.CompiledExpr
+	compiled *exprCache
 }
 
 func (g *ExprGroup) getCompiledExpr() (*dsl.CompiledExpr, error) {
-	if g.compiledExpr != nil {
-		return g.compiledExpr, nil
+	if g.compiled == nil {
+		g.compiled = &exprCache{}
 	}
-	c, err := dsl.Compile(g.Expr)
-	if err != nil {
-		return nil, err
-	}
-	g.compiledExpr = c
-	return c, nil
+	return g.compiled.get(g.Expr)
 }
 
 // GroupQuotaNode 按维度字段分组后，根据策略做加权配额分配。

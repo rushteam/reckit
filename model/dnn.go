@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"math"
 )
 
@@ -82,7 +83,7 @@ func (m *DNNModel) Name() string {
 }
 
 // Predict 使用 DNN 模型进行预测。
-func (m *DNNModel) Predict(features map[string]float64) (float64, error) {
+func (m *DNNModel) Predict(_ context.Context, features map[string]float64) (float64, error) {
 	if len(features) == 0 {
 		return 0.0, nil
 	}

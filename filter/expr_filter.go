@@ -3,6 +3,7 @@ package filter
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/rushteam/reckit/core"
 	"github.com/rushteam/reckit/pkg/dsl"
@@ -18,21 +19,23 @@ type ExprFilter struct {
 	// Invert 为 true 时语义翻转：表达式为 true 的物品保留，为 false 的过滤。
 	Invert bool
 
-	compiled *dsl.CompiledExpr
+	compileOnce sync.Once
+	compiled    *dsl.CompiledExpr
+	compileErr  error
 }
 
 func (f *ExprFilter) Name() string { return "filter.expr" }
 
 func (f *ExprFilter) getCompiled() (*dsl.CompiledExpr, error) {
-	if f.compiled != nil {
-		return f.compiled, nil
-	}
-	c, err := dsl.Compile(f.Expr)
-	if err != nil {
-		return nil, fmt.Errorf("filter.expr: compile %q: %w", f.Expr, err)
-	}
-	f.compiled = c
-	return c, nil
+	f.compileOnce.Do(func() {
+		c, err := dsl.Compile(f.Expr)
+		if err != nil {
+			f.compileErr = fmt.Errorf("filter.expr: compile %q: %w", f.Expr, err)
+			return
+		}
+		f.compiled = c
+	})
+	return f.compiled, f.compileErr
 }
 
 func (f *ExprFilter) ShouldFilter(

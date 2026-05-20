@@ -12,6 +12,7 @@ type Kind string
 const (
 	KindRecall      Kind = "recall"      // 召回阶段：生成候选集
 	KindFilter      Kind = "filter"      // 过滤阶段：剔除不符合约束的候选
+	KindFeature     Kind = "feature"     // 特征注入阶段：为候选补充特征（pre-rank）
 	KindRank        Kind = "rank"        // 排序阶段：对候选打分并排序
 	KindReRank      Kind = "rerank"      // 重排阶段：在排序结果上做多样性/业务调优
 	KindPostProcess Kind = "postprocess" // 后处理阶段：补充特征或最终结果修饰

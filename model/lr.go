@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"encoding/json"
 	"math"
 	"os"
@@ -36,7 +37,7 @@ func LoadLRModel(path string) (*LRModel, error) {
 
 func (m *LRModel) Name() string { return "lr" }
 
-func (m *LRModel) Predict(features map[string]float64) (float64, error) {
+func (m *LRModel) Predict(_ context.Context, features map[string]float64) (float64, error) {
 	score := m.Bias
 	for k, v := range features {
 		if w, ok := m.Weights[k]; ok {

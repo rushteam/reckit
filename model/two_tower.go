@@ -1,6 +1,9 @@
 package model
 
-import "math"
+import (
+	"context"
+	"math"
+)
 
 // TwoTowerModel 是两塔模型（User Tower + Item Tower）。
 //
@@ -75,7 +78,7 @@ func (m *TwoTowerModel) Name() string {
 
 // Predict 使用两塔模型进行预测。
 // features 需要包含用户特征和物品特征（通过前缀区分）
-func (m *TwoTowerModel) Predict(features map[string]float64) (float64, error) {
+func (m *TwoTowerModel) Predict(ctx context.Context, features map[string]float64) (float64, error) {
 	// 1. 提取用户特征（user_ 前缀）
 	userFeatures := m.extractUserFeatures(features)
 
@@ -83,13 +86,13 @@ func (m *TwoTowerModel) Predict(features map[string]float64) (float64, error) {
 	itemFeatures := m.extractItemFeatures(features)
 
 	// 3. User Tower：得到用户嵌入
-	userEmb, err := m.getUserEmbedding(userFeatures)
+	userEmb, err := m.getUserEmbedding(ctx, userFeatures)
 	if err != nil {
 		return 0, err
 	}
 
 	// 4. Item Tower：得到物品嵌入
-	itemEmb, err := m.getItemEmbedding(itemFeatures)
+	itemEmb, err := m.getItemEmbedding(ctx, itemFeatures)
 	if err != nil {
 		return 0, err
 	}
@@ -124,10 +127,8 @@ func (m *TwoTowerModel) extractItemFeatures(features map[string]float64) map[str
 }
 
 // getUserEmbedding 通过 User Tower 得到用户嵌入。
-func (m *TwoTowerModel) getUserEmbedding(userFeatures map[string]float64) ([]float64, error) {
-	// 使用 User Tower 的前向传播，但不经过最后一层的激活
-	// 这里简化处理，直接使用 DNN 的输出
-	score, err := m.UserTower.Predict(userFeatures)
+func (m *TwoTowerModel) getUserEmbedding(ctx context.Context, userFeatures map[string]float64) ([]float64, error) {
+	score, err := m.UserTower.Predict(ctx, userFeatures)
 	if err != nil {
 		return nil, err
 	}
@@ -141,9 +142,8 @@ func (m *TwoTowerModel) getUserEmbedding(userFeatures map[string]float64) ([]flo
 }
 
 // getItemEmbedding 通过 Item Tower 得到物品嵌入。
-func (m *TwoTowerModel) getItemEmbedding(itemFeatures map[string]float64) ([]float64, error) {
-	// 使用 Item Tower 的前向传播
-	score, err := m.ItemTower.Predict(itemFeatures)
+func (m *TwoTowerModel) getItemEmbedding(ctx context.Context, itemFeatures map[string]float64) ([]float64, error) {
+	score, err := m.ItemTower.Predict(ctx, itemFeatures)
 	if err != nil {
 		return nil, err
 	}

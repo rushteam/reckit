@@ -1,5 +1,7 @@
 package model
 
+import "context"
+
 // WideDeepModel 是 Wide&Deep 模型（大厂主流推荐模型）。
 //
 // 核心思想：
@@ -54,12 +56,12 @@ func (m *WideDeepModel) Name() string {
 }
 
 // Predict 使用 Wide&Deep 模型进行预测。
-func (m *WideDeepModel) Predict(features map[string]float64) (float64, error) {
+func (m *WideDeepModel) Predict(ctx context.Context, features map[string]float64) (float64, error) {
 	// 1. Wide 部分：线性模型
 	wideScore := m.widePredict(features)
 
 	// 2. Deep 部分：DNN 模型
-	deepScore, err := m.deepPredict(features)
+	deepScore, err := m.deepPredict(ctx, features)
 	if err != nil {
 		return 0, err
 	}
@@ -101,7 +103,7 @@ func (m *WideDeepModel) widePredict(features map[string]float64) float64 {
 }
 
 // deepPredict Deep 部分预测（DNN 模型）。
-func (m *WideDeepModel) deepPredict(features map[string]float64) (float64, error) {
+func (m *WideDeepModel) deepPredict(ctx context.Context, features map[string]float64) (float64, error) {
 	// 使用 Deep 特征（原始特征）
 	deepFeatures := make(map[string]float64)
 	if len(m.DeepFeatures) > 0 {
@@ -119,7 +121,7 @@ func (m *WideDeepModel) deepPredict(features map[string]float64) (float64, error
 		}
 	}
 
-	return m.Deep.Predict(deepFeatures)
+	return m.Deep.Predict(ctx, deepFeatures)
 }
 
 // contains 检查字符串是否包含子串。

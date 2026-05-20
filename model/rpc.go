@@ -63,8 +63,8 @@ func (m *RPCModel) Name() string {
 }
 
 // Predict 调用远程模型服务进行预测（单个特征，内部调用批量接口）。
-func (m *RPCModel) Predict(features map[string]float64) (float64, error) {
-	scores, err := m.PredictBatch([]map[string]float64{features})
+func (m *RPCModel) Predict(ctx context.Context, features map[string]float64) (float64, error) {
+	scores, err := m.PredictBatch(ctx, []map[string]float64{features})
 	if err != nil {
 		return 0, err
 	}
@@ -76,30 +76,30 @@ func (m *RPCModel) Predict(features map[string]float64) (float64, error) {
 
 // PredictBatch 调用远程模型服务进行批量预测。
 // 如果 Service 已设置，通过标准 MLService 接口调用；否则走直连 HTTP。
-func (m *RPCModel) PredictBatch(featuresList []map[string]float64) ([]float64, error) {
+func (m *RPCModel) PredictBatch(ctx context.Context, featuresList []map[string]float64) ([]float64, error) {
 	if len(featuresList) == 0 {
 		return []float64{}, nil
 	}
 
 	if m.Service != nil {
-		return m.predictViaService(featuresList)
+		return m.predictViaService(ctx, featuresList)
 	}
 	return m.predictViaHTTP(featuresList)
 }
 
 // predictViaService 通过标准 MLService 接口（KServe V2 等）调用。
-func (m *RPCModel) predictViaService(featuresList []map[string]float64) ([]float64, error) {
+func (m *RPCModel) predictViaService(ctx context.Context, featuresList []map[string]float64) ([]float64, error) {
 	req := &core.MLPredictRequest{
 		Features: featuresList,
 	}
-	resp, err := m.Service.Predict(context.Background(), req)
+	resp, err := m.Service.Predict(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("ml service predict: %w", err)
 	}
 	if len(resp.Predictions) == 0 {
 		return nil, fmt.Errorf("empty predictions from ml service")
 	}
-	// 如果服务返回单值但请求多个样本，展开
+	// 如果服务返回单值但请求多个样本，展开（broadcast）
 	if len(resp.Predictions) == 1 && len(featuresList) > 1 {
 		v := resp.Predictions[0]
 		out := make([]float64, len(featuresList))
@@ -107,6 +107,10 @@ func (m *RPCModel) predictViaService(featuresList []map[string]float64) ([]float
 			out[i] = v
 		}
 		return out, nil
+	}
+	if len(resp.Predictions) != len(featuresList) {
+		return nil, fmt.Errorf("ml service prediction count mismatch: got %d, want %d",
+			len(resp.Predictions), len(featuresList))
 	}
 	return resp.Predictions, nil
 }

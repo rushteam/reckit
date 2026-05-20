@@ -11,7 +11,7 @@ import (
 type mockRankModel struct{}
 
 func (m *mockRankModel) Name() string { return "mock" }
-func (m *mockRankModel) Predict(_ map[string]float64) (float64, error) {
+func (m *mockRankModel) Predict(_ context.Context, _ map[string]float64) (float64, error) {
 	return 1.0, nil
 }
 

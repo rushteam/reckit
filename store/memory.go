@@ -18,6 +18,7 @@ type MemoryStore struct {
 	zsets        map[string]map[string]float64 // zset key -> member -> score
 	clean       *time.Ticker
 	stopCleanup chan struct{}
+	closeOnce   sync.Once
 }
 
 type entry struct {
@@ -116,10 +117,12 @@ func (m *MemoryStore) BatchSet(ctx context.Context, kvs map[string][]byte, ttl .
 }
 
 func (m *MemoryStore) Close(ctx context.Context) error {
-	if m.clean != nil {
-		m.clean.Stop()
-	}
-	close(m.stopCleanup)
+	m.closeOnce.Do(func() {
+		if m.clean != nil {
+			m.clean.Stop()
+		}
+		close(m.stopCleanup)
+	})
 	return nil
 }
 

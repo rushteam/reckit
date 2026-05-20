@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"fmt"
 	"math"
 )
@@ -79,7 +80,7 @@ func (m *DINModel) Name() string {
 }
 
 // Predict 使用 DIN 模型进行预测。
-func (m *DINModel) Predict(features map[string]float64) (float64, error) {
+func (m *DINModel) Predict(ctx context.Context, features map[string]float64) (float64, error) {
 	// 1. 获取候选物品 ID
 	// 注意：这里由于 features 只能存 float64，复杂的 ID 传递需要特殊处理
 	// 简单起见，假设 ID 是数值字符串
@@ -95,7 +96,7 @@ func (m *DINModel) Predict(features map[string]float64) (float64, error) {
 	behaviorSeq := m.extractBehaviorSequence(features)
 
 	if len(behaviorSeq) == 0 {
-		return m.MLP.Predict(features)
+		return m.MLP.Predict(ctx, features)
 	}
 
 	// 4. 计算注意力权重
@@ -115,7 +116,7 @@ func (m *DINModel) Predict(features map[string]float64) (float64, error) {
 	}
 
 	// 7. 使用 MLP 预测
-	return m.MLP.Predict(combinedFeatures)
+	return m.MLP.Predict(ctx, combinedFeatures)
 }
 
 // getItemEmbedding 获取物品嵌入。

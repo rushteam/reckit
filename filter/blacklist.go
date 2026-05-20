@@ -2,6 +2,7 @@ package filter
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/rushteam/reckit/core"
 )
@@ -60,11 +61,12 @@ func (f *BlacklistFilter) ShouldFilter(
 	// 从 Store 检查
 	if f.Store != nil && f.Key != "" {
 		blacklist, err := f.Store.GetBlacklist(ctx, f.Key)
-		if err == nil {
-			for _, id := range blacklist {
-				if item.ID == id {
-					return true, nil
-				}
+		if err != nil {
+			return false, fmt.Errorf("filter.blacklist: get blacklist %q: %w", f.Key, err)
+		}
+		for _, id := range blacklist {
+			if item.ID == id {
+				return true, nil
 			}
 		}
 	}

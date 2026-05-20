@@ -16,6 +16,7 @@ type MemoryFeatureMonitor struct {
 	updateInterval time.Duration
 	updateTicker   *time.Ticker
 	stopUpdate     chan struct{}
+	closeOnce      sync.Once
 }
 
 // NewMemoryFeatureMonitor 创建内存特征监控
@@ -156,6 +157,8 @@ func (m *MemoryFeatureMonitor) GetFeatureStats(ctx context.Context, featureName 
 
 // Close 关闭监控，停止更新协程
 func (m *MemoryFeatureMonitor) Close(ctx context.Context) error {
-	close(m.stopUpdate)
+	m.closeOnce.Do(func() {
+		close(m.stopUpdate)
+	})
 	return nil
 }

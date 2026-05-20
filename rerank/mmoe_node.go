@@ -8,11 +8,11 @@ import (
 	"io"
 	"net/http"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/rushteam/reckit/core"
 	"github.com/rushteam/reckit/pipeline"
+	"github.com/rushteam/reckit/pkg/conv"
 	"github.com/rushteam/reckit/pkg/utils"
 )
 
@@ -160,19 +160,7 @@ func (n *MMoENode) Process(
 }
 
 func (n *MMoENode) stripPrefix(features map[string]float64) map[string]float64 {
-	out := make(map[string]float64)
-	prefixes := []string{"item_", "user_", "cross_", "scene_"}
-	for k, v := range features {
-		key := k
-		for _, p := range prefixes {
-			if strings.HasPrefix(k, p) {
-				key = strings.TrimPrefix(k, p)
-				break
-			}
-		}
-		out[key] = v
-	}
-	return out
+	return conv.StripFeaturePrefix(features)
 }
 
 // 确保 MMoENode 实现 pipeline.Node

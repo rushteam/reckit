@@ -44,7 +44,7 @@ func TestIgnoreErrorHandler_OnErrorCallback(t *testing.T) {
 	h := &recall.IgnoreErrorHandler{
 		OnError: func(src recall.Source, err error) { reported = true },
 	}
-	items, err := h.HandleError(&failSource{}, errors.New("err"), &core.RecommendContext{})
+	items, err := h.HandleError(context.Background(), &failSource{}, errors.New("err"), &core.RecommendContext{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestRetryErrorHandler_SuccessOnSecondAttempt(t *testing.T) {
 		MaxRetries: 2,
 		OnRetry:    func(_ recall.Source, attempt int, _ error) { retries = attempt },
 	}
-	items, err := h.HandleError(src, errors.New("initial"), &core.RecommendContext{})
+	items, err := h.HandleError(context.Background(), src, errors.New("initial"), &core.RecommendContext{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestRetryErrorHandler_AllRetriesFail(t *testing.T) {
 		MaxRetries: 3,
 		OnGiveUp:   func(_ recall.Source, _ error) { gaveUp = true },
 	}
-	items, err := h.HandleError(src, errors.New("initial"), &core.RecommendContext{})
+	items, err := h.HandleError(context.Background(), src, errors.New("initial"), &core.RecommendContext{})
 	if err != nil {
 		t.Fatalf("should not return error (degrade), got: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestFallbackErrorHandler_UsesFallback(t *testing.T) {
 		FallbackSource: &staticSource{items: fallbackItems},
 		OnFallback:     func(_ recall.Source, _ error) { reported = true },
 	}
-	items, err := h.HandleError(&failSource{}, errors.New("err"), &core.RecommendContext{})
+	items, err := h.HandleError(context.Background(), &failSource{}, errors.New("err"), &core.RecommendContext{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestFallbackErrorHandler_UsesFallback(t *testing.T) {
 
 func TestFallbackErrorHandler_NilFallback(t *testing.T) {
 	h := &recall.FallbackErrorHandler{}
-	items, err := h.HandleError(&failSource{}, errors.New("err"), &core.RecommendContext{})
+	items, err := h.HandleError(context.Background(), &failSource{}, errors.New("err"), &core.RecommendContext{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

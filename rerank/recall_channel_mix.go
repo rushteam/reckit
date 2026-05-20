@@ -54,7 +54,7 @@ type ChannelRule struct {
 	Expr   string
 	Filter filter.Filter
 
-	compiledExpr *dsl.CompiledExpr // 懒编译缓存
+	compiled *exprCache
 }
 
 // RecallChannelMix 在精排之后按召回通道将候选填入固定或随机槽位，用于运营位次/通道曝光。
@@ -79,15 +79,10 @@ func (n *RecallChannelMix) Kind() pipeline.Kind {
 }
 
 func (r *ChannelRule) getCompiledExpr() (*dsl.CompiledExpr, error) {
-	if r.compiledExpr != nil {
-		return r.compiledExpr, nil
+	if r.compiled == nil {
+		r.compiled = &exprCache{}
 	}
-	c, err := dsl.Compile(r.Expr)
-	if err != nil {
-		return nil, err
-	}
-	r.compiledExpr = c
-	return c, nil
+	return r.compiled.get(r.Expr)
 }
 
 // PrimaryRecallChannel 返回 labelKey 对应召回通道的「主通道名」：取合并标签 Value 按 "|" 分割后的首段非空片段。

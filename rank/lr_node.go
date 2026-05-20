@@ -143,7 +143,7 @@ func (n *LRNode) Name() string        { return "rank.model" }
 func (n *LRNode) Kind() pipeline.Kind { return pipeline.KindRank }
 
 func (n *LRNode) Process(
-	_ context.Context,
+	ctx context.Context,
 	_ *core.RecommendContext,
 	items []*core.Item,
 ) ([]*core.Item, error) {
@@ -155,7 +155,7 @@ func (n *LRNode) Process(
 		if it == nil {
 			continue
 		}
-		score, err := n.Model.Predict(it.Features)
+		score, err := n.Model.Predict(ctx, it.Features)
 		if err != nil {
 			return nil, err
 		}

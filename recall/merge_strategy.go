@@ -154,6 +154,12 @@ func dedupItems(items []*core.Item) []*core.Item {
 // sortByScoreDesc 按 Score 降序排列（稳定排序，相同分数保持原始顺序）。
 func sortByScoreDesc(items []*core.Item) {
 	sort.SliceStable(items, func(i, j int) bool {
+		if items[i] == nil {
+			return false
+		}
+		if items[j] == nil {
+			return true
+		}
 		return items[i].Score > items[j].Score
 	})
 }
@@ -202,6 +208,9 @@ func (s *WeightedScoreMergeStrategy) Merge(items []*core.Item, dedup bool) []*co
 	}
 
 	for _, it := range items {
+		if it == nil {
+			continue
+		}
 		w := defaultW
 		if s.SourceWeights != nil {
 			if lbl, ok := it.Labels["recall_source"]; ok {
@@ -511,6 +520,9 @@ func (s *RoundRobinMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.
 	if len(order) == 0 {
 		seen := make(map[string]bool)
 		for _, it := range items {
+			if it == nil {
+				continue
+			}
 			source := ""
 			if lbl, ok := it.Labels["recall_source"]; ok {
 				source = lbl.Value
@@ -588,6 +600,9 @@ func (s *WaterfallMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.I
 		}
 	}
 	for _, it := range items {
+		if it == nil {
+			continue
+		}
 		source := ""
 		if lbl, ok := it.Labels["recall_source"]; ok {
 			source = lbl.Value

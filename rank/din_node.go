@@ -94,7 +94,7 @@ func (n *DINNode) Process(
 			}
 		}
 
-		score, err := n.Model.Predict(features)
+		score, err := n.Model.Predict(ctx, features)
 		if err != nil {
 			return nil, err
 		}

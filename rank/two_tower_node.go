@@ -20,7 +20,7 @@ func (n *TwoTowerNode) Name() string        { return "rank.two_tower" }
 func (n *TwoTowerNode) Kind() pipeline.Kind { return pipeline.KindRank }
 
 func (n *TwoTowerNode) Process(
-	_ context.Context,
+	ctx context.Context,
 	_ *core.RecommendContext,
 	items []*core.Item,
 ) ([]*core.Item, error) {
@@ -32,7 +32,7 @@ func (n *TwoTowerNode) Process(
 		if it == nil {
 			continue
 		}
-		score, err := n.Model.Predict(it.Features)
+		score, err := n.Model.Predict(ctx, it.Features)
 		if err != nil {
 			return nil, err
 		}

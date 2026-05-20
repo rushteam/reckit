@@ -1061,9 +1061,44 @@ func buildConditionalNodeWithDeps(cfg map[string]interface{}, deps Dependencies,
 	if err != nil {
 		return nil, fmt.Errorf("filter.conditional: build inner node %q: %w", nodeType, err)
 	}
+
+	var cond filter.Condition
+	if expr := conv.ConfigGet(cfg, "condition", ""); expr != "" {
+		cond = filter.ConditionFunc(func(ctx context.Context, rctx *core.RecommendContext) (bool, error) {
+			if rctx == nil {
+				return false, nil
+			}
+			v, ok := rctx.Params[expr]
+			if !ok {
+				return false, nil
+			}
+			b, _ := v.(bool)
+			return b, nil
+		})
+	} else if exprCfg := conv.ConfigGet(cfg, "condition_expr", ""); exprCfg != "" {
+		cond = &exprCondition{expr: exprCfg}
+	}
+
 	return &filter.ConditionalNode{
+		Cond: cond,
 		Node: inner,
 	}, nil
+}
+
+type exprCondition struct {
+	expr string
+}
+
+func (c *exprCondition) Evaluate(_ context.Context, rctx *core.RecommendContext) (bool, error) {
+	if rctx == nil {
+		return false, nil
+	}
+	v, ok := rctx.Params[c.expr]
+	if !ok {
+		return false, nil
+	}
+	b, _ := v.(bool)
+	return b, nil
 }
 
 // ---------------------------------------------------------------------------
