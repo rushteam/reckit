@@ -15,6 +15,9 @@ import (
 //   - 控制推荐结果数量，提升性能
 //   - 配合多样性重排使用
 //
+// 支持 per-request 参数覆盖：设置 ConfigResolver 后，每次 Process 前会调用它
+// 获取本次请求的 N 值，无需 wrapper 即可实现多场景差异化。
+//
 // 示例：
 //
 //	pipeline := &pipeline.Pipeline{
@@ -29,6 +32,10 @@ type TopNNode struct {
 	// 如果 N <= 0，则返回所有物品（不截断）
 	// 如果 N > len(items)，则返回所有物品
 	N int
+
+	// ConfigResolver 如果非 nil，每次 Process 前调用，获取本次请求的 N 值覆盖。
+	// 返回 <= 0 表示不覆盖，使用构造时的默认 N。
+	ConfigResolver func(rctx *core.RecommendContext) int
 }
 
 func (n *TopNNode) Name() string {
@@ -41,19 +48,21 @@ func (n *TopNNode) Kind() pipeline.Kind {
 
 func (n *TopNNode) Process(
 	_ context.Context,
-	_ *core.RecommendContext,
+	rctx *core.RecommendContext,
 	items []*core.Item,
 ) ([]*core.Item, error) {
-	// 如果 N <= 0，不截断，返回所有物品
-	if n.N <= 0 {
-		return items, nil
+	topN := n.N
+	if n.ConfigResolver != nil {
+		if override := n.ConfigResolver(rctx); override > 0 {
+			topN = override
+		}
 	}
 
-	// 如果物品数量小于等于 N，直接返回
-	if len(items) <= n.N {
+	if topN <= 0 {
 		return items, nil
 	}
-
-	// 截取前 N 个物品
-	return items[:n.N], nil
+	if len(items) <= topN {
+		return items, nil
+	}
+	return items[:topN], nil
 }

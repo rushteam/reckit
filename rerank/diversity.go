@@ -35,6 +35,14 @@ type DiversityConstraint struct {
 	MultiValueDelimiter string
 }
 
+// DiversityOverride 包含可被 per-request 覆盖的多样性参数。
+// 零值字段表示不覆盖，保持 Diversity 构造时的默认值。
+type DiversityOverride struct {
+	DiversityKeys  []string // 非空则覆盖 DiversityKeys
+	MaxConsecutive int      // >0 则覆盖 MaxConsecutive
+	WindowSize     int      // >0 则覆盖 WindowSize
+}
+
 // Diversity 多样性 ReRank 节点，支持三种模式：
 //
 // 模式 1（简单）：设置 LabelKey → 按类别去重（保留首个出现的类别）
@@ -42,6 +50,9 @@ type DiversityConstraint struct {
 // 模式 3（高级）：设置 Constraints → 多规则独立约束 + 权重回退 + 多值维度
 //
 // Constraints 非空时优先使用模式 3；否则按 LabelKey / DiversityKeys 走旧逻辑。
+//
+// 支持 per-request 参数覆盖：设置 ConfigResolver 后，每次 Process 前会调用它
+// 获取覆盖值，无需 wrapper 模式即可实现多场景差异化配置。
 type Diversity struct {
 	// --- 简单模式字段（模式 1 / 2，向后兼容）---
 
@@ -66,6 +77,12 @@ type Diversity struct {
 	Limit int
 	// ExploreLimit 每个位置最多扫描候选数；0 = 不限。
 	ExploreLimit int
+
+	// --- Per-request 配置覆盖 ---
+
+	// ConfigResolver 如果非 nil，每次 Process 前调用，获取本次请求的参数覆盖。
+	// 返回 nil 表示不覆盖，使用构造时的默认值。
+	ConfigResolver func(rctx *core.RecommendContext) *DiversityOverride
 }
 
 func (n *Diversity) Name() string {
@@ -93,24 +110,42 @@ func (n *Diversity) Process(
 		return items, nil
 	}
 
-	if len(n.Constraints) > 0 {
-		return n.processConstraintDiversity(items)
+	// Per-request 覆盖：复制一份 Diversity 应用覆盖参数
+	effective := n
+	if n.ConfigResolver != nil {
+		if override := n.ConfigResolver(rctx); override != nil {
+			cp := *n
+			if len(override.DiversityKeys) > 0 {
+				cp.DiversityKeys = override.DiversityKeys
+			}
+			if override.MaxConsecutive > 0 {
+				cp.MaxConsecutive = override.MaxConsecutive
+			}
+			if override.WindowSize > 0 {
+				cp.WindowSize = override.WindowSize
+			}
+			effective = &cp
+		}
+	}
+
+	if len(effective.Constraints) > 0 {
+		return effective.processConstraintDiversity(items)
 	}
 
 	result := items
 
-	if n.LabelKey != "" {
+	if effective.LabelKey != "" {
 		var err error
-		result, err = n.processCategoryDeduplication(result)
+		result, err = effective.processCategoryDeduplication(result)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	diversityKeys := n.getDiversityKeys()
+	diversityKeys := effective.getDiversityKeys()
 	if len(diversityKeys) > 0 {
 		var err error
-		result, err = n.processMultiKeyDiversity(result, diversityKeys)
+		result, err = effective.processMultiKeyDiversity(result, diversityKeys)
 		if err != nil {
 			return nil, err
 		}

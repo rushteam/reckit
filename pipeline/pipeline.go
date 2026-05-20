@@ -59,6 +59,16 @@ func (p *Pipeline) Run(
 			return nil, err
 		}
 
+		// ApplyConfig: 若 Node 实现 Configurable，注入场景配置
+		if cfg, ok := node.(Configurable); ok {
+			if cfgErr := cfg.ApplyConfig(ctx, rctx); cfgErr != nil {
+				if p.tryRecover(ctx, rctx, node, cfgErr) {
+					continue
+				}
+				return nil, cfgErr
+			}
+		}
+
 		// 执行 Node
 		next, nodeErr := node.Process(ctx, rctx, cur)
 

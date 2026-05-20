@@ -381,3 +381,96 @@ func TestDiversity_Constraint_ExcludeChannels(t *testing.T) {
 		t.Fatalf("hot items should be at tail; got %s, %s", out[2].ID, out[3].ID)
 	}
 }
+
+func TestDiversity_ConfigResolver_Override(t *testing.T) {
+	ctx := context.Background()
+	rctx := &core.RecommendContext{
+		UserID: "u1",
+		Params: map[string]any{"scene": "detail_page"},
+	}
+
+	items := []*core.Item{
+		func() *core.Item {
+			it := makeItem("a", 0.9)
+			it.PutLabel("tag", utils.Label{Value: "x"})
+			return it
+		}(),
+		func() *core.Item {
+			it := makeItem("b", 0.8)
+			it.PutLabel("tag", utils.Label{Value: "x"})
+			return it
+		}(),
+		func() *core.Item {
+			it := makeItem("c", 0.7)
+			it.PutLabel("tag", utils.Label{Value: "y"})
+			return it
+		}(),
+		func() *core.Item {
+			it := makeItem("d", 0.6)
+			it.PutLabel("tag", utils.Label{Value: "x"})
+			return it
+		}(),
+	}
+
+	d := &Diversity{
+		DiversityKeys:  []string{"category"},
+		MaxConsecutive: 1,
+		ConfigResolver: func(rctx *core.RecommendContext) *DiversityOverride {
+			if rctx.Params["scene"] == "detail_page" {
+				return &DiversityOverride{
+					DiversityKeys:  []string{"tag"},
+					MaxConsecutive: 1,
+				}
+			}
+			return nil
+		},
+	}
+
+	out, err := d.Process(ctx, rctx, items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// With tag diversity and MaxConsecutive=1:
+	// a(x) → inserted; b(x) → consecutive x, deferred; c(y) → inserted; d(x) → inserted
+	// So first 3 should not have consecutive x values
+	if len(out) != 4 {
+		t.Fatalf("want 4, got %d", len(out))
+	}
+	if out[0].ID != "a" || out[1].ID != "c" {
+		t.Errorf("first two should be a,c for diversity; got %s,%s", out[0].ID, out[1].ID)
+	}
+}
+
+func TestDiversity_ConfigResolver_Nil_UsesDefault(t *testing.T) {
+	ctx := context.Background()
+	rctx := &core.RecommendContext{UserID: "u1", Params: map[string]any{}}
+
+	items := []*core.Item{
+		func() *core.Item {
+			it := makeItem("a", 0.9)
+			it.PutLabel("category", utils.Label{Value: "tech"})
+			return it
+		}(),
+		func() *core.Item {
+			it := makeItem("b", 0.8)
+			it.PutLabel("category", utils.Label{Value: "tech"})
+			return it
+		}(),
+	}
+
+	d := &Diversity{
+		LabelKey: "category",
+		ConfigResolver: func(rctx *core.RecommendContext) *DiversityOverride {
+			return nil
+		},
+	}
+
+	out, err := d.Process(ctx, rctx, items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Category dedup: only first tech item kept
+	if len(out) != 1 {
+		t.Fatalf("want 1 after category dedup, got %d", len(out))
+	}
+}
