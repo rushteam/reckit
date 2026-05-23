@@ -115,13 +115,19 @@ func (n *Fanout) Process(
 				items = handledItems
 			}
 
-		// 记录召回来源 label，方便 explain / 观测
+		// 记录召回来源 label，方便 explain / 观测。
+		// recall_source 总是由 Fanout 设置（标识顶层来源）；
+		// recall_priority 仅在 Source 未自行设置时才写入 Fanout 分配的索引，
+		// 允许 Source 在 Recall() 内自定义更高优先级（如 L0 设为 "0"）。
+		priorityStr := strconv.Itoa(priority)
 		for _, it := range items {
 			if it == nil {
 				continue
 			}
 			it.PutLabel("recall_source", utils.Label{Value: s.Name(), Source: "recall"})
-			it.PutLabel("recall_priority", utils.Label{Value: strconv.Itoa(priority), Source: "recall"})
+			if _, exists := it.Labels["recall_priority"]; !exists {
+				it.PutLabel("recall_priority", utils.Label{Value: priorityStr, Source: "recall"})
+			}
 		}
 
 			mu.Lock()
