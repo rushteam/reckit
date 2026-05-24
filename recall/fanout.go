@@ -3,7 +3,6 @@ package recall
 import (
 	"context"
 	"strconv"
-	"sync"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -62,21 +61,19 @@ func (n *Fanout) Process(
 		return nil, nil
 	}
 
-	var (
-		mu      sync.Mutex
-		all     []*core.Item
-		eg, egCtx = errgroup.WithContext(ctx)
-	)
+	// slots[i] 对应 Sources[i] 的结果，保证合并顺序与声明顺序一致，
+	// 消除并发 goroutine 完成顺序带来的非确定性（影响 FirstMergeStrategy 等去重行为）。
+	slots := make([][]*core.Item, len(n.Sources))
+	eg, egCtx := errgroup.WithContext(ctx)
 
-	// 限流：使用 semaphore 控制并发数
 	sem := make(chan struct{}, n.MaxConcurrent)
 	if n.MaxConcurrent <= 0 {
-		close(sem) // 无限制时直接关闭，避免阻塞
+		close(sem)
 	}
 
 	for i, src := range n.Sources {
+		idx := i
 		s := src
-		// 计算优先级：优先使用自定义权重，否则使用索引
 		priority := i
 		if n.SourcePriorities != nil {
 			if customPriority, ok := n.SourcePriorities[s.Name()]; ok {
@@ -85,14 +82,11 @@ func (n *Fanout) Process(
 		}
 
 		eg.Go(func() error {
-			// 限流
 			if n.MaxConcurrent > 0 {
 				sem <- struct{}{}
 				defer func() { <-sem }()
 			}
 
-			// 超时控制：基于 errgroup 的 derived context，
-			// 任一 source 返回 error 后其它 goroutine 能感知取消。
 			recallCtx := egCtx
 			if n.Timeout > 0 {
 				var cancel context.CancelFunc
@@ -102,12 +96,10 @@ func (n *Fanout) Process(
 
 			items, err := s.Recall(recallCtx, rctx)
 			if err != nil {
-				// 使用错误处理策略
 				handler := n.ErrorHandler
 				if handler == nil {
-					handler = &IgnoreErrorHandler{} // 默认策略
+					handler = &IgnoreErrorHandler{}
 				}
-				
 				handledItems, handleErr := handler.HandleError(recallCtx, s, err, rctx)
 				if handleErr != nil {
 					return handleErr
@@ -115,30 +107,37 @@ func (n *Fanout) Process(
 				items = handledItems
 			}
 
-		// 记录召回来源 label，方便 explain / 观测。
-		// recall_source 总是由 Fanout 设置（标识顶层来源）；
-		// recall_priority 仅在 Source 未自行设置时才写入 Fanout 分配的索引，
-		// 允许 Source 在 Recall() 内自定义更高优先级（如 L0 设为 "0"）。
-		priorityStr := strconv.Itoa(priority)
-		for _, it := range items {
-			if it == nil {
-				continue
+			// recall_source：直接覆盖（不合并），标识当前 Fanout 分配的来源名。
+			// recall_priority：仅在 Source 未自行设置时写入 Fanout 分配的索引。
+			priorityStr := strconv.Itoa(priority)
+			sourceLbl := utils.Label{Value: s.Name(), Source: "recall"}
+			priorityLbl := utils.Label{Value: priorityStr, Source: "recall"}
+			for _, it := range items {
+				if it == nil {
+					continue
+				}
+				if it.Labels == nil {
+					it.Labels = make(map[string]utils.Label)
+				}
+				it.Labels["recall_source"] = sourceLbl
+				if _, exists := it.Labels["recall_priority"]; !exists {
+					it.Labels["recall_priority"] = priorityLbl
+				}
 			}
-			it.PutLabel("recall_source", utils.Label{Value: s.Name(), Source: "recall"})
-			if _, exists := it.Labels["recall_priority"]; !exists {
-				it.PutLabel("recall_priority", utils.Label{Value: priorityStr, Source: "recall"})
-			}
-		}
 
-			mu.Lock()
-			all = append(all, items...)
-			mu.Unlock()
+			slots[idx] = items
 			return nil
 		})
 	}
 
 	if err := eg.Wait(); err != nil {
 		return nil, err
+	}
+
+	// 按声明顺序拼合
+	var all []*core.Item
+	for _, s := range slots {
+		all = append(all, s...)
 	}
 
 	// 合并策略（必需）

@@ -355,10 +355,18 @@ func (s *RatioMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.Item 
 	totalTaken := 0
 	shortfall := 0
 
-	// 第一轮：按 order 顺序取配额
+	// 区分已配置源和未配置源
+	var unconfigured []*core.Item
+
+	// 第一轮：按 order 顺序取配额（仅已配置源参与配额分配）
 	for _, source := range order {
-		quota := quotaMap[source]
 		group := groups[source]
+		quota, configured := quotaMap[source]
+		if !configured {
+			// 未在 SourceRatios 中配置的源：全量直通，追加到结果末尾
+			unconfigured = append(unconfigured, group...)
+			continue
+		}
 		take := quota
 		if take > len(group) {
 			shortfall += take - len(group)
@@ -370,12 +378,15 @@ func (s *RatioMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.Item 
 		}
 	}
 
-	// 第二轮：按 order 顺序余量重分配
+	// 第二轮：已配置源的余量重分配（shortfall 回补）
 	if shortfall > 0 && totalTaken < s.TotalLimit {
 		need := s.TotalLimit - totalTaken
 		for _, source := range order {
 			if need <= 0 {
 				break
+			}
+			if _, configured := quotaMap[source]; !configured {
+				continue
 			}
 			group := groups[source]
 			taken := quotaMap[source]
@@ -390,6 +401,9 @@ func (s *RatioMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.Item 
 			need -= extra
 		}
 	}
+
+	// 第三轮：未配置源全量追加（不受 TotalLimit 限制）
+	out = append(out, unconfigured...)
 
 	return out
 }

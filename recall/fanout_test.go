@@ -73,6 +73,74 @@ func TestFanout_RespectSourceRecallPriority(t *testing.T) {
 	}
 }
 
+// recallSourceSource 模拟 Source 在 Recall() 里自行设置 recall_source 的场景。
+type recallSourceSource struct {
+	name  string
+	items []*core.Item
+	src   string
+}
+
+func (s *recallSourceSource) Name() string { return s.name }
+func (s *recallSourceSource) Recall(_ context.Context, _ *core.RecommendContext) ([]*core.Item, error) {
+	for _, it := range s.items {
+		if it != nil {
+			it.PutLabel("recall_source", utils.Label{Value: s.src, Source: "recall"})
+		}
+	}
+	return s.items, nil
+}
+
+// Bug #1 回归：Source 内部设置了 recall_source 后，Fanout 必须覆盖而非拼接。
+func TestFanout_RecallSource_OverrideNotConcat(t *testing.T) {
+	item := core.NewItem("x")
+	node := &Fanout{
+		Sources: []Source{
+			&recallSourceSource{name: "recall.pool", items: []*core.Item{item}, src: "recall.l_new"},
+		},
+		Dedup: false,
+	}
+
+	out, err := node.Process(context.Background(), &core.RecommendContext{}, nil)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if len(out) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(out))
+	}
+
+	lbl := out[0].Labels["recall_source"]
+	// 必须是 Fanout 覆盖后的值，不能包含 "|" 拼接
+	if lbl.Value != "recall.pool" {
+		t.Errorf("recall_source = %q, want %q (Fanout must override, not concat)", lbl.Value, "recall.pool")
+	}
+}
+
+// Bug #2 回归：并发 Fanout 的结果顺序必须与 Sources 声明顺序一致。
+func TestFanout_DeterministicOrder(t *testing.T) {
+	// 运行多次确认顺序稳定
+	for trial := 0; trial < 20; trial++ {
+		node := &Fanout{
+			Sources: []Source{
+				&staticSource{name: "s0", items: []*core.Item{core.NewItem("a")}},
+				&staticSource{name: "s1", items: []*core.Item{core.NewItem("b")}},
+				&staticSource{name: "s2", items: []*core.Item{core.NewItem("c")}},
+			},
+			Dedup: false,
+		}
+
+		out, err := node.Process(context.Background(), &core.RecommendContext{}, nil)
+		if err != nil {
+			t.Fatalf("trial %d: unexpected err: %v", trial, err)
+		}
+		if len(out) != 3 {
+			t.Fatalf("trial %d: expected 3 items, got %d", trial, len(out))
+		}
+		if out[0].ID != "a" || out[1].ID != "b" || out[2].ID != "c" {
+			t.Fatalf("trial %d: order not stable, got %s,%s,%s", trial, out[0].ID, out[1].ID, out[2].ID)
+		}
+	}
+}
+
 func TestFanout_DefaultMergeStrategyDoesNotMutateField(t *testing.T) {
 	node := &Fanout{
 		Sources: []Source{

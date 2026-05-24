@@ -881,6 +881,43 @@ func TestQuotaMerge_Deterministic(t *testing.T) {
 	}
 }
 
+// Bug #3 回归：未在 SourceRatios 中配置的源应全量直通，而非静默丢弃。
+func TestRatioMerge_UnconfiguredSourcePassThrough(t *testing.T) {
+	items := []*core.Item{
+		makeItem("h1", 10, "hot"),
+		makeItem("h2", 9, "hot"),
+		makeItem("c1", 8, "cf"),
+		makeItem("c2", 7, "cf"),
+		makeItem("u1", 6, "unknown"),
+		makeItem("u2", 5, "unknown"),
+	}
+
+	s := &RatioMergeStrategy{
+		SourceRatios: map[string]float64{"hot": 0.5, "cf": 0.5},
+		TotalLimit:   3,
+	}
+
+	out := s.Merge(items, false)
+
+	// 已配置源共 3 个（配额：hot=1~2, cf=1~2）
+	// 未配置源 "unknown" 的 2 个 item 应追加在末尾
+	if len(out) < 3 {
+		t.Fatalf("expected at least 3 items, got %d", len(out))
+	}
+
+	// 检查 "unknown" 源的 items 全部保留
+	unknownCount := 0
+	for _, it := range out {
+		src, _ := it.GetValue("recall_source")
+		if src == "unknown" {
+			unknownCount++
+		}
+	}
+	if unknownCount != 2 {
+		t.Errorf("unconfigured source 'unknown' items: got %d, want 2", unknownCount)
+	}
+}
+
 func TestRatioMerge_Deterministic(t *testing.T) {
 	buildItems := func() []*core.Item {
 		var items []*core.Item
