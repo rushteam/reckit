@@ -6,8 +6,13 @@ import (
 	"github.com/rushteam/reckit/pkg/utils"
 )
 
-// Item 是推荐链路中的统一承载结构：特征、分数、元信息、标签。
-// Labels 用于解释与策略驱动；Score 用于排序决策。
+// Item 是推荐链路中的统一承载结构：特征、分数、元信息、标签、内部状态。
+//
+// 四个 map 职责分明：
+//   - Features: ML 数值特征，供排序模型消费
+//   - Meta:     业务属性（title, category 等），供展示与过滤
+//   - Labels:   策略标签（带 Source 追踪），对外可解释
+//   - State:    pipeline 内部状态，节点间传递，不对外暴露
 //
 // ID 类型设计：
 //   - 使用 string 类型（通用，支持所有 ID 格式）
@@ -17,6 +22,7 @@ type Item struct {
 	Features map[string]float64
 	Meta     map[string]any
 	Labels   map[string]utils.Label
+	State    map[string]any // pipeline 内部状态（节点间传递，不参与 Enrich / 序列化）
 
 	// LabelMergeStrategy 自定义 Label 合并策略（可选）
 	// 如果为 nil，则使用默认策略
@@ -65,6 +71,23 @@ func (it *Item) GetValue(key string) (string, bool) {
 func (it *Item) GetValueString(key string) string {
 	v, _ := it.GetValue(key)
 	return v
+}
+
+// SetState 写入 pipeline 内部状态（lazy init）。
+func (it *Item) SetState(key string, value any) {
+	if it.State == nil {
+		it.State = make(map[string]any)
+	}
+	it.State[key] = value
+}
+
+// GetState 读取 pipeline 内部状态。
+func (it *Item) GetState(key string) (any, bool) {
+	if it.State == nil {
+		return nil, false
+	}
+	v, ok := it.State[key]
+	return v, ok
 }
 
 // PutLabel 写入 Label；若已存在同名 key，则按合并策略合并。
