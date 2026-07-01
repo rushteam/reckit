@@ -54,11 +54,10 @@ func (s *PriorityMergeStrategy) Merge(items []*core.Item, dedup bool) []*core.It
 		oldPriority := s.getPriority(old)
 		newPriority := s.getPriority(it)
 		if newPriority < oldPriority {
+			mergeLabelsIfAbsent(it, old)
 			seen[it.ID] = it
 		} else {
-			for k, v := range it.Labels {
-				old.PutLabel(k, v)
-			}
+			mergeLabelsIfAbsent(old, it)
 		}
 	}
 	out := make([]*core.Item, 0, len(order))
@@ -94,6 +93,18 @@ func (s *PriorityMergeStrategy) getPriority(item *core.Item) int {
 // ---------------------------------------------------------------------------
 // 辅助函数
 // ---------------------------------------------------------------------------
+
+// mergeLabelsIfAbsent 将 src 中 dst 不存在的 label 补充到 dst，不覆盖已有值。
+func mergeLabelsIfAbsent(dst, src *core.Item) {
+	if src == nil || src.Labels == nil {
+		return
+	}
+	for k, v := range src.Labels {
+		if _, exists := dst.Labels[k]; !exists {
+			dst.PutLabel(k, v)
+		}
+	}
+}
 
 // groupBySource 按 recall_source label 将 items 分组，保持组内原始顺序。
 func groupBySource(items []*core.Item) map[string][]*core.Item {
