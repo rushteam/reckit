@@ -37,6 +37,22 @@ type Fanout struct {
 	// key: Source 名称，value: 优先级（值越小优先级越高）
 	// 如果未设置，则使用 Source 在数组中的索引作为优先级
 	SourcePriorities map[string]int
+
+	// PreserveAlternates 开启后，去重时将被淘汰方的来源信息
+	// 保存到 winner 的 Item.State[StateKeyAlternateSources]，
+	// 供下游按渠道限量展示、调试 trace 等场景使用。
+	PreserveAlternates bool
+}
+
+// StateKeyAlternateSources 是存储在 Item.State 中的 key，
+// 值类型为 []AlternateSource。
+const StateKeyAlternateSources = "_alternate_sources"
+
+// AlternateSource 记录去重时被淘汰方的来源信息。
+type AlternateSource struct {
+	Source string             `json:"source"`
+	Score  float64            `json:"score"`
+	Labels map[string]utils.Label `json:"labels,omitempty"`
 }
 
 func (n *Fanout) Name() string {
@@ -147,6 +163,53 @@ func (n *Fanout) Process(
 		strategy = &FirstMergeStrategy{}
 	}
 
-	return strategy.Merge(all, n.Dedup), nil
+	merged := strategy.Merge(all, n.Dedup)
+
+	if n.PreserveAlternates && n.Dedup && len(merged) < len(all) {
+		saveAlternates(all, merged)
+	}
+
+	return merged, nil
+}
+
+// saveAlternates 将去重时被淘汰方的来源信息保存到 winner 的 State。
+func saveAlternates(all, merged []*core.Item) {
+	byID := make(map[string][]*core.Item, len(all))
+	for _, it := range all {
+		if it != nil {
+			byID[it.ID] = append(byID[it.ID], it)
+		}
+	}
+	winnerSet := make(map[*core.Item]struct{}, len(merged))
+	for _, it := range merged {
+		winnerSet[it] = struct{}{}
+	}
+	for _, winner := range merged {
+		candidates := byID[winner.ID]
+		if len(candidates) <= 1 {
+			continue
+		}
+		alts := make([]AlternateSource, 0, len(candidates)-1)
+		for _, c := range candidates {
+			if _, isWinner := winnerSet[c]; isWinner && c.ID == winner.ID {
+				continue
+			}
+			src := ""
+			if lbl, ok := c.Labels["recall_source"]; ok {
+				src = lbl.Value
+			}
+			alt := AlternateSource{Source: src, Score: c.Score}
+			if len(c.Labels) > 0 {
+				alt.Labels = make(map[string]utils.Label, len(c.Labels))
+				for k, v := range c.Labels {
+					alt.Labels[k] = v
+				}
+			}
+			alts = append(alts, alt)
+		}
+		if len(alts) > 0 {
+			winner.SetState(StateKeyAlternateSources, alts)
+		}
+	}
 }
 

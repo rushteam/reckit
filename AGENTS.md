@@ -131,6 +131,17 @@ type MLService interface {
     Health(ctx context.Context) error
  Close(ctx context.Context) error
 }
+
+// 预计算 I2I 相似度数据访问接口（领域层接口，在 core 包）
+type PrecomputedSimilarStore interface {
+    BatchGetSimilar(ctx context.Context, keys []string, topK int) ([][]ScoredMember, error)
+}
+
+// 版本化扩展（可选，支持按日期版本切换 I2I 数据）
+type VersionedSimilarStore interface {
+    PrecomputedSimilarStore
+    GetActiveVersion(ctx context.Context, versionKey string) (string, error)
+}
 ```
 
 ### 策略接口（可扩展）
@@ -243,6 +254,43 @@ type S3Client interface {
     GetObject(ctx context.Context, bucket, key string) (io.ReadCloser, error)
 }
 // 支持 AWS S3、阿里云 OSS、腾讯云 COS、MinIO 等
+
+// AB 实验评估器接口（recall/conditional_source.go）
+type ExperimentEvaluator interface {
+    Evaluate(ctx context.Context, rctx *core.RecommendContext, key string) (branch string, ok bool)
+}
+
+// 召回源可观测接口（recall/source_observer.go）
+type SourceObserver interface {
+    OnRecall(ctx context.Context, source Source, items []*core.Item, err error, duration time.Duration)
+}
+
+// Pipeline 指标采集器接口（pipeline/hooks.go）
+type MetricsCollector interface {
+    Collect(ctx context.Context, metrics NodeMetrics)
+}
+
+// 流量调控端口接口（pkg/trafficctrl/ports.go）
+type TaskRepository interface {
+    GetActiveTasks(ctx context.Context, scene string) ([]*Task, error)
+    GetTask(ctx context.Context, taskID string) (*Task, error)
+}
+type MetricsReader interface {
+    GetMetric(ctx context.Context, taskID string, metric Metric, window string) (float64, error)
+}
+type PIDStateStore interface {
+    Load(ctx context.Context, taskID string) (PIDState, error)
+    Save(ctx context.Context, state PIDState) error
+}
+type EventEmitter interface {
+    EmitBoostEvent(ctx context.Context, event BoostEvent)
+}
+
+// WDRR 放置过滤器（pkg/wdrr/wdrr.go）
+type PlacementFilter[T any] interface {
+    CanPlace(item T) bool
+    Place(item T)
+}
 ```
 
 ### 配置接口
@@ -382,7 +430,7 @@ github.com/rushteam/reckit/
 ├── recall/            # 召回模块（Source, Fanout, CF, ANN, Content 等）
 ├── filter/            # 过滤模块（Blacklist, UserBlock, Exposed, Expr, QualityGate, DedupField, TimeDecay, FrequencyCap, ConditionalNode 等）
 ├── rank/              # 排序模块（LR, DNN, DIN, RPC 等）
-├── rerank/            # 重排模块（Diversity、DPP、SSD、Sample、FairInterleave、WeightedInterleave、GroupQuota、TrafficPlan、ScoreAdjust、RecallChannelMix、EpsilonGreedy、UCB、ThompsonSampling、ColdStartBoost 等）
+├── rerank/            # 重排模块（Diversity、DPP、SSD、Sample、FairInterleave、WeightedInterleave、GroupQuota、TrafficPlan、TrafficControl、ScoreAdjust、RecallChannelMix、ChannelQuotaMix、EpsilonGreedy、UCB、ThompsonSampling、ColdStartBoost 等）
 ├── postprocess/       # 后处理模块（Padding、TruncateFields）
 ├── model/             # 排序模型抽象和实现
 ├── feature/           # 特征服务（Enrich, Service, Provider）
@@ -402,7 +450,9 @@ github.com/rushteam/reckit/
 └── pkg/
     ├── utils/         # Label 工具
     ├── dsl/           # Label DSL 表达式引擎
-    └── conv/          # 类型转换与泛型工具（ToFloat64、ConfigGet、MapToFloat64 等）
+    ├── conv/          # 类型转换与泛型工具（ToFloat64、ConfigGet、MapToFloat64 等）
+    ├── wdrr/          # WDRR 调度器（Weighted Deficit Round Robin）
+    └── trafficctrl/   # 流量调控领域模型（Task/PID/Rule/Ports 接口）
 ```
 
 ### 扩展包说明
@@ -425,10 +475,12 @@ github.com/rushteam/reckit/
 - `core/context.go` - RecommendContext 定义
 - `core/user_profile.go` - UserProfile 定义
 - `core/config.go` - 配置接口定义
+- `core/similar_store.go` - PrecomputedSimilarStore / VersionedSimilarStore 接口
 - `core/extension.go` - Extension 接口和 ExtensionAs 泛型函数
 - `pipeline/node.go` - Node 接口定义
 - `pipeline/pipeline.go` - Pipeline 执行器和 Hook
 - `pipeline/error_hook.go` - ErrorHook 接口和内置实现（WarnAndSkip / KindRecovery / ErrorCallback）
+- `pipeline/hooks.go` - `MetricsHook`（`MetricsCollector` 接口，采集 Node 执行时间/条数/错误）+ `LoggingHook`（slog 结构化日志）
 - `pipeline/config.go` - 配置加载和工厂
 
 ### 召回模块
@@ -445,6 +497,10 @@ github.com/rushteam/reckit/
 - `recall/bert_recall.go` - BERT 召回（基于语义相似度）
 - `recall/sorted_set.go` - 通用有序集合召回（SortedSetRecall），含 NewHotRecall/NewTrendingRecall/NewLatestRecall/NewTopRatedRecall/NewEditorPickRecall 等便捷构造器
 - `recall/user_history.go` - 用户历史召回（UserHistoryStore 返回带 Score 的 ScoredHistoryItem，支持多行为合并时按时间排序）
+- `recall/precomputed_i2i.go` - 离线预计算 I2I 召回（支持 CF/Swing/Session 变体，可配置衰减函数和版本化 key）
+- `recall/traffic_ctrl.go` - `TrafficCtrlRecallSource`（从调控任务提取 static_ids 保召回）
+- `recall/conditional_source.go` - `ConditionalSource`（AB 条件召回：`ExperimentEvaluator` 接口 + 分支选源）
+- `recall/source_observer.go` - `ObservableSource` + `SourceObserver`（召回源可观测装饰器：延迟/条数/错误回调）
 
 ### 过滤模块
 
@@ -488,6 +544,10 @@ github.com/rushteam/reckit/
 - `rerank/traffic_plan.go` - `TrafficPlanNode` + `TrafficPlanner`（调控 id/位次写入 `LabelKeyTrafficControlID` / `LabelKeyTrafficSlot`，可选重排）
 - `rerank/score_adjust.go` - `ScoreAdjust`（`Filter` / CEL 规则改分）与 `ScoreWeightBoost` + `ScoreWeightProvider`（按 ID 外部权重）
 - `rerank/recall_channel_mix.go` - `RecallChannelMix`（精排后按召回通道固定/随机槽位混排）
+- `rerank/bypass.go` - `BypassExtractNode` + `BypassBoostNode`（旁路提取/前置：指定渠道物品跳过 Rank，保持原始顺序前置回结果）
+- `rerank/traffic_control.go` - `TrafficControlNode`（PID/Weight/Pin 闭环流量调控，依赖 `pkg/trafficctrl` 领域模型）
+- `rerank/channel_quota.go` - `ChannelQuotaMixNode`（WDRR 渠道配额混排 + 可选 DiversityConstraints）
+- `rerank/diversity_filter.go` - `DiversityPlacementFilter`（实现 `wdrr.PlacementFilter[*core.Item]`，供 WDRR 调度器使用）
 - `rerank/epsilon_greedy.go` - `EpsilonGreedyNode`（ε-贪心探索：以概率 Epsilon 将 explore 池中的物品提到 exploit 区）
 - `rerank/bandit.go` - `UCBNode`（UCB1 公式重排，需 `BanditStatsProvider`）+ `ThompsonSamplingNode`（Beta-Bernoulli 汤普森采样，`PureExplore` 可选纯探索模式）+ `BanditStatsProvider` / `BanditStats` 接口
 - `rerank/cold_start_boost.go` - `ColdStartBoostNode`（新物品提权：曝光 < Threshold 时按线性衰减加成）
@@ -500,10 +560,10 @@ github.com/rushteam/reckit/
 **与 `recall.MergeStrategy` 的分工**：`MergeStrategy` 作用于召回阶段，负责多路结果的**合并、去重、加权与配额**；`RecallChannelMix` 作用于**精排之后**，依赖物品上的 `recall_source`（默认取合并标签的首段，见 `PrimaryRecallChannel`），按规则做**槽位占位与剩余策略**，用于运营位次/通道曝光。二者互补，不要混用职责。
 
 **YAML 构建器**（`config/builders`，需 `_ "github.com/rushteam/reckit/config/builders"`）：
-- **Recall**：`recall.fanout`、`recall.hot` / `recall.sorted_set`（通用有序集合）、`recall.ann`（`Dependencies.VectorService`）、`recall.u2i`（`Dependencies.RecallDataStore`）、`recall.i2i`（同上）、`recall.content`（同上）、`recall.mf`（同上）、`recall.user_history`（`Dependencies.UserHistoryStore`）、`recall.word2vec`（`Dependencies.Word2VecModel`）、`recall.bert`（`Dependencies.BERTModel` + `BERTStore`）、`recall.two_tower`（`Dependencies.MLService` + `VectorService`）、`recall.youtube_dnn`（`endpoint` + `Dependencies.VectorService`）、`recall.dssm`（`endpoint` + `Dependencies.VectorService`）、`recall.rpc`（`endpoint`）、`recall.graph`（`endpoint`）
+- **Recall**：`recall.fanout`、`recall.hot` / `recall.sorted_set`（通用有序集合）、`recall.ann`（`Dependencies.VectorService`）、`recall.u2i`（`Dependencies.RecallDataStore`）、`recall.i2i`（同上）、`recall.content`（同上）、`recall.mf`（同上）、`recall.user_history`（`Dependencies.UserHistoryStore`）、`recall.word2vec`（`Dependencies.Word2VecModel`）、`recall.bert`（`Dependencies.BERTModel` + `BERTStore`）、`recall.two_tower`（`Dependencies.MLService` + `VectorService`）、`recall.youtube_dnn`（`endpoint` + `Dependencies.VectorService`）、`recall.dssm`（`endpoint` + `Dependencies.VectorService`）、`recall.rpc`（`endpoint`）、`recall.graph`（`endpoint`）、`recall.traffic_ctrl`（`Dependencies.TaskRepository`）、`recall.precomputed_i2i`（`Dependencies.PrecomputedSimilarStore`，可选 `UserHistoryStore`）
 - **Filter**：`filter`（含 `blacklist` / `user_block` / `exposed` / `expr` / `quality_gate` / `dedup_field` / `time_decay` / `frequency_cap`）、`filter.conditional`
 - **Rank**：`rank.lr`、`rank.rpc`、`rank.wide_deep`、`rank.two_tower`、`rank.dnn`、`rank.din`
-- **ReRank**：`rerank.diversity`（含 `constraints` 高级模式）、`rerank.dpp_diversity`、`rerank.ssd_diversity`、`rerank.topn`、`rerank.sample`、`rerank.fair_interleave`、`rerank.weighted_interleave`、`rerank.group_quota`、`rerank.traffic_plan`、`rerank.score_adjust`、`rerank.score_weight`、`rerank.recall_channel_mix`、`rerank.mmoe`
+- **ReRank**：`rerank.diversity`（含 `constraints` 高级模式）、`rerank.dpp_diversity`、`rerank.ssd_diversity`、`rerank.topn`、`rerank.sample`、`rerank.fair_interleave`、`rerank.weighted_interleave`、`rerank.group_quota`、`rerank.traffic_plan`、`rerank.traffic_control`（`Dependencies.TaskRepository` / `MetricsReader` / `PIDStateStore` / `EventEmitter`）、`rerank.channel_quota_mix`、`rerank.score_adjust`、`rerank.score_weight`、`rerank.recall_channel_mix`、`rerank.mmoe`
 - **Explore/Exploit**：`rerank.epsilon_greedy`、`rerank.ucb`（`Dependencies.BanditStatsProvider`）、`rerank.thompson_sampling`（`Dependencies.BanditStatsProvider`）、`rerank.cold_start_boost`
 - **PostProcess**：`postprocess.padding`（`Dependencies.PaddingFunc`）、`postprocess.truncate_fields`
 - **Feature**：`feature.enrich`
@@ -526,6 +586,8 @@ github.com/rushteam/reckit/
 - `pkg/utils/label.go` - Label 定义和合并策略
 - `pkg/dsl/eval.go` - Label DSL 表达式引擎
 - `pkg/conv/conv.go` - 类型转换与泛型工具（ToFloat64、ToInt、ToString、ConfigGet、MapToFloat64、SliceAnyToString 等）
+- `pkg/wdrr/wdrr.go` - WDRR（Weighted Deficit Round Robin）调度器
+- `pkg/trafficctrl/` - 流量调控领域模型（Task/Schedule/Audience/ItemPool/Target/Strategy/PID/Rule/Ports）
 
 ## 使用模式
 
@@ -1279,6 +1341,91 @@ var dbService core.VectorDatabaseService = milvusService
 
 **或自行实现**：参考扩展包实现，自行实现 `core.VectorService` 或 `core.VectorDatabaseService` 接口。
 
+### 使用 PrecomputedI2IRecall（离线预计算 I2I 召回）
+
+```go
+import "github.com/rushteam/reckit/recall"
+
+// 1. CF I2I 召回（线性衰减，适用于长窗口推荐）
+cfI2I := &recall.PrecomputedI2IRecall{
+    SimilarStore:     similarStore,      // core.PrecomputedSimilarStore 接口
+    HistoryStore:     historyStore,      // recall.UserHistoryStore 接口（可选）
+    SimilarKeyPrefix: "cf:similar",     // Redis ZSET key 前缀
+    VersionKey:       "cf:similar:active_version", // 版本号 key（可选）
+    HistoryKey:       "user_history",   // 从 rctx.Params/Attributes 读历史的 key
+    MaxHistoryItems:  50,               // 最多用多少条历史
+    TopKPerItem:      10,               // 每条历史取多少相似 item
+    TopK:             30,               // 最终返回条数
+    WeightFunc:       recall.LinearDecay, // 1/(i+1) 线性衰减
+}
+
+// 2. Swing I2I 召回（不同前缀，其余逻辑复用）
+swingI2I := &recall.PrecomputedI2IRecall{
+    SimilarStore:     similarStore,
+    NodeName:         "recall.swing",
+    SimilarKeyPrefix: "swing:similar",
+    VersionKey:       "swing:similar:active_version",
+    TopK:             30,
+}
+
+// 3. Session 短兴趣召回（二次衰减，强调最近行为）
+sessionRecall := &recall.PrecomputedI2IRecall{
+    SimilarStore:     similarStore,
+    HistoryStore:     historyStore,
+    NodeName:         "recall.session_short",
+    SimilarKeyPrefix: "cf:similar",
+    HistoryTimeWindow: 1800,              // 30 分钟短窗口
+    MaxHistoryItems:   20,
+    TopKPerItem:       20,
+    TopK:              200,
+    WeightFunc:        recall.QuadraticDecay, // 1/(i+1)² 二次衰减
+}
+
+// 4. 自定义衰减函数（指数衰减）
+expDecayI2I := &recall.PrecomputedI2IRecall{
+    SimilarStore: similarStore,
+    TopK:         50,
+    WeightFunc: func(index int) float64 {
+        return math.Exp(-0.3 * float64(index))
+    },
+}
+
+// 5. 在 Fanout 中使用
+fanout := &recall.Fanout{
+    Sources: []recall.Source{cfI2I, swingI2I, sessionRecall},
+    Dedup:   true,
+    MergeStrategy: &recall.PriorityMergeStrategy{},
+}
+
+// 6. 用户历史的三种传递方式
+// 方式 A：通过 rctx.Params 传入（推荐，避免重复 IO）
+rctx.Params["user_history"] = []string{"item_1", "item_2", "item_3"}
+
+// 方式 B：通过 rctx.Attributes 传入
+rctx.Attributes["user_history"] = []string{"item_1", "item_2"}
+
+// 方式 C：通过 HistoryStore 自动读取（上述都没有时降级）
+// 需要设置 HistoryStore、HistoryKeyPrefix、HistoryBehaviorType、HistoryTimeWindow
+```
+
+**YAML 配置**：
+
+```yaml
+- type: "recall.precomputed_i2i"
+  config:
+    name: "recall.cf_i2i"
+    similar_key_prefix: "cf:similar"
+    version_key: "cf:similar:active_version"
+    history_key: "user_history"
+    max_history_items: 50
+    top_k_per_item: 10
+    top_k: 30
+    weight_func: "linear"           # linear（默认）| quadratic
+```
+
+**分数聚合公式**：`candidateScore[id] += weightFunc(historyIndex) × similarity`。
+多个历史物品扩展出同一候选时分数累加，最终按聚合分数降序取 TopK。
+
 ### 使用 Word2Vec / Item2Vec 模型
 
 ```go
@@ -1400,6 +1547,163 @@ p := &pipeline.Pipeline{
         dppNode, // 或 ssdNode
     },
 }
+```
+
+### 使用 Traffic Control（PID 闭环流量调控）
+
+```go
+import (
+    "github.com/rushteam/reckit/pkg/trafficctrl"
+    "github.com/rushteam/reckit/rerank"
+    "github.com/rushteam/reckit/recall"
+)
+
+// 1. 实现 port 接口（TaskRepository / MetricsReader / PIDStateStore / EventEmitter）
+// 通常由 infra 层实现（Redis / DB / Flink / MQ）
+
+// 2. 创建 TrafficControlNode（Weight/PID/Pin 三种模式）
+tcNode := &rerank.TrafficControlNode{
+    TaskRepo:     myTaskRepo,     // 读取活跃调控任务
+    Metrics:      myMetricsReader, // PID 模式读取实时指标
+    PIDStore:     myPIDStore,     // PID 状态持久化
+    EventEmitter: myEmitter,      // 可选：上报调控事件
+    // UserAttrsFunc / ItemAttrsFunc 可选自定义属性提取
+}
+
+// 3. 创建 TrafficCtrlRecallSource（保召回：static_ids 直通候选池）
+tcRecall := &recall.TrafficCtrlRecallSource{
+    TaskRepo: myTaskRepo,
+    MaxItems: 50,
+}
+
+// 4. 组装 Pipeline
+p := &pipeline.Pipeline{
+    Nodes: []pipeline.Node{
+        &recall.Fanout{
+            Sources: []recall.Source{mainRecall, tcRecall},
+            Dedup:   true,
+        },
+        filterNode,
+        rankNode,
+        tcNode,      // Rank 之后执行调控
+        diversityNode,
+    },
+}
+```
+
+### 使用 ChannelQuotaMix（WDRR 渠道配额混排）
+
+```go
+import "github.com/rushteam/reckit/rerank"
+
+// 按召回渠道配额比例混排，空渠道份额自动流向活跃渠道
+node := &rerank.ChannelQuotaMixNode{
+    Channels: []rerank.ChannelQuotaSlot{
+        {Key: "recall.hot", Quota: 3},
+        {Key: "recall.cf", Quota: 4},
+        {Key: "recall.ann", Quota: 3},
+    },
+    TopN:                10,
+    CandidateMultiplier: 5, // 每渠道候选数 = Quota × 5
+    // 可选：Diversity 约束（WDRR 逐 slot 放置时检查）
+    DiversityConstraints: []rerank.DiversityConstraint{
+        {Dimensions: []string{"category"}, MaxConsecutive: 1},
+        {Dimensions: []string{"author"}, WindowSize: 5, MaxPerWindow: 2},
+    },
+    PassthroughUnmatched: true, // 未匹配渠道的 items 追加到末尾
+}
+```
+
+### 使用 Bypass Extract/Boost（旁路保序）
+
+```go
+import "github.com/rushteam/reckit/rerank"
+
+// 运营精排池（L0）跳过 Rank 保持 pool_rank 顺序
+extract := &rerank.BypassExtractNode{
+    GroupName:   "L0",
+    LabelKey:    "recall_source",
+    LabelValue:  "recall.pool.L0",
+    SortByLabel: "pool_rank",
+    SortAsc:     true,
+}
+boost := &rerank.BypassBoostNode{GroupName: "L0", MaxItems: 10}
+
+p := &pipeline.Pipeline{
+    Nodes: []pipeline.Node{
+        fanout,         // 多路召回（含 L0 池）
+        extract,        // 提取 L0 跳过后续 Rank
+        rankNode,       // LR/DNN 排序（仅非 L0 物品）
+        diversityNode,  // 多样性重排
+        boost,          // L0 物品前置到结果最前面
+        topN,
+    },
+}
+```
+
+### 使用 Fanout PreserveAlternates（去重保留来源）
+
+```go
+fanout := &recall.Fanout{
+    Sources:            []recall.Source{poolRecall, cfRecall, annRecall},
+    Dedup:              true,
+    MergeStrategy:      &recall.PriorityMergeStrategy{},
+    PreserveAlternates: true, // 开启后，被去重物品的来源信息保存到 State
+}
+
+// 下游读取 alternate sources
+for _, item := range items {
+    if alts, ok := item.GetState(recall.StateKeyAlternateSources); ok {
+        for _, alt := range alts.([]recall.AlternateSource) {
+            fmt.Printf("item %s also in %s with score %.2f\n", item.ID, alt.Source, alt.Score)
+        }
+    }
+}
+```
+
+### 使用 ConditionalSource（AB 条件召回）
+
+```go
+import "github.com/rushteam/reckit/recall"
+
+// 实现 ExperimentEvaluator（对接 GrowthBook / Unleash 等）
+type myEvaluator struct{ /* ... */ }
+func (e *myEvaluator) Evaluate(ctx context.Context, rctx *core.RecommendContext, key string) (string, bool) {
+    // 返回分支名 + 是否命中
+    return "treatment", true
+}
+
+condSource := &recall.ConditionalSource{
+    SourceName:    "recall.ab_cf",
+    Evaluator:     &myEvaluator{},
+    ExperimentKey: "cf_algorithm_v2",
+    BranchSources: map[string]recall.Source{
+        "treatment": newCFRecallV2,  // 实验组
+        "control":   cfRecallV1,     // 对照组
+    },
+    Default: cfRecallV1,
+}
+```
+
+### 使用 Pipeline Hooks（可观测性）
+
+```go
+import "github.com/rushteam/reckit/pipeline"
+
+// MetricsHook：接入 Prometheus/OTel
+p := &pipeline.Pipeline{
+    Nodes: nodes,
+    Hooks: []pipeline.PipelineHook{
+        pipeline.NewMetricsHook(&myCollector{}), // 实现 MetricsCollector 接口
+        pipeline.NewLoggingHook(slog.LevelDebug), // slog 结构化日志
+    },
+}
+
+// Source 可观测性
+sources := recall.ObserveSources(
+    []recall.Source{hotRecall, cfRecall},
+    &myObserver{}, // 实现 SourceObserver 接口
+)
 ```
 
 ### 使用 DeepFM 模型（PyTorch）

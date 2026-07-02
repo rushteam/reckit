@@ -6,6 +6,7 @@ import "math"
 type Channel[T any] struct {
 	Key       string
 	Quota     int
+	Cap       int // 严格上限；0 表示不限（向后兼容）
 	Items     []T
 	cursor    int
 	Picked    int
@@ -37,6 +38,10 @@ func Schedule[T any](channels []*Channel[T], filter PlacementFilter[T], topN int
 
 		for i, ch := range channels {
 			if ch.exhausted {
+				continue
+			}
+			if ch.Cap > 0 && ch.Picked >= ch.Cap {
+				ch.exhausted = true
 				continue
 			}
 			target := float64(ch.Quota) / float64(totalQuota) * slot

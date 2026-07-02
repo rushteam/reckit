@@ -12,6 +12,7 @@ import (
 	"github.com/rushteam/reckit/model"
 	"github.com/rushteam/reckit/pipeline"
 	"github.com/rushteam/reckit/pkg/conv"
+	"github.com/rushteam/reckit/pkg/trafficctrl"
 	"github.com/rushteam/reckit/postprocess"
 	"github.com/rushteam/reckit/rank"
 	"github.com/rushteam/reckit/recall"
@@ -60,6 +61,19 @@ type Dependencies struct {
 	BERTModel *model.BERTModel
 	// BERTStore 用于 recall.bert。
 	BERTStore recall.BERTStore
+	// PrecomputedSimilarStore 用于 recall.precomputed_i2i。
+	PrecomputedSimilarStore core.PrecomputedSimilarStore
+
+	// --- Traffic Control 依赖 ---
+
+	// TaskRepository 用于 rerank.traffic_control / recall.traffic_ctrl。
+	TaskRepository trafficctrl.TaskRepository
+	// MetricsReader 用于 rerank.traffic_control（PID 模式）。
+	MetricsReader trafficctrl.MetricsReader
+	// PIDStateStore 用于 rerank.traffic_control（PID 模式）。
+	PIDStateStore trafficctrl.PIDStateStore
+	// EventEmitter 用于 rerank.traffic_control（可选事件上报）。
+	EventEmitter trafficctrl.EventEmitter
 }
 
 func (d Dependencies) filterStoreAdapter() *filter.StoreAdapter {
@@ -164,9 +178,20 @@ func ApplyBuiltins(factory *pipeline.NodeFactory, deps Dependencies) {
 	})
 	factory.Register("postprocess.truncate_fields", buildTruncateFieldsNode)
 
+	factory.Register("rerank.traffic_control", func(cfg map[string]interface{}) (pipeline.Node, error) {
+		return buildTrafficControlNodeWithDeps(cfg, deps)
+	})
+	factory.Register("rerank.channel_quota_mix", buildChannelQuotaMixNode)
+
 	// recall sources
 	factory.Register("recall.rpc", buildRPCRecallNode)
 	factory.Register("recall.graph", buildGraphRecallNode)
+	factory.Register("recall.traffic_ctrl", func(cfg map[string]interface{}) (pipeline.Node, error) {
+		return buildTrafficCtrlRecallWithDeps(cfg, deps)
+	})
+	factory.Register("recall.precomputed_i2i", func(cfg map[string]interface{}) (pipeline.Node, error) {
+		return buildPrecomputedI2IRecallWithDeps(cfg, deps)
+	})
 }
 
 // NewFactory 创建只包含内置 Node builders 的工厂（推荐）。
@@ -1197,6 +1222,100 @@ func buildGraphRecallNode(cfg map[string]interface{}) (pipeline.Node, error) {
 		Timeout:  timeout,
 		TopK:     int(conv.ConfigGetInt64(cfg, "top_k", 20)),
 	}), nil
+}
+
+func buildTrafficControlNodeWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
+	if deps.TaskRepository == nil {
+		return nil, fmt.Errorf("rerank.traffic_control: Dependencies.TaskRepository required")
+	}
+	return &rerank.TrafficControlNode{
+		TaskRepo:     deps.TaskRepository,
+		Metrics:      deps.MetricsReader,
+		PIDStore:     deps.PIDStateStore,
+		EventEmitter: deps.EventEmitter,
+		Scene:        conv.ConfigGet(cfg, "scene", ""),
+	}, nil
+}
+
+func buildChannelQuotaMixNode(cfg map[string]interface{}) (pipeline.Node, error) {
+	node := &rerank.ChannelQuotaMixNode{
+		TopN:                 int(conv.ConfigGetInt64(cfg, "top_n", 10)),
+		CandidateMultiplier:  int(conv.ConfigGetInt64(cfg, "candidate_multiplier", 5)),
+		PassthroughUnmatched: conv.ConfigGet(cfg, "passthrough_unmatched", false),
+	}
+
+	if channels, ok := cfg["channels"]; ok {
+		if chList, ok := channels.([]interface{}); ok {
+			for _, c := range chList {
+				if m, ok := c.(map[string]interface{}); ok {
+					node.Channels = append(node.Channels, rerank.ChannelQuotaSlot{
+						Key:   conv.ConfigGet(m, "key", ""),
+						Quota: int(conv.ConfigGetInt64(m, "quota", 1)),
+					})
+				}
+			}
+		}
+	}
+
+	if constraints, ok := cfg["diversity_constraints"]; ok {
+		if cList, ok := constraints.([]interface{}); ok {
+			for _, c := range cList {
+				if m, ok := c.(map[string]interface{}); ok {
+					dc := rerank.DiversityConstraint{
+						MaxConsecutive:      int(conv.ConfigGetInt64(m, "max_consecutive", 0)),
+						WindowSize:          int(conv.ConfigGetInt64(m, "window_size", 0)),
+						MaxPerWindow:        int(conv.ConfigGetInt64(m, "max_per_window", 0)),
+						Weight:              conv.ConfigGet(m, "weight", 1.0),
+						MultiValueDelimiter: conv.ConfigGet(m, "multi_value_delimiter", ""),
+					}
+					if dims, ok := m["dimensions"]; ok {
+						dc.Dimensions = conv.SliceAnyToString(dims)
+					}
+					node.DiversityConstraints = append(node.DiversityConstraints, dc)
+				}
+			}
+		}
+	}
+
+	return node, nil
+}
+
+func buildTrafficCtrlRecallWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
+	if deps.TaskRepository == nil {
+		return nil, fmt.Errorf("recall.traffic_ctrl: Dependencies.TaskRepository required")
+	}
+	return wrapSourceAsNode(&recall.TrafficCtrlRecallSource{
+		TaskRepo: deps.TaskRepository,
+		Scene:    conv.ConfigGet(cfg, "scene", ""),
+		MaxItems: int(conv.ConfigGetInt64(cfg, "max_items", 50)),
+	}), nil
+}
+
+func buildPrecomputedI2IRecallWithDeps(cfg map[string]interface{}, deps Dependencies) (pipeline.Node, error) {
+	if deps.PrecomputedSimilarStore == nil {
+		return nil, fmt.Errorf("recall.precomputed_i2i requires Dependencies.PrecomputedSimilarStore")
+	}
+	node := &recall.PrecomputedI2IRecall{
+		SimilarStore:        deps.PrecomputedSimilarStore,
+		HistoryStore:        deps.UserHistoryStore,
+		NodeName:            conv.ConfigGet(cfg, "name", ""),
+		SimilarKeyPrefix:    conv.ConfigGet(cfg, "similar_key_prefix", ""),
+		VersionKey:          conv.ConfigGet(cfg, "version_key", ""),
+		HistoryKey:          conv.ConfigGet(cfg, "history_key", ""),
+		HistoryKeyPrefix:    conv.ConfigGet(cfg, "history_key_prefix", ""),
+		HistoryBehaviorType: conv.ConfigGet(cfg, "history_behavior_type", ""),
+		HistoryTimeWindow:   conv.ConfigGetInt64(cfg, "history_time_window", 0),
+		MaxHistoryItems:     int(conv.ConfigGetInt64(cfg, "max_history_items", 0)),
+		TopKPerItem:         int(conv.ConfigGetInt64(cfg, "top_k_per_item", 0)),
+		TopK:                int(conv.ConfigGetInt64(cfg, "top_k", 0)),
+	}
+	switch conv.ConfigGet(cfg, "weight_func", "") {
+	case "quadratic":
+		node.WeightFunc = recall.QuadraticDecay
+	case "linear", "":
+		node.WeightFunc = recall.LinearDecay
+	}
+	return wrapSourceAsNode(node), nil
 }
 
 // sourceNodeAdapter 将 recall.Source 适配为 pipeline.Node。
